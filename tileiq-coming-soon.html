@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TileIQ Pro — Coming Soon</title>
+  <meta name="description" content="Smart tools for professional tilers. TileIQ Pro is coming soon — join the waitlist." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=Bebas+Neue&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --midnight: #0d1117;
+      --slate:    #1e2530;
+      --slate-mid:#2a3340;
+      --amber:    #f5a623;
+      --amber-dim:#c4831a;
+      --stone:    #8c97a3;
+      --smoke:    #d4dbe3;
+      --white:    #f0f4f8;
+    }
+
+    html, body {
+      min-height: 100%;
+      background: var(--midnight);
+      color: var(--white);
+      font-family: 'DM Sans', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* ── Tile grid background ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(245,166,35,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245,166,35,0.04) 1px, transparent 1px);
+      background-size: 64px 64px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Ambient glow ── */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse at center, rgba(245,166,35,0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .page {
+      position: relative;
+      z-index: 1;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 36px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      opacity: 0;
+      animation: fadeUp 0.7s ease forwards;
+    }
+
+    /* Logo: 3×3 tile grid */
+    .logo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 14px);
+      grid-template-rows: repeat(3, 14px);
+      gap: 3px;
+    }
+    .logo-grid span {
+      display: block;
+      border-radius: 2px;
+      background: var(--slate-mid);
+      transition: background 0.3s;
+    }
+    .logo-grid span.accent { background: var(--amber); }
+
+    .logo-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
+    .logo-text strong {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--white);
+    }
+    .logo-text em {
+      font-style: normal;
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-top: 3px;
+    }
+
+    /* ── Main ── */
+    main {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 80px 0 60px;
+      max-width: 720px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 28px;
+      opacity: 0;
+      animation: fadeUp 0.7s ease 0.15s forwards;
+    }
+    .eyebrow::before {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 1.5px;
+      background: var(--amber);
+    }
+
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-weight: 400;
+      font-size: clamp(3rem, 7vw, 5.5rem);
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+      color: var(--white);
+      margin-bottom: 32px;
+      opacity: 0;
+      animation: fadeUp 0.8s ease 0.25s forwards;
+    }
+    h1 em {
+      font-style: normal;
+      color: var(--amber);
+      position: relative;
+    }
+
+    .description {
+      font-size: 1.1rem;
+      font-weight: 300;
+      line-height: 1.7;
+      color: var(--stone);
+      max-width: 520px;
+      margin-bottom: 52px;
+      opacity: 0;
+      animation: fadeUp 0.8s ease 0.35s forwards;
+    }
+
+    /* ── Email form ── */
+    .form-wrap {
+      width: 100%;
+      max-width: 480px;
+      opacity: 0;
+      animation: fadeUp 0.8s ease 0.45s forwards;
+    }
+    .form-label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: var(--stone);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .form-row {
+      display: flex;
+      gap: 0;
+      border: 1.5px solid var(--slate-mid);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--slate);
+      transition: border-color 0.25s;
+    }
+    .form-row:focus-within {
+      border-color: var(--amber);
+    }
+    .form-row input {
+      flex: 1;
+      padding: 15px 20px;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--white);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+    }
+    .form-row input::placeholder { color: var(--slate-mid); }
+    .form-row button {
+      padding: 15px 26px;
+      background: var(--amber);
+      color: var(--midnight);
+      border: none;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .form-row button:hover { background: #fbb740; }
+    .form-row button:active { transform: scale(0.97); }
+
+    .form-note {
+      font-size: 0.76rem;
+      color: var(--slate-mid);
+      margin-top: 12px;
+    }
+
+    .success-msg {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      background: rgba(245,166,35,0.1);
+      border: 1.5px solid rgba(245,166,35,0.3);
+      border-radius: 10px;
+      color: var(--amber);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .success-msg svg { flex-shrink: 0; }
+
+    /* ── Feature pills ── */
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 52px;
+      opacity: 0;
+      animation: fadeUp 0.8s ease 0.55s forwards;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      background: var(--slate);
+      border: 1px solid var(--slate-mid);
+      border-radius: 100px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--stone);
+      letter-spacing: 0.01em;
+    }
+    .pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+      opacity: 0.7;
+    }
+
+    /* ── Right tile mosaic ── */
+    .mosaic {
+      position: fixed;
+      right: -60px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: grid;
+      grid-template-columns: repeat(5, 56px);
+      grid-template-rows: repeat(7, 56px);
+      gap: 6px;
+      opacity: 0;
+      animation: fadeIn 1.2s ease 0.6s forwards;
+      pointer-events: none;
+    }
+    .mosaic-tile {
+      border-radius: 6px;
+      background: var(--slate);
+      opacity: 0.5;
+    }
+    .mosaic-tile.lit { background: var(--amber); opacity: 0.15; }
+    .mosaic-tile.mid { background: var(--slate-mid); opacity: 0.7; }
+
+    /* ── Footer ── */
+    footer {
+      padding: 28px 0 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      border-top: 1px solid var(--slate-mid);
+      opacity: 0;
+      animation: fadeUp 0.7s ease 0.65s forwards;
+    }
+    .footer-copy {
+      font-size: 0.78rem;
+      color: var(--slate-mid);
+    }
+    .footer-links {
+      display: flex;
+      gap: 20px;
+    }
+    .footer-links a {
+      font-size: 0.78rem;
+      color: var(--stone);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--amber); }
+
+    /* ── Social icons ── */
+    .socials {
+      display: flex;
+      gap: 14px;
+    }
+    .socials a {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--slate);
+      border: 1px solid var(--slate-mid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--stone);
+      text-decoration: none;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .socials a:hover {
+      border-color: var(--amber);
+      color: var(--amber);
+      background: rgba(245,166,35,0.08);
+    }
+    .socials svg { width: 16px; height: 16px; }
+
+    /* ── Keyframes ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(22px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      .page { padding: 0 20px; }
+      .mosaic { display: none; }
+      main { padding: 60px 0 40px; }
+      .features { gap: 8px; }
+    }
+    @media (max-width: 420px) {
+      .form-row { flex-direction: column; border-radius: 10px; }
+      .form-row button { padding: 14px; border-radius: 0 0 8px 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-grid" aria-hidden="true">
+      <span></span><span></span><span></span>
+      <span></span><span class="accent"></span><span></span>
+      <span></span><span></span><span></span>
+    </div>
+    <div class="logo-text">
+      <strong>TileIQ Pro</strong>
+      <em>Professional Edition</em>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main>
+    <span class="eyebrow">Launching Soon</span>
+
+    <h1>Smart tools for<br /><em>professional</em> tilers.</h1>
+
+    <p class="description">
+      TileIQ Pro puts accurate tile calculations, instant quote generation, and AI-powered estimates in your pocket — built by a tiler, for tilers.
+    </p>
+
+    <!-- Email capture -->
+    <div class="form-wrap">
+      <label class="form-label" for="email-input">Be first to know when we launch</label>
+      <div class="form-row" id="form-row">
+        <input
+          type="email"
+          id="email-input"
+          placeholder="your@email.com"
+          autocomplete="email"
+          aria-label="Email address"
+        />
+        <button type="button" onclick="handleSubmit()">Notify me</button>
+      </div>
+      <p class="form-note">No spam. We'll send one email when TileIQ Pro goes live.</p>
+
+      <div class="success-msg" id="success-msg">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        You're on the list — we'll be in touch!
+      </div>
+    </div>
+
+    <!-- Feature pills -->
+    <div class="features" aria-label="Key features">
+      <span class="pill"><span class="pill-dot"></span>Tile Calculator</span>
+      <span class="pill"><span class="pill-dot"></span>Quote Generator</span>
+      <span class="pill"><span class="pill-dot"></span>Job Management</span>
+      <span class="pill"><span class="pill-dot"></span>AI Estimates</span>
+      <span class="pill"><span class="pill-dot"></span>Works Offline</span>
+      <span class="pill"><span class="pill-dot"></span>Accounting Software Export</span>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <span class="footer-copy">© 2025 TileIQ Pro. All rights reserved.</span>
+
+    <div class="socials">
+      <!-- Instagram -->
+      <a href="#" aria-label="Instagram">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+        </svg>
+      </a>
+      <!-- Facebook -->
+      <a href="#" aria-label="Facebook">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+        </svg>
+      </a>
+      <!-- LinkedIn -->
+      <a href="#" aria-label="LinkedIn">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/>
+        </svg>
+      </a>
+      <!-- X / Twitter -->
+      <a href="#" aria-label="X (Twitter)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+        </svg>
+      </a>
+    </div>
+
+    <div class="footer-links">
+      <a href="#">Privacy</a>
+      <a href="#">Contact</a>
+    </div>
+  </footer>
+
+</div>
+
+<!-- Decorative tile mosaic -->
+<div class="mosaic" aria-hidden="true" id="mosaic"></div>
+
+<script>
+  /* ── Build mosaic ── */
+  const mosaic = document.getElementById('mosaic');
+  const litIndexes = new Set([2, 7, 11, 16, 20, 24, 28]);
+  const midIndexes = new Set([0, 5, 10, 14, 18, 22, 30, 32]);
+  for (let i = 0; i < 35; i++) {
+    const t = document.createElement('div');
+    t.className = 'mosaic-tile' +
+      (litIndexes.has(i) ? ' lit' : '') +
+      (midIndexes.has(i) ? ' mid' : '');
+    mosaic.appendChild(t);
+  }
+
+  /* ── Email form ── */
+  function handleSubmit() {
+    const input = document.getElementById('email-input');
+    const val   = input.value.trim();
+    const re    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!re.test(val)) {
+      input.style.outline = '2px solid #e05252';
+      input.focus();
+      setTimeout(() => input.style.outline = '', 1800);
+      return;
+    }
+
+    // In production: POST to your email capture endpoint / Supabase table
+    console.log('Capture email:', val);
+
+    document.getElementById('form-row').style.display = 'none';
+    const msg = document.getElementById('success-msg');
+    msg.style.display = 'flex';
+  }
+
+  /* ── Enter key ── */
+  document.getElementById('email-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleSubmit();
+  });
+</script>
+
+</body>
+</html>
