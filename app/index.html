@@ -1,0 +1,1718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TileIQ Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .page-body { padding-bottom: calc(70px + env(safe-area-inset-bottom)) !important; }
+        #screen-help { padding-bottom: 70px; }
+        #screen-help > div[id="help-messages"] { padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important; }
+        input[type="search"]::-webkit-search-cancel-button { filter: invert(1); }
+
+        /* Remove blue focus ring */
+        input:focus, textarea:focus, select:focus {
+            outline: none !important;
+            border-color: #f59e0b !important;
+            box-shadow: 0 0 0 2px rgba(245,158,11,0.15) !important;
+        }
+
+        /* Autofill fix only */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus {
+            -webkit-text-fill-color: var(--ink) !important;
+            -webkit-box-shadow: 0 0 0px 1000px var(--surface) inset !important;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+
+<!-- LOADING -->
+<div id="screen-loading" class="screen">
+    <div class="loading-center">
+        <img src="data:image/jpeg;base64,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" style="height:64px;width:auto;object-fit:contain;" alt="TileIQ Pro">
+        <div class="logo-text">TileIQ Pro</div>
+        <div class="loading-bar"><div class="loading-fill"></div></div>
+    </div>
+</div>
+
+<!-- SIGN IN -->
+<!-- SIGN IN -->
+<div id="screen-signin" class="screen hidden">
+    <div class="auth-wrap">
+        <div class="auth-tiles">
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div>
+        </div>
+        <div class="auth-brand">
+            <div class="auth-brand-icon">🪟</div>
+            <div class="auth-brand-name">TileIQ Pro</div>
+            <div class="auth-brand-sub">Professional Estimator</div>
+        </div>
+        <div class="auth-card">
+            <h2 class="auth-title">Welcome back</h2>
+            <div id="signin-error" class="auth-error hidden"></div>
+            <div class="field-group"><label>Email</label><input id="si-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+            <div class="field-group"><label>Password</label>
+                <div style="position:relative;">
+                    <input id="si-password" type="password" autocomplete="current-password" placeholder="••••••••" style="width:100%;box-sizing:border-box;padding-right:44px;">
+                    <button type="button" onclick="togglePwdVisibility()" id="si-pwd-toggle" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-muted);padding:0;">👁</button>
+                </div>
+            </div>
+            <button onclick="authSignIn()" class="btn-primary auth-btn" id="si-submit">Sign in</button>
+            <button onclick="authBiometric()" class="btn-biometric auth-btn hidden" id="si-biometric">
+                <span id="si-biometric-icon">🔒</span> Sign in with Biometrics
+            </button>
+            <div id="si-biometric-debug" style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;padding:0 16px;"></div>
+            <div class="auth-links">
+                <a href="#" onclick="showForgot();return false;">Forgot password?</a>
+                <span class="auth-sep">·</span>
+                <a href="#" onclick="show('screen-signup');generateCaptcha();return false;">Create account</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SIGN UP -->
+<div id="screen-signup" class="screen hidden">
+    <div class="auth-wrap">
+        <div class="auth-tiles">
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div><div class="auth-tile"></div>
+            <div class="auth-tile"></div>
+        </div>
+        <div class="auth-brand">
+            <div class="auth-brand-icon">🪟</div>
+            <div class="auth-brand-name">TileIQ Pro</div>
+            <div class="auth-brand-sub">Professional Estimator</div>
+        </div>
+        <div class="auth-card">
+            <h2 class="auth-title">Create account</h2>
+            <div id="signup-error" class="auth-error hidden"></div>
+            <div class="field-group"><label>Name</label><input id="su-name" type="text" autocomplete="name" placeholder="Your name"></div>
+            <div class="field-group"><label>Email</label><input id="su-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+            <div class="field-group"><label>Password</label><input id="su-password" type="password" autocomplete="new-password" placeholder="Min. 6 characters"></div>
+            <div class="field-group"><label>Confirm Password</label><input id="su-password-confirm" type="password" autocomplete="new-password" placeholder="Repeat password"></div>
+            <div class="field-group">
+                <label id="su-captcha-label">Loading…</label>
+                <input id="su-captcha" type="number" placeholder="Enter answer" autocomplete="off">
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;padding:12px;background:#1e293b;border-radius:8px;border:1px solid #334155;">
+                <input type="checkbox" id="su-privacy" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#f59e0b;cursor:pointer;">
+                <label for="su-privacy" style="font-size:13px;color:#94a3b8;line-height:1.5;cursor:pointer;">
+                    I agree to the
+                    <a href="#" onclick="goPrivacy('signup');return false;" style="color:#f59e0b;text-decoration:none;font-weight:600;">Privacy Policy</a>
+                    and
+                    <a href="#" onclick="goTerms('signup');return false;" style="color:#f59e0b;text-decoration:none;font-weight:600;">Terms of Service</a>
+                    and confirm I am a professional tiling contractor using this app for business purposes.
+                </label>
+            </div>
+            <button onclick="authSignUp()" class="btn-primary auth-btn" id="su-submit">Create account</button>
+            <div class="auth-links">
+                <a href="#" onclick="show('screen-signin');return false;">Already have an account? Sign in</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VERIFY EMAIL -->
+<div id="screen-verify" class="screen hidden">
+    <div class="auth-wrap">
+        <div class="auth-brand">
+            <div class="auth-brand-icon">📬</div>
+            <div class="auth-brand-name">Check your inbox</div>
+            <div class="auth-brand-sub">Verification sent</div>
+        </div>
+        <div class="auth-card" style="text-align:center;">
+            <p style="color:rgba(255,255,255,0.5);font-size:14px;line-height:1.6;margin-bottom:24px;">We've sent a verification link to <strong style="color:#E6AF2E" id="verify-email-display"></strong>.<br>Click it to activate your account then sign in.</p>
+            <button onclick="show('screen-signin')" class="btn-secondary auth-btn">Back to sign in</button>
+        </div>
+    </div>
+</div>
+
+<!-- FORGOT PASSWORD -->
+<div id="screen-forgot" class="screen hidden">
+    <div class="auth-wrap">
+        <div class="auth-brand">
+            <div class="auth-brand-icon">🔑</div>
+            <div class="auth-brand-name">Reset Password</div>
+            <div class="auth-brand-sub">We'll send you a one-time code</div>
+        </div>
+        <div class="auth-card">
+
+            <!-- Step 1: enter email -->
+            <div id="fp-step1">
+                <h2 class="auth-title">Reset password</h2>
+                <div id="forgot-msg" class="auth-error hidden"></div>
+                <div class="field-group" id="fp-email-field">
+                    <label>Email address</label>
+                    <input id="fp-email" type="email" placeholder="you@example.com" autocomplete="email">
+                </div>
+                <button onclick="fpSendCode()" class="btn-primary auth-btn" id="fp-send-btn">Send Code</button>
+                <div class="auth-links"><a href="#" onclick="show('screen-signin');return false;">Back to sign in</a></div>
+            </div>
+
+            <!-- Step 2: enter code + new password -->
+            <div id="fp-step2" style="display:none;">
+                <h2 class="auth-title">Enter your code</h2>
+                <div id="fp-step2-msg" class="auth-error hidden"></div>
+                <p style="font-size:13px;color:#64748b;margin-bottom:16px;" id="fp-sent-msg">We sent a 6-digit code to your email.</p>
+                <div class="field-group">
+                    <label>6-digit code</label>
+                    <input id="fp-code" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="123456" maxlength="6"
+                        style="letter-spacing:6px;font-size:20px;text-align:center;">
+                </div>
+                <div class="field-group">
+                    <label>New password</label>
+                    <input id="fp-newpw" type="password" placeholder="Min. 6 characters" autocomplete="new-password">
+                </div>
+                <div class="field-group">
+                    <label>Confirm password</label>
+                    <input id="fp-confirmpw" type="password" placeholder="Repeat new password" autocomplete="new-password">
+                </div>
+                <button onclick="fpVerifyAndReset()" class="btn-primary auth-btn" id="fp-verify-btn">Set New Password</button>
+                <div class="auth-links">
+                    <a href="#" onclick="fpBackToStep1();return false;">← Send a new code</a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- SET NEW PASSWORD (from reset link) -->
+<div id="screen-set-password" class="screen hidden">
+    <div class="auth-wrap">
+        <div class="auth-brand">
+            <div class="auth-brand-icon">🔐</div>
+            <div class="auth-brand-name">TileIQ Pro</div>
+            <div class="auth-brand-sub">Set your new password</div>
+        </div>
+        <div class="auth-card">
+            <h2 class="auth-title">Choose a new password</h2>
+            <div id="set-pwd-msg" class="auth-error hidden"></div>
+            <div class="field-group">
+                <label>New Password</label>
+                <input id="reset-new-password" type="password" placeholder="Min. 6 characters" autocomplete="new-password">
+            </div>
+            <div class="field-group">
+                <label>Confirm Password</label>
+                <input id="reset-confirm-password" type="password" placeholder="Repeat new password" autocomplete="new-password">
+            </div>
+            <button onclick="submitNewPassword()" class="btn-primary auth-btn">Set New Password</button>
+        </div>
+    </div>
+</div>
+
+<!-- PHOTO VIEWER -->
+<!-- DASHBOARD -->
+<div id="screen-paywall" class="screen hidden">
+    <div class="page-body" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 24px;min-height:100vh;">
+        <button onclick="closePaywall()" style="align-self:flex-end;background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;margin-bottom:8px;">✕</button>
+
+        <div style="text-align:center;margin-bottom:24px;">
+            <img src="data:image/jpeg;base64,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" style="height:64px;width:auto;object-fit:contain;margin-bottom:8px;" alt="TileIQ Pro">
+            <div style="font-size:14px;color:var(--text-muted);margin-top:6px;">Unlock all features</div>
+        </div>
+
+        <div style="width:100%;max-width:340px;background:var(--card);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid var(--border);">
+            <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:12px;letter-spacing:0.05em;">PRO INCLUDES</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Unlimited jobs</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> AI quote descriptions</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> FreeAgent, QuickBooks &amp; Sage exports</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Professional PDF quotes &amp; invoices</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Push notifications</div>
+            </div>
+        </div>
+
+        <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+            <button onclick="openPlayStorePurchase('trial')" style="width:100%;background:#10b981;color:#fff;border:none;border-radius:14px;padding:18px 20px;font-size:16px;font-weight:800;cursor:pointer;">
+                🎁 Start 7-Day Free Trial
+            </button>
+            <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:16px 20px;text-align:left;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="font-size:15px;font-weight:700;">Monthly</div>
+                    <div style="font-size:18px;font-weight:800;">£9.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
+                </div>
+            </button>
+            <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:16px 20px;text-align:left;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:15px;font-weight:700;">Annual</div>
+                        <div style="font-size:11px;font-weight:700;margin-top:2px;opacity:0.7;">Best value — save 33%</div>
+                    </div>
+                    <div style="font-size:18px;font-weight:800;">£79.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
+                </div>
+            </button>
+        </div>
+
+        <button onclick="restorePurchases()" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:8px;text-decoration:underline;">
+            Restore purchases
+        </button>
+
+        <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;padding:0 16px;">
+            Subscriptions renew automatically. Cancel any time in Google Play.
+        </div>
+
+        <!-- Access Code -->
+        <div style="width:100%;max-width:340px;margin-top:20px;border-top:1px solid #334155;padding-top:16px;">
+            <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:10px;">Have an access code?</div>
+            <div style="display:flex;gap:8px;">
+                <input id="access-code-input" type="text" placeholder="Enter code"
+                    style="flex:1;background:#1e293b;border:1px solid var(--border);border-radius:10px;color:#e2e8f0;padding:10px 14px;font-size:14px;letter-spacing:2px;text-transform:uppercase;outline:none;">
+                <button onclick="redeemAccessCode()" style="background:#f59e0b;color:#000;border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;">
+                    ✓
+                </button>
+            </div>
+            <div id="access-code-msg" style="font-size:12px;text-align:center;margin-top:6px;min-height:18px;"></div>
+        </div>
+
+        <button onclick="devProOverride()" style="margin-top:16px;background:#1e293b;color:#475569;border:1px solid var(--border);border-radius:8px;padding:6px 14px;font-size:11px;cursor:pointer;">
+            Dev: Toggle Pro
+        </button>
+    </div>
+</div>
+
+<div id="screen-home" class="screen hidden">
+    <header class="app-header" style="flex-direction:column;align-items:stretch;padding:0;">
+        <div style="display:flex;align-items:center;padding:10px 16px;gap:8px;">
+            <div class="header-brand" style="flex:1;">
+                <img src="data:image/jpeg;base64,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" style="height:42px;width:auto;object-fit:contain;vertical-align:middle;" alt="TileIQ Pro">
+                <span id="offline-badge-home" style="display:none;font-size:10px;font-weight:700;background:#dc2626;color:#fff;padding:2px 6px;border-radius:99px;margin-left:6px;">✈ Offline</span>
+            </div>
+            <button onclick="goHelp()" class="btn-icon" title="Help">❓</button>
+            <button onclick="goSettings()" class="btn-icon" title="Settings">⚙</button>
+            <button id="pro-badge-btn" onclick="showPaywall('home')" style="display:none;background:#f59e0b;color:#000;border:none;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:800;cursor:pointer;">PRO</button>
+            <button onclick="authSignOut()" class="btn-icon" title="Sign out">⎋</button>
+        </div>
+    </header>
+    <div class="page-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:20px;padding:32px 24px;">
+        <div style="text-align:center;margin-bottom:16px;">
+            <div id="home-greeting" style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:8px;"></div>
+            <div id="home-tier-badge" style="display:inline-block;margin-bottom:10px;"></div>
+            <div style="font-size:14px;color:var(--text-muted);" onclick="devProOverride()">What would you like to do?</div>
+        </div>
+
+        <button onclick="goNewJob()" style="width:100%;max-width:320px;background:var(--accent);color:#000;border:none;border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;">
+            <span style="font-size:36px;">➕</span>
+            <div>
+                <div>New Job</div>
+                <div style="font-size:13px;font-weight:500;opacity:0.7;margin-top:2px;">Create a new tiling job</div>
+            </div>
+        </button>
+
+        <button onclick="goDashboard()" style="width:100%;max-width:320px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;">
+            <span style="font-size:36px;">📋</span>
+            <div>
+                <div>View Jobs</div>
+                <div id="home-job-count" style="font-size:13px;font-weight:500;color:var(--text-muted);margin-top:2px;">Loading…</div>
+            </div>
+        </button>
+
+        <button onclick="goCustomers()" style="width:100%;max-width:320px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;">
+            <span style="font-size:36px;">👤</span>
+            <div>
+                <div>Customers</div>
+                <div style="font-size:13px;font-weight:500;color:var(--text-muted);margin-top:2px;">Manage saved customers</div>
+            </div>
+        </button>
+    </div>
+</div>
+
+<!-- CUSTOMERS -->
+<div id="screen-customers" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goHome()" class="btn-back">← Home</button>
+        <h2 class="header-title">Customers</h2>
+        <button onclick="goAddCustomer()" class="btn-primary">+ Add</button>
+    </div></header>
+    <div class="page-body">
+        <div style="position:relative;margin-bottom:12px;">
+            <input id="customers-search" type="text" placeholder="🔍 Search by name, phone, address…"
+                oninput="renderCustomersScreen(this.value)"
+                style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:12px 14px;font-size:14px;box-sizing:border-box;outline:none;">
+        </div>
+        <div id="customers-list"></div>
+    </div>
+</div>
+
+<!-- ADD / EDIT CUSTOMER -->
+<div id="screen-add-customer" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goCustomers()" class="btn-back">← Customers</button>
+        <h2 id="add-customer-title" class="header-title">Add Customer</h2>
+        <div></div>
+    </div></header>
+    <div class="page-body">
+        <div class="form-card">
+            <input type="hidden" id="ac-id">
+            <div class="field-group"><label>Name *</label><input id="ac-name" placeholder="Full name"></div>
+            <div class="field-row">
+                <div class="field-group"><label>Phone</label><input id="ac-phone" type="tel" placeholder="07xxx xxxxxx"></div>
+                <div class="field-group"><label>Email</label><input id="ac-email" type="email" placeholder="name@email.com"></div>
+            </div>
+            <div class="field-group">
+                <label>Address</label>
+                <input id="ac-address" placeholder="Street address" autocomplete="off" oninput="addrSearch('ac')">
+                <div id="ac-addr-suggestions" style="display:none;background:#1e293b;border:1px solid var(--border);border-radius:8px;margin-top:4px;overflow:hidden;"></div>
+            </div>
+            <div class="field-row">
+                <div class="field-group"><label>Town / City</label><input id="ac-city"></div>
+                <div class="field-group"><label>Postcode</label><input id="ac-postcode"></div>
+            </div>
+            <div class="field-group"><label>Notes</label><textarea id="ac-notes" rows="3" placeholder="Any notes about this customer…" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:14px;resize:vertical;"></textarea></div>
+            <div class="form-actions">
+                <button onclick="goCustomers()" class="btn-secondary">Cancel</button>
+                <button onclick="saveCustomerRecord()" class="btn-primary">Save Customer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="screen-dashboard" class="screen hidden">
+    <header class="app-header" style="flex-direction:column;align-items:stretch;padding:0;">
+        <!-- Top row: brand + icon actions -->
+        <div style="display:flex;align-items:center;padding:10px 16px;gap:8px;">
+            <div class="header-brand" style="flex:1;">
+                <img src="data:image/jpeg;base64,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" style="height:42px;width:auto;object-fit:contain;vertical-align:middle;" alt="TileIQ Pro">
+                <span id="offline-badge" style="display:none;font-size:10px;font-weight:700;background:#dc2626;color:#fff;padding:2px 6px;border-radius:99px;margin-left:6px;">✈ Offline</span>
+            </div>
+            <button id="theme-toggle" onclick="toggleTheme()" class="btn-icon" title="Toggle dark mode">🌙</button>
+            <button onclick="goHelp()" class="btn-icon" title="Help">❓</button>
+            <button onclick="exportAllData()" class="btn-icon" title="Export data">📤</button>
+            <button onclick="goSettings()" class="btn-icon" title="Settings">⚙</button>
+            <button onclick="authSignOut()" class="btn-icon" title="Sign out">⎋</button>
+        </div>
+        <!-- Bottom row: greeting + new job -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 12px;">
+            <div id="header-greeting" style="font-size:16px;font-weight:700;color:var(--text);"></div>
+            <button onclick="goNewJob()" class="btn-primary">+ New Job</button>
+        </div>
+    </header>
+    <div class="page-body">
+        <div class="page-title-row">
+            <h2 class="page-title">Jobs</h2>
+            <span id="job-count" class="badge">0</span>
+        </div>
+        <div id="reminder-banner" style="display:none;margin-bottom:12px;"></div>
+        <div id="quote-totals-bar" style="display:none;gap:8px;margin-bottom:12px;"></div>
+        <div style="margin-bottom:12px;">
+            <input id="jobs-search" type="search" placeholder="🔍 Search customers or quotes…" oninput="renderDashboard()" style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:15px;margin-bottom:8px;">
+            <select id="jobs-quote-filter" onchange="renderDashboard()" style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:14px;">
+                <option value="">All Jobs</option>
+                <option value="pending">⏳ Quote Pending</option>
+                <option value="accepted">✅ Quote Accepted</option>
+                <option value="declined">❌ Quote Declined</option>
+                <option value="none">No Quote Sent</option>
+                <option value="archived">📦 Archived Jobs</option>
+            </select>
+            <select id="jobs-sort" onchange="renderDashboard()" style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:14px;margin-top:8px;">
+                <option value="updated">Sort: Recently Updated</option>
+                <option value="value-desc">Sort: Value (High → Low)</option>
+                <option value="value-asc">Sort: Value (Low → High)</option>
+                <option value="accepted">Sort: Accepted First</option>
+                <option value="pending">Sort: Pending First</option>
+                <option value="name">Sort: Customer Name</option>
+            </select>
+        </div>
+        <div id="jobs-list"></div>
+        <div id="jobs-empty" class="empty-state hidden">
+            <div class="empty-icon">📋</div>
+            <p>No jobs yet — tap + New Job to start.</p>
+        </div>
+    </div>
+</div>
+
+<!-- NEW JOB -->
+<div id="screen-new-job" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goDashboard()" class="btn-back">← Back</button>
+        <h2 class="header-title">New Job</h2>
+        <div></div>
+    </div></header>
+    <div class="page-body">
+        <div class="form-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div class="form-section-label" style="margin-bottom:0;">Customer Details</div>
+                <div style="display:flex;gap:6px;">
+                    <button onclick="showPasteExtract()" style="background:none;border:1px solid var(--amber,#E07A2F);color:var(--amber,#E07A2F);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;">📋 Paste</button>
+                    <button onclick="showSavedCustomers('nj')" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;">👤 Saved</button>
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Customer Name *</label>
+                <input id="nj-name" placeholder="Full name" oninput="customerInlineSearch(this.value,'nj')" autocomplete="off">
+                <div id="nj-customer-suggestions" style="display:none;background:#1e293b;border:1px solid var(--border);border-radius:8px;margin-top:4px;overflow:hidden;max-height:180px;overflow-y:auto;z-index:100;position:relative;"></div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Phone</label>
+                    <input id="nj-phone" type="tel" placeholder="07xxx xxxxxx">
+                </div>
+                <div class="field-group">
+                    <label>Email</label>
+                    <input id="nj-email" type="email" placeholder="name@email.com">
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Address</label>
+                <input id="nj-address" placeholder="Street address" autocomplete="off" oninput="addrSearch('nj')">
+                <div id="nj-addr-suggestions" style="display:none;background:#1e293b;border:1px solid var(--border);border-radius:8px;margin-top:4px;overflow:hidden;"></div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Town / City</label>
+                    <input id="nj-city">
+                </div>
+                <div class="field-group">
+                    <label>Postcode</label>
+                    <div style="display:flex;gap:6px;">
+                        <input id="nj-postcode" style="flex:1;">
+                        <button onclick="gpsAddress('nj')" class="btn-secondary" style="padding:0 12px;white-space:nowrap;" title="Use GPS">📍</button>
+                    </div>
+                </div>
+            </div>
+            <div id="pc-result-nj" class="pc-result hidden"></div>
+
+            <div class="form-section-label" style="margin-top:18px;">Job Details</div>
+            <div class="field-group">
+                <label>Job Description (optional)</label>
+                <div style="display:flex;gap:8px;align-items:flex-start;">
+                    <input id="nj-desc" placeholder="e.g. Kitchen floor + bathroom walls" style="flex:1;">
+                    <button onclick="generateJobDesc('nj-desc','nj-name','nj-address','nj-city')" class="btn-secondary" style="white-space:nowrap;padding:10px 12px;" title="AI generate">✨</button>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Status</label>
+                    <select id="nj-status">
+                        <option value="enquiry">Enquiry</option>
+                        <option value="surveyed">Surveyed</option>
+                        <option value="quoted">Quoted</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="complete">Complete</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Tile Supply</label>
+                    <select id="nj-supply">
+                        <option value="contractor">We supply tiles</option>
+                        <option value="customer">Customer supplies</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button onclick="goDashboard()" class="btn-secondary">Cancel</button>
+                <button onclick="saveCustomerFromForm('nj')" class="btn-secondary" style="flex:0.6;">💾 Save Customer</button>
+                <button onclick="createJob()" class="btn-primary">Next →</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JOB VIEW -->
+<div id="screen-job" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goDashboard()" class="btn-back">← Jobs</button>
+        <h2 id="job-header-title" class="header-title"></h2>
+        <button onclick="goAddRoom()" class="btn-primary">+ Room</button>
+    </div></header>
+    <div class="page-body">
+        <div id="job-customer-bar" class="customer-bar"></div>
+        <div class="section-heading-row">
+            <span class="form-section-label" style="margin:0;">Rooms</span>
+        </div>
+        <div id="job-rooms-list"></div>
+        <div id="job-rooms-empty" class="empty-state-small">
+            Tap <strong>+ Room</strong> above to add your first room.
+        </div>
+        <div id="job-running-total" class="running-total hidden"></div>
+        <div class="job-actions">
+            <button onclick="goEditJob()" class="btn-secondary">✏ Edit Details</button>
+            <button onclick="goMaterials()" class="btn-secondary">📦 Materials</button>
+            <button onclick="goQuote()" class="btn-primary">Quote →</button>
+        </div>
+        <div id="job-quote-status-bar" style="display:none;margin-top:10px;"></div>
+        <div id="job-messages-btn-wrap" style="display:none;margin-top:10px;">
+            <button onclick="goMessages()" id="job-messages-btn" class="btn-secondary" style="width:100%;position:relative;">
+                💬 Customer Messages
+                <span id="job-messages-badge" style="display:none;position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;"></span>
+            </button>
+        </div>
+
+
+        <button onclick="deleteJob()" class="btn-danger" style="margin-top:14px;">🗑 Delete Job</button>
+    </div>
+</div>
+
+<!-- CUSTOMER MESSAGES SCREEN -->
+<div id="screen-messages" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goJob()" class="btn-back">← Back</button>
+        <h2 class="header-title">Customer Messages</h2>
+        <div></div>
+    </div></header>
+    <div class="page-body">
+        <div id="messages-loading" style="text-align:center;padding:40px;color:var(--text-muted);">Loading messages…</div>
+        <div id="messages-list" style="display:none;"></div>
+        <div id="messages-empty" style="display:none;text-align:center;padding:40px;color:var(--text-muted);">
+            <div style="font-size:40px;margin-bottom:12px;">💬</div>
+            <div style="font-weight:600;margin-bottom:4px;">No messages yet</div>
+            <div style="font-size:13px;">Customer questions and date suggestions will appear here.</div>
+        </div>
+    </div>
+</div>
+
+<!-- MATERIALS BREAKDOWN -->
+<div id="screen-materials" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goJob()" class="btn-back">← Back</button>
+        <h2 class="header-title">Materials</h2>
+        <div></div>
+    </div></header>
+    <div class="page-body">
+        <div id="materials-output"></div>
+    </div>
+</div>
+
+<!-- EDIT JOB -->
+<div id="screen-edit-job" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goJob()" class="btn-back">← Back</button>
+        <h2 class="header-title">Edit Job</h2>
+        <div></div>
+    </div></header>
+    <div class="page-body">
+        <div class="form-card">
+            <div class="form-section-label">Customer Details</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div class="form-section-label" style="margin-bottom:0;">Customer Details</div>
+                <button onclick="showSavedCustomers('ej')" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;">👤 Saved</button>
+            </div>
+            <div class="field-group">
+                <label>Customer Name *</label>
+                <input id="ej-name" oninput="customerInlineSearch(this.value,'ej')" autocomplete="off">
+                <div id="ej-customer-suggestions" style="display:none;background:#1e293b;border:1px solid var(--border);border-radius:8px;margin-top:4px;overflow:hidden;max-height:180px;overflow-y:auto;z-index:100;position:relative;"></div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Phone</label>
+                    <input id="ej-phone" type="tel">
+                </div>
+                <div class="field-group">
+                    <label>Email</label>
+                    <input id="ej-email" type="email">
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Address</label>
+                <input id="ej-address" autocomplete="off" oninput="addrSearch('ej')">
+                <div id="ej-addr-suggestions" style="display:none;background:#1e293b;border:1px solid var(--border);border-radius:8px;margin-top:4px;overflow:hidden;"></div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Town / City</label>
+                    <input id="ej-city">
+                </div>
+                <div class="field-group">
+                    <label>Postcode</label>
+                    <div style="display:flex;gap:6px;">
+                        <input id="ej-postcode" style="flex:1;">
+                        <button onclick="gpsAddress('ej')" class="btn-secondary" style="padding:0 12px;white-space:nowrap;" title="Use GPS">📍</button>
+                    </div>
+                </div>
+            </div>
+            <div id="pc-result-ej" class="pc-result hidden"></div>
+            <div class="form-section-label" style="margin-top:18px;">Job Details</div>
+            <div class="field-group">
+                <label>Job Description</label>
+                <div style="display:flex;gap:8px;align-items:flex-start;">
+                    <input id="ej-desc" style="flex:1;">
+                    <button onclick="generateJobDesc('ej-desc','ej-name','ej-address','ej-city')" class="btn-secondary" style="white-space:nowrap;padding:10px 12px;" title="AI generate">✨</button>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Status</label>
+                    <select id="ej-status">
+                        <option value="enquiry">Enquiry</option>
+                        <option value="surveyed">Surveyed</option>
+                        <option value="quoted">Quoted</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="complete">Complete</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Tile Supply</label>
+                    <select id="ej-supply">
+                        <option value="contractor">We supply tiles</option>
+                        <option value="customer">Customer supplies</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button onclick="goJob()" class="btn-secondary">Cancel</button>
+                <button onclick="saveEditJob()" class="btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ROOM EDITOR -->
+<div id="screen-room" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goJob()" class="btn-back">← Rooms</button>
+        <h2 id="room-screen-title" class="header-title">Add Room</h2>
+        <button id="disto-connect-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📏 Disto</button>
+    </div></header>
+    <div class="page-body">
+
+        <div class="form-card" style="margin-bottom:14px;">
+            <div class="field-group" style="margin-bottom:10px;">
+                <label>Room Name *</label>
+                <input id="rm-name" placeholder="e.g. Main Bathroom">
+            </div>
+            <div class="field-group" style="margin-bottom:10px;">
+                <label>Tile Type</label>
+                <select id="rm-tile-type" onchange="updateTileTypeNote();rmCalc()">
+                    <option value="ceramic">Ceramic</option>
+                    <option value="porcelain">Porcelain</option>
+                    <option value="natural_stone">Natural Stone</option>
+                    <option value="modular">Modular Pattern</option>
+                    <option value="herringbone">Herringbone</option>
+                    <option value="mosaic">Mosaic</option>
+                </select>
+            </div>
+            <div id="rm-tile-type-rate-note" class="field-group" style="margin-bottom:10px;font-size:12px;color:var(--text-muted);"></div>
+            <label class="checkbox-label" style="margin-bottom:12px;">
+                <input type="checkbox" id="rm-customer-tiles" onchange="rmCalc()">
+                Customer supplies tiles (no tile cost)
+            </label>
+            <div class="field-group" style="margin-bottom:0;">
+                <label>Labour Pricing</label>
+                <div class="labour-toggle">
+                    <button id="ltbtn-m2"  onclick="setLabourType('m2')"  class="ltbtn ltbtn-active">£/m²</button>
+                    <button id="ltbtn-day" onclick="setLabourType('day')" class="ltbtn">Day Rate</button>
+                </div>
+            </div>
+            <div id="labour-day-opts" class="hidden" style="margin-top:10px;">
+                <div class="field-row" style="margin-bottom:0;">
+                    <div class="field-group" style="margin-bottom:0;">
+                        <label>Days</label>
+                        <input id="rm-days" type="number" step="0.5" min="0.5" placeholder="e.g. 2" oninput="rmCalc()">
+                    </div>
+                    <div class="field-group" style="margin-bottom:0;">
+                        <label>Day Rate (£)</label>
+                        <input id="rm-dayrate" type="number" step="10" oninput="rmCalc()">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section-label" style="margin-bottom:10px;">What are you tiling?</div>
+        <div class="stype-row">
+            <button id="stype-btn-room"  onclick="rmSelectType('room')"  class="stype-btn stype-room">🏠<br><span>Full Room</span></button>
+            <button id="stype-btn-floor" onclick="rmSelectType('floor')" class="stype-btn">⬜<br><span>Floor only</span></button>
+            <button id="stype-btn-wall"  onclick="rmSelectType('wall')"  class="stype-btn">🧱<br><span>Wall only</span></button>
+        </div>
+
+
+        <!-- FULL ROOM -->
+        <div id="rm-form-room" class="measure-form">
+            <div class="form-section-label">Room Measurements</div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Length (m)</label>
+                    <input id="rm-r-length" type="number" step="0.01" placeholder="e.g. 3.5" oninput="rmCalc()" data-disto>
+                </div>
+                <div class="field-group">
+                    <label>Width (m)</label>
+                    <input id="rm-r-width" type="number" step="0.01" placeholder="e.g. 2.2" oninput="rmCalc()" data-disto>
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Wall Height (m)</label>
+                <input id="rm-r-height" type="number" step="0.01" placeholder="e.g. 2.4" oninput="rmCalc()" data-disto>
+            </div>
+            <div class="field-row" style="margin-bottom:6px;">
+                <div class="field-group">
+                    <label>Wall Wastage %</label>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <input id="rm-r-wwastage" type="number" min="0" max="50" step="1" value="12" oninput="rmCalc()" style="width:70px;">
+                        <span style="color:var(--text-muted);font-size:13px;">%</span>
+                    </div>
+                </div>
+                <div class="field-group">
+                    <label>Floor Wastage %</label>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <input id="rm-r-fwastage" type="number" min="0" max="50" step="1" value="10" oninput="rmCalc()" style="width:70px;">
+                        <span style="color:var(--text-muted);font-size:13px;">%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('sealant')" id="collapse-toggle-sealant">
+                Sealant (silicone) <span class="deduct-toggle-arrow" id="collapse-arrow-sealant">▸</span>
+            </div>
+            <div id="collapse-panel-sealant" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Include sealant</label>
+                    <select id="rm-sealant-enabled" onchange="rmCalc()">
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+
+                <div class="field-group">
+                    <label>Sealant for floor perimeter</label>
+                    <input id="rm-sealant-floorperim" type="checkbox" checked onchange="rmCalc()">
+                    <div class="small-note" style="margin-top:4px;">Adds 2×(L+W) once per room.</div>
+                </div>
+
+                <div class="field-group">
+                    <label>External corners</label>
+                    <input id="rm-sealant-corners" type="number" step="1" min="0" placeholder="e.g. 2" oninput="rmCalc()">
+                </div>
+            </div>
+            <div class="small-note" style="margin-top:-6px;">
+                Uses (optional) floor perimeter + (external corners × room height). Floor perimeter is counted once per room.
+            </div>
+            </div>
+
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('extrawork')" id="collapse-toggle-extrawork">
+                Extra Work <span class="deduct-toggle-arrow" id="collapse-arrow-extrawork">▸</span>
+            </div>
+            <div id="collapse-panel-extrawork" class="hidden">
+            <div class="field-row">
+                <div class="field-group" style="flex:2;">
+                    <label>Description</label>
+                    <input id="rm-extra-desc" type="text" placeholder="e.g. Remove & refit toilet" oninput="rmCalc()">
+                </div>
+                <div class="field-group" style="flex:1;">
+                    <label>Cost (£)</label>
+                    <input id="rm-extra-cost" type="number" step="0.01" placeholder="0" oninput="rmCalc()">
+                </div>
+            </div>
+            </div>
+
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('trim')" id="collapse-toggle-trim">
+                Tile Trim <span class="deduct-toggle-arrow" id="collapse-arrow-trim">▸</span>
+                <span id="trim-r-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span>
+            </div>
+            <div id="collapse-panel-trim" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Lengths (× 2.5m)</label>
+                    <input id="rm-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('r')">
+                </div>
+                <div class="field-group">
+                    <label>Price per length (£) <span class="pc-trim" style="color:var(--muted);font-weight:400;"></span></label>
+                    <input id="rm-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('r')">
+                </div>
+            </div>
+            <div class="small-note">Trim at <span class="pc-trim-len">2.5</span>m per length. Override price here or set default in Settings.</div>
+            </div>
+
+            <div class="divider-label deduct-toggle" onclick="toggleDeductPanel('r')" id="deduct-toggle-r">
+                Deductions <span class="deduct-toggle-arrow">▸</span>
+                <span id="deduct-total-badge" style="background:#c00;color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-left:6px;display:none;"></span>
+            </div>
+            <div id="deduct-panel-r" class="hidden">
+            <div id="deduct-wall-chips" class="deduct-chips">
+                <label class="deduct-chip"><input type="checkbox" value="door"     onchange="toggleDeductChip(this)">🚪 Door<br><small>1.9×0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathwall" onchange="toggleDeductChip(this)">🛁 Bath Wall<br><small>1.7×0.6m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend1" onchange="toggleDeductChip(this)">🛁 Bath End<br><small>0.7×0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend2" onchange="toggleDeductChip(this)">🛁 Bath End 2<br><small>0.7×0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathfloor" onchange="toggleDeductChip(this)">🛁 Bath Floor<br><small>1.7×0.7m</small></label>
+                <label class="deduct-chip deduct-chip-manual" onclick="addManualDeduct(event)">✏ Custom<br><small>enter size</small></label>
+            </div>
+            <div id="deduct-manual-items" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
+            <div id="deduct-total-line" style="display:none;font-size:12px;color:#c00;font-weight:600;margin-bottom:8px;"></div>
+            </div>
+            <input id="rm-r-deduct" type="hidden" value="0">
+            <input id="rm-r-fdeduct" type="hidden" value="0">
+
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles">
+                Wall Tiles <span class="deduct-toggle-arrow" id="collapse-arrow-walltiles">▸</span>
+                <span id="walltiles-badge" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;"></span>
+            </div>
+            <div id="collapse-panel-walltiles" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Tile W (mm)</label>
+                    <input id="rm-r-wtilew" type="number" value="300" oninput="rmCalc();updateWallTilesBadge()">
+                </div>
+                <div class="field-group">
+                    <label>Tile H (mm)</label>
+                    <input id="rm-r-wtileh" type="number" value="600" oninput="rmCalc();updateWallTilesBadge()">
+                </div>
+                <div class="field-group">
+                    <label>Tile Thickness (mm)</label>
+                    <input id="rm-r-wtilethick" type="number" value="8" oninput="rmCalc()">
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Wall Grout Joint (mm)</label>
+                <input id="rm-r-wgrout" type="number" value="2" oninput="rmCalc()">
+            </div>
+            </div>
+            <div class="divider-label">Floor</div>
+            <label class="checkbox-label" style="margin-bottom:10px;">
+                <input type="checkbox" id="rm-r-inclfloor" checked onchange="rmToggleFloor()">
+                Include floor
+            </label>
+            <div id="rm-r-floor-opts">
+                <div class="field-row">
+                    <div class="field-group">
+                        <label>Floor Tile W (mm)</label>
+                        <input id="rm-r-ftilew" type="number" value="600" oninput="rmCalc()">
+                    </div>
+                    <div class="field-group">
+                        <label>Floor Tile H (mm)</label>
+                        <input id="rm-r-ftileh" type="number" value="600" oninput="rmCalc()">
+                    </div>
+                    <div class="field-group">
+                        <label>Tile Thickness (mm)</label>
+                        <input id="rm-r-ftilethick" type="number" value="10" oninput="rmCalc()">
+                    </div>
+                </div>
+                <div class="field-group">
+                    <label>Floor Grout Joint (mm)</label>
+                    <input id="rm-r-fgrout" type="number" value="2" oninput="rmCalc()">
+                </div>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="rm-r-ufh" onchange="rmCalc()">
+                    Underfloor Heating (UFH)
+                </label>
+                <div class="divider-label">Floor Preparation</div>
+                <div class="prep-options">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-cementboard" onchange="rmCalc()">
+                        <div class="prep-text"><span>Cement Board</span><span class="prep-cost">+£<span class="pc-cb"></span>/m²</span></div>
+                    </label>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-membrane" onchange="rmCalc()">
+                        <div class="prep-text"><span>Anti-Crack Membrane</span><span class="prep-cost">+£<span class="pc-mem"></span>/m²</span></div>
+                    </label>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-levelling" onchange="rmToggleLevelR()">
+                        <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+£<span class="pc-lev-r"></span>/m²</span></div>
+                    </label>
+                    <div id="rm-r-level-depth" class="prep-depth hidden">
+                        <label>Depth</label>
+                        <select id="rm-r-leveldepth" onchange="rmCalc()">
+                            <option value="2">2 mm</option>
+                            <option value="3">3 mm</option>
+                            <option value="4">4 mm</option>
+                        </select>
+                    </div>
+                    <div id="rm-r-clips-row" class="hidden">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-clips" onchange="rmCalc()">
+                        <div class="prep-text"><span>Levelling Clips &amp; Wedges</span><span class="prep-cost">+£<span class="pc-clips"></span>/200 clips</span></div>
+                    </label>
+                    </div>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-tanking" onchange="rmCalc()">
+                        <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-r"></span>/m²</span></div>
+                    </label>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-primer" onchange="rmCalc()">
+                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                    </label>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-stone" onchange="rmToggleStoneR()">
+                        <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                    </label>
+                    <div id="rm-r-sealer-row" class="hidden">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-sealer" onchange="rmCalc()">
+                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                    </label>
+                    </div>
+                </div>
+                <div class="divider-label">Wall Preparation</div>
+                <div class="prep-options">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-wprimer" onchange="rmCalc()">
+                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                    </label>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-wstone" onchange="rmToggleWStoneR()">
+                        <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                    </label>
+                    <div id="rm-r-wsealer-row" class="hidden">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-r-wsealer" onchange="rmCalc()">
+                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                    </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FLOOR ONLY -->
+        <div id="rm-form-floor" class="measure-form hidden">
+            <div class="form-section-label">Floor Measurements</div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Length (m)</label>
+                    <input id="rm-f-length" type="number" step="0.01" placeholder="e.g. 3.5" oninput="rmCalc()" data-disto>
+                </div>
+                <div class="field-group">
+                    <label>Width (m)</label>
+                    <input id="rm-f-width" type="number" step="0.01" placeholder="e.g. 2.2" oninput="rmCalc()" data-disto>
+                </div>
+            </div>
+            <div class="field-group" style="margin-bottom:6px;">
+                <label>Wastage % <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(tile over-order allowance)</span></label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <input id="rm-f-wastage" type="number" min="0" max="50" step="1" value="10" oninput="rmCalc()" style="width:80px;">
+                    <span style="color:var(--text-muted);font-size:13px;">%</span>
+                    <span id="rm-f-wastage-note" style="font-size:12px;color:var(--text-muted);"></span>
+                </div>
+            </div>
+            <div class="divider-label deduct-toggle" onclick="toggleDeductPanel('f')" id="deduct-toggle-f">
+                Deductions <span class="deduct-toggle-arrow">▸</span>
+            </div>
+            <div id="deduct-panel-f" class="hidden">
+            <div class="deduct-chips">
+                <label class="deduct-chip"><input type="checkbox" value="bathfloor" onchange="updateDeductTotals()">🛁 Bath Floor<br><small>1.7x0.7m</small></label>
+                <label class="deduct-chip deduct-chip-manual" onclick="addManualDeduct(event)">✏ Custom<br><small>enter size</small></label>
+            </div>
+            <div id="deduct-f-manual" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
+            <div id="deduct-f-total" style="display:none;font-size:12px;color:#c00;font-weight:600;margin-bottom:8px;"></div>
+            </div>
+            <input id="rm-f-deduct" type="hidden" value="0">
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('extrawork-f')" id="collapse-toggle-extrawork-f">
+                Extra Work <span class="deduct-toggle-arrow" id="collapse-arrow-extrawork-f">▸</span>
+            </div>
+            <div id="collapse-panel-extrawork-f" class="hidden">
+            <div class="field-row">
+                <div class="field-group" style="flex:2;">
+                    <label>Description</label>
+                    <input id="rm-f-extra-desc" type="text" placeholder="e.g. Remove & refit toilet" oninput="rmCalc()">
+                </div>
+                <div class="field-group" style="flex:1;">
+                    <label>Cost (£)</label>
+                    <input id="rm-f-extra-cost" type="number" step="0.01" placeholder="0" oninput="rmCalc()">
+                </div>
+            </div>
+            </div>
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('trim-f')" id="collapse-toggle-trim-f">
+                Tile Trim <span class="deduct-toggle-arrow" id="collapse-arrow-trim-f">▸</span>
+                <span id="trim-f-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span>
+            </div>
+            <div id="collapse-panel-trim-f" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Lengths (× 2.5m)</label>
+                    <input id="rm-f-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('f')">
+                </div>
+                <div class="field-group">
+                    <label>Price per length (£)</label>
+                    <input id="rm-f-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('f')">
+                </div>
+            </div>
+            </div>
+            <div class="divider-label">Tile</div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Tile W (mm)</label>
+                    <input id="rm-f-tilew" type="number" value="600" oninput="rmCalc()">
+                </div>
+                <div class="field-group">
+                    <label>Tile H (mm)</label>
+                    <input id="rm-f-tileh" type="number" value="600" oninput="rmCalc()">
+                </div>
+                <div class="field-group">
+                    <label>Tile Thickness (mm)</label>
+                    <input id="rm-f-tilethick" type="number" value="10" oninput="rmCalc()">
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Grout Joint (mm)</label>
+                <input id="rm-f-grout" type="number" value="2" oninput="rmCalc()">
+            </div>
+            <label class="checkbox-label" style="margin-bottom:4px;">
+                <input type="checkbox" id="rm-f-ufh" onchange="rmCalc()">
+                Underfloor Heating (UFH)
+            </label>
+            <div class="divider-label">Floor Preparation</div>
+            <div class="prep-options">
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-cementboard" onchange="rmCalc()">
+                    <div class="prep-text"><span>Cement Board</span><span class="prep-cost">+£<span class="pc-cb"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-membrane" onchange="rmCalc()">
+                    <div class="prep-text"><span>Anti-Crack Membrane</span><span class="prep-cost">+£<span class="pc-mem"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-levelling" onchange="rmToggleLevelF()">
+                    <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+£<span class="pc-lev-f"></span>/m²</span></div>
+                </label>
+                <div id="rm-f-level-depth" class="prep-depth hidden">
+                    <label>Depth</label>
+                    <select id="rm-f-leveldepth" onchange="rmCalc()">
+                        <option value="2">2 mm</option>
+                        <option value="3">3 mm</option>
+                        <option value="4">4 mm</option>
+                    </select>
+                </div>
+                <div id="rm-f-clips-row" class="hidden">
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-clips" onchange="rmCalc()">
+                    <div class="prep-text"><span>Levelling Clips &amp; Wedges</span><span class="prep-cost">+£<span class="pc-clips"></span>/200 clips</span></div>
+                </label>
+                </div>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-tanking" onchange="rmCalc()">
+                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-f"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-primer" onchange="rmCalc()">
+                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-stone" onchange="rmToggleStoneF()">
+                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                </label>
+                <div id="rm-f-sealer-row" class="hidden">
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-f-sealer" onchange="rmCalc()">
+                    <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                </label>
+                </div>
+            </div>
+            <!-- Extra floors -->
+            <div id="extra-floors-list"></div>
+            <button type="button" class="btn-add-surface" onclick="addExtraSurface('floor')">+ Add Another Floor Area</button>
+        </div>
+
+        <!-- WALL ONLY -->
+        <div id="rm-form-wall" class="measure-form hidden">
+            <div class="form-section-label">Wall Measurements</div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Width (m)</label>
+                    <input id="rm-w-width" type="number" step="0.01" placeholder="e.g. 3.5" oninput="rmCalc()" data-disto>
+                </div>
+                <div class="field-group">
+                    <label>Height (m)</label>
+                    <input id="rm-w-height" type="number" step="0.01" placeholder="e.g. 2.4" oninput="rmCalc()" data-disto>
+                </div>
+            </div>
+            <div class="field-group" style="margin-bottom:6px;">
+                <label>Wastage % <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(tile over-order allowance)</span></label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <input id="rm-w-wastage" type="number" min="0" max="50" step="1" value="12" oninput="rmCalc()" style="width:80px;">
+                    <span style="color:var(--text-muted);font-size:13px;">%</span>
+                </div>
+            </div>
+            <div class="divider-label deduct-toggle" onclick="toggleDeductPanel('w')" id="deduct-toggle-w">
+                Deductions <span class="deduct-toggle-arrow">▸</span>
+            </div>
+            <div id="deduct-panel-w" class="hidden">
+            <div class="deduct-chips">
+                <label class="deduct-chip"><input type="checkbox" value="door"     onchange="updateDeductTotals()">🚪 Door<br><small>1.9x0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathwall" onchange="updateDeductTotals()">🛁 Bath Wall<br><small>1.7x0.6m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend1" onchange="updateDeductTotals()">🛁 Bath End<br><small>0.7x0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend2" onchange="updateDeductTotals()">🛁 Bath End 2<br><small>0.7x0.7m</small></label>
+                <label class="deduct-chip deduct-chip-manual" onclick="addManualDeduct(event)">✏ Custom<br><small>enter size</small></label>
+            </div>
+            <div id="deduct-w-manual" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
+            </div>
+            <input id="rm-w-deduct" type="hidden" value="0">
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('extrawork-w')" id="collapse-toggle-extrawork-w">
+                Extra Work <span class="deduct-toggle-arrow" id="collapse-arrow-extrawork-w">▸</span>
+            </div>
+            <div id="collapse-panel-extrawork-w" class="hidden">
+            <div class="field-row">
+                <div class="field-group" style="flex:2;">
+                    <label>Description</label>
+                    <input id="rm-w-extra-desc" type="text" placeholder="e.g. Remove & refit radiator" oninput="rmCalc()">
+                </div>
+                <div class="field-group" style="flex:1;">
+                    <label>Cost (£)</label>
+                    <input id="rm-w-extra-cost" type="number" step="0.01" placeholder="0" oninput="rmCalc()">
+                </div>
+            </div>
+            </div>
+            <div class="divider-label deduct-toggle" onclick="toggleCollapse('trim-w')" id="collapse-toggle-trim-w">
+                Tile Trim <span class="deduct-toggle-arrow" id="collapse-arrow-trim-w">▸</span>
+                <span id="trim-w-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span>
+            </div>
+            <div id="collapse-panel-trim-w" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Lengths (× 2.5m)</label>
+                    <input id="rm-w-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('w')">
+                </div>
+                <div class="field-group">
+                    <label>Price per length (£)</label>
+                    <input id="rm-w-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('w')">
+                </div>
+            </div>
+            </div>
+            <div class="divider-label">Tile</div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Tile W (mm)</label>
+                    <input id="rm-w-tilew" type="number" value="300" oninput="rmCalc()">
+                </div>
+                <div class="field-group">
+                    <label>Tile H (mm)</label>
+                    <input id="rm-w-tileh" type="number" value="600" oninput="rmCalc()">
+                </div>
+                <div class="field-group">
+                    <label>Tile Thickness (mm)</label>
+                    <input id="rm-w-tilethick" type="number" value="8" oninput="rmCalc()">
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Grout Joint (mm)</label>
+                <input id="rm-w-grout" type="number" value="2" oninput="rmCalc()">
+            </div>
+            <div class="divider-label">Wall Preparation</div>
+            <div class="prep-options">
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-w-tanking" onchange="rmCalc()">
+                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-w"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-w-primer" onchange="rmCalc()">
+                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-w-stone" onchange="rmToggleStoneW()">
+                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                </label>
+                <div id="rm-w-sealer-row" class="hidden">
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-w-sealer" onchange="rmCalc()">
+                    <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                </label>
+                </div>
+            </div>
+            <!-- Extra walls -->
+            <div id="extra-walls-list"></div>
+            <button type="button" class="btn-add-surface" onclick="addExtraSurface('wall')">+ Add Another Wall</button>
+        </div>
+
+        <div class="live-total-card">
+            <div class="live-total-label">Estimated Room Total <span id="rm-area" class="live-total-m2"></span></div>
+            <div class="live-total-value">£<span id="rm-total">0.00</span></div>
+            <div id="rm-breakdown" class="total-breakdown"></div>
+        </div>
+
+        <div class="form-actions" style="margin-top:14px;">
+            <button onclick="goJob()" class="btn-secondary">Cancel</button>
+            <button onclick="saveRoom()" class="btn-primary">Save Room</button>
+        </div>
+    </div>
+</div>
+
+<!-- HELP -->
+<div id="screen-help" class="screen hidden" style="display:flex;flex-direction:column;height:100vh;">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goDashboard()" class="btn-back">← Back</button>
+        <h2 class="header-title">Help</h2>
+        <div></div>
+    </div></header>
+
+    <!-- Suggested questions -->
+    <div id="help-suggestions" style="padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Quick questions</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <button onclick="helpAsk('How do I create a new quote?')" class="help-chip">How do I create a quote?</button>
+            <button onclick="helpAsk('How do I add rooms to a job?')" class="help-chip">Adding rooms</button>
+            <button onclick="helpAsk('How does wastage percentage work?')" class="help-chip">Wastage %</button>
+            <button onclick="helpAsk('How do I send a quote to a customer?')" class="help-chip">Sending quotes</button>
+            <button onclick="helpAsk('How do I set up my company details?')" class="help-chip">Company setup</button>
+            <button onclick="helpAsk('What is FreeAgent integration?')" class="help-chip">FreeAgent</button>
+            <button onclick="helpAsk('How do I reset a customer quote that was declined?')" class="help-chip">Reset declined quote</button>
+            <button onclick="helpAsk('How does the AI description generator work?')" class="help-chip">AI descriptions</button>
+        </div>
+    </div>
+
+    <!-- Chat messages -->
+    <div id="help-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;">
+        <div class="help-msg help-msg-bot">
+            <div class="help-msg-bubble">
+                👋 Hi! I'm TileIQ Pro's assistant. Ask me anything about using the app — creating jobs, sending quotes, materials, pricing, settings, or anything else.
+            </div>
+        </div>
+    </div>
+
+    <!-- Input -->
+    <div style="padding:12px 16px;padding-bottom:calc(70px + env(safe-area-inset-bottom));border-top:1px solid #1e293b;background:#0f172a;flex-shrink:0;">
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+            <textarea id="help-input" placeholder="Ask anything about TileIQ Pro…" rows="1"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();helpSend();}"
+                oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
+                style="flex:1;background:#1e293b;border:1px solid var(--border);border-radius:10px;color:#e2e8f0;padding:10px 14px;font-size:14px;resize:none;line-height:1.4;font-family:inherit;outline:none;max-height:120px;"></textarea>
+            <button onclick="helpSend()" id="help-send-btn"
+                style="background:#f59e0b;color:#000;border:none;border-radius:10px;padding:10px 16px;font-size:20px;font-weight:700;cursor:pointer;flex-shrink:0;height:44px;">↑</button>
+        </div>
+    </div>
+</div>
+
+<!-- SETTINGS -->
+
+<div id="screen-settings" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goDashboard()" class="btn-back">← Back</button>
+        <h2 class="header-title">Settings</h2>
+        <div></div>
+    </div></header>
+
+    <!-- Tab bar -->
+    <div style="display:flex;background:var(--card-bg);border-bottom:1px solid var(--border);flex-shrink:0;">
+        <button onclick="settingsTab('profile')"  id="stab-profile"  style="flex:1;padding:12px 4px;font-size:13px;font-weight:700;border:none;background:none;color:#f59e0b;border-bottom:2px solid #f59e0b;cursor:pointer;">👤 Profile</button>
+        <button onclick="settingsTab('materials')" id="stab-materials" style="flex:1;padding:12px 4px;font-size:13px;font-weight:700;border:none;background:none;color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer;">🧱 Materials</button>
+        <button onclick="settingsTab('pricing')"   id="stab-pricing"   style="flex:1;padding:12px 4px;font-size:13px;font-weight:700;border:none;background:none;color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer;">💷 Pricing</button>
+    </div>
+
+    <div class="page-body" style="padding-bottom:80px;">
+
+        <!-- ═══ PROFILE TAB ═══ -->
+        <div id="stab-panel-profile" class="stab-panel">
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Change Password</div>
+                <div id="change-pwd-msg" class="auth-error hidden"></div>
+                <div class="field-group"><label>New Password</label>
+                    <input id="set-new-password" type="password" placeholder="Min. 6 characters" autocomplete="new-password">
+                </div>
+                <div class="field-group"><label>Confirm New Password</label>
+                    <input id="set-confirm-password" type="password" placeholder="Repeat new password" autocomplete="new-password">
+                </div>
+                <button onclick="changePassword()" class="btn-primary" style="width:100%;margin-top:8px;">Update Password</button>
+            </div>
+            <div class="form-card">
+                <div class="form-section-label">Company Details</div>
+                <div class="field-group"><label>Company Name</label><input id="set-company-name" placeholder="Your Tiling Co."></div>
+                <div class="field-row">
+                    <div class="field-group"><label>Phone</label><input id="set-company-phone" type="tel"></div>
+                    <div class="field-group"><label>Email</label><input id="set-company-email" type="email"></div>
+                </div>
+                <div class="field-group"><label>Company Address</label><input id="set-company-address" placeholder="Street, Town, Postcode"></div>
+                <div class="field-group">
+                    <label>VAT Number <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(shown on quotes if entered)</span></label>
+                    <input id="set-vat-number" placeholder="GB 123 4567 89" autocomplete="off">
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Quote Settings</div>
+                <div class="field-group"><label>Quote Terms</label>
+                    <textarea id="set-terms" rows="3" placeholder="e.g. Payment due within 14 days…"></textarea>
+                </div>
+                <div class="field-group">
+                    <label>Document Type</label>
+                    <select id="set-doc-type">
+                        <option value="quote">Quote</option>
+                        <option value="estimate">Estimate</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Follow-up Reminder <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(days after sending)</span></label>
+                    <select id="set-reminder-days">
+                        <option value="0">Off</option>
+                        <option value="1">1 day</option>
+                        <option value="2">2 days</option>
+                        <option value="3">3 days</option>
+                        <option value="5">5 days</option>
+                        <option value="7">7 days</option>
+                        <option value="14">14 days</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Bank Details <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(shown on quotes/estimates)</span></div>
+                <div class="field-group"><label>Bank Name</label><input id="set-bank-name" type="text" placeholder="e.g. Barclays"></div>
+                <div class="field-group"><label>Account Name</label><input id="set-bank-account-name" type="text" placeholder="Your business name"></div>
+                <div class="field-group"><label>Sort Code</label><input id="set-bank-sort-code" type="text" placeholder="00-00-00" maxlength="8"></div>
+                <div class="field-group"><label>Account Number</label><input id="set-bank-account-number" type="text" placeholder="12345678" maxlength="8"></div>
+                <div class="field-group"><label>Payment Reference</label><input id="set-bank-reference" type="text" placeholder="e.g. Invoice number or your name"></div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Accounting Export</div>
+                <div class="field-group">
+                    <label>Accounting Software</label>
+                    <select id="set-accounting-software" onchange="updateAccountingFields()">
+                        <option value="none">None</option>
+                        <option value="freeagent">FreeAgent</option>
+                        <option value="quickbooks">QuickBooks</option>
+                        <option value="sage">Sage</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top:16px;">
+                <button onclick="goDashboard()" class="btn-secondary">Cancel</button>
+                <button onclick="saveSettings()" class="btn-primary">Save</button>
+            </div>
+        </div>
+
+        <!-- ═══ MATERIALS TAB ═══ -->
+        <div id="stab-panel-materials" class="stab-panel hidden-panel">
+            <div class="form-card">
+                <div class="form-section-label">Tiles & Grout</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Tile Price (£/m²)</label><input id="set-tile-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Grout 2.5kg bag (£)</label><input id="set-grout-price-25" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Grout 5kg bag (£)</label><input id="set-grout-price-5" type="number" step="0.01"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>Grout bag size used</label>
+                        <select id="set-grout-bag-size">
+                            <option value="2.5">2.5 kg</option>
+                            <option value="5">5 kg</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Adhesive & Silicone</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Adhesive (per 20kg bag) £</label><input id="set-adhesive-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Rapid Set (per 20kg bag) £</label><input id="set-rapid-adh-price" type="number" step="0.01"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>Silicone (per tube) £</label><input id="set-silicone-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Silicone coverage (m/tube)</label><input id="set-silicone-coverage" type="number" step="0.1"></div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Cement Board</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Material (£/m²)</label><input id="set-cementboard" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Fitting Labour (£/m²)</label><input id="set-cb-labour" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Bonding Adhesive (kg/m²)</label><input id="set-cb-adh" type="number" step="0.5"></div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Anti-Crack Membrane</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Material (£/m²)</label><input id="set-membrane" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Fitting Labour (£/m²)</label><input id="set-mem-labour" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Bedding Adhesive (kg/m²)</label><input id="set-mem-adh" type="number" step="0.5"></div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Levelling & Prep</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Levelling 2mm (£/m²)</label><input id="set-level2" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Levelling 3mm (£/m²)</label><input id="set-level3" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Levelling 4mm (£/m²)</label><input id="set-level4" type="number" step="0.50"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>Compound Bag Cost (£)</label><input id="set-compound-bag-price" type="number" step="0.50" placeholder="e.g. 12.00"></div>
+                    <div class="field-group"><label>Compound Coverage (m²/bag)</label><input id="set-compound-coverage" type="number" step="0.5" placeholder="e.g. 3.0"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>Tanking (£/m²)</label><input id="set-tanking" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Primer (£/m²)</label><input id="set-primer-price" type="number" step="0.50"></div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Trims & Clips</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Tile Trim (£ per 2.5m)</label><input id="set-trim-price" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Clips (£ per 200)</label><input id="set-clip-price" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Wedges (£ per 200)</label><input id="set-wedge-price" type="number" step="0.50"></div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Natural Stone</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Stone Install (£/m²)</label><input id="set-stone-surcharge" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Stone Sealer (£/m²)</label><input id="set-sealer-price" type="number" step="0.50"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>Sealer Coverage (m²/litre)</label><input id="set-sealer-coverage" type="number" step="0.5" placeholder="4"></div>
+                    <div class="field-group"><label>Sealer Bottle (litres)</label><input id="set-sealer-bottle" type="number" step="0.25" placeholder="1"></div>
+                    <div class="field-group"><label>Coats</label><input id="set-sealer-coats" type="number" step="1" min="1" placeholder="2"></div>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top:16px;">
+                <button onclick="goDashboard()" class="btn-secondary">Cancel</button>
+                <button onclick="saveSettings()" class="btn-primary">Save</button>
+            </div>
+        </div>
+
+        <!-- ═══ PRICING TAB ═══ -->
+        <div id="stab-panel-pricing" class="stab-panel hidden-panel">
+            <div class="form-card">
+                <div class="form-section-label">Labour Rates</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Labour Rate (£/m²)</label><input id="set-labour-m2" type="number" step="0.5"></div>
+                    <div class="field-group"><label>Day Rate (£/day)</label><input id="set-day-rate" type="number"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>UFH Rate (£/m²)</label><input id="set-ufh-m2" type="number" step="0.5"></div>
+                    <div class="field-group"><label>UFH Fixed Cost (£)</label><input id="set-ufh-fixed" type="number" step="1"></div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Labour Rate Multipliers by Tile Type</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Applied to base £/m² rate. 1.0 = standard rate.</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Ceramic</label><input id="set-rate-ceramic" type="number" step="0.05" placeholder="1.0"></div>
+                    <div class="field-group"><label>Porcelain</label><input id="set-rate-porcelain" type="number" step="0.05" placeholder="1.2"></div>
+                    <div class="field-group"><label>Natural Stone</label><input id="set-rate-natural_stone" type="number" step="0.05" placeholder="1.5"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>Modular</label><input id="set-rate-modular" type="number" step="0.05" placeholder="1.3"></div>
+                    <div class="field-group"><label>Herringbone</label><input id="set-rate-herringbone" type="number" step="0.05" placeholder="1.4"></div>
+                    <div class="field-group"><label>Mosaic</label><input id="set-rate-mosaic" type="number" step="0.05" placeholder="1.6"></div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Markup & VAT</div>
+                <div class="field-row">
+                    <div class="field-group"><label>Material Markup (%)</label><input id="set-markup" type="number"></div>
+                    <div class="field-group"><label>Markup Labour too?</label>
+                        <select id="set-labour-markup"><option value="false">No</option><option value="true">Yes</option></select>
+                    </div>
+                </div>
+                <div class="field-group"><label>Apply VAT by default?</label>
+                    <select id="set-vat"><option value="true">Yes – 20%</option><option value="false">No</option></select>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top:16px;">
+                <button onclick="goDashboard()" class="btn-secondary">Cancel</button>
+                <button onclick="saveSettings()" class="btn-primary">Save</button>
+            </div>
+        </div>
+
+        <!-- Legal -->
+        <div style="padding:16px 0 8px;">
+            <button onclick="goPrivacy()" style="width:100%;background:transparent;border:1px solid #334155;border-radius:10px;padding:13px;font-size:14px;color:#64748b;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                🔒 Privacy Policy
+                <span style="margin-left:auto;color:#475569;">›</span>
+            </button>
+            <button onclick="goTerms()" style="width:100%;background:transparent;border:1px solid #334155;border-radius:10px;padding:13px;font-size:14px;color:#64748b;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+                📄 Terms of Service
+                <span style="margin-left:auto;color:#475569;">›</span>
+            </button>
+        </div>
+
+    </div>
+</div>
+<!-- QUOTE -->
+<div id="screen-quote" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goJob()" class="btn-back">← Back</button>
+        <h2 class="header-title">Quote</h2>
+        <div style="display:flex;gap:6px;">
+            <button onclick="sendQuote()" class="btn-primary" style="padding:8px 14px;font-size:14px;">📤 Send</button>
+        </div>
+    </div></header>
+    <div class="page-body">
+        <div class="form-card" style="margin-bottom:14px;">
+            <div class="field-row">
+                <div class="field-group"><label>Apply VAT?</label>
+                    <select id="q-vat" onchange="renderQuote()"><option value="true">Yes – 20%</option><option value="false">No</option></select>
+                </div>
+                <div class="field-group"><label>Valid for (days)</label>
+                    <input id="q-expiry" type="number" value="30" onchange="renderQuote()">
+                </div>
+            </div>
+        </div>
+        <div id="quote-output" class="quote-preview-box"></div>
+        <div class="ai-section">
+            <div class="form-section-label">AI Description</div>
+            <div class="field-row">
+                <div class="field-group"><label>Style</label>
+                    <select id="ai-style">
+                        <option value="professional">Professional</option>
+                        <option value="labour">Labour Focused</option>
+                        <option value="materials">Materials</option>
+                        <option value="fixing">Fixing Method</option>
+                        <option value="subfloor">Subfloor Prep</option>
+                        <option value="sales">Customer Friendly</option>
+                    </select>
+                </div>
+                <div class="field-group" style="display:flex;align-items:flex-end;">
+                    <button onclick="generateAI()" class="btn-primary" style="width:100%">✨ Generate</button>
+                </div>
+            </div>
+            <div id="ai-box"></div>
+            <div class="field-group" style="margin-top:10px;">
+                <label style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>Quote Description</span>
+                    <button onclick="clearQuoteDesc()" style="background:none;border:none;color:#64748b;font-size:12px;cursor:pointer;">✕ Clear</button>
+                </label>
+                <textarea id="quote-desc-edit" rows="4" placeholder="Type your own description or generate one above…"
+                    oninput="saveQuoteDesc()"
+                    style="width:100%;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:14px;resize:vertical;line-height:1.5;"></textarea>
+            </div>
+        </div>
+        <div id="quote-status-bar" style="display:none;margin-bottom:10px;padding:12px 14px;border-radius:10px;text-align:center;font-weight:700;font-size:15px;"></div>
+        <button onclick="convertToInvoice()" class="btn-secondary" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px;">🧾 Convert to Invoice</button>
+        <div id="accounting-export-section" style="display:none;">
+            <div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:0.05em;margin-bottom:8px;">EXPORT QUOTE</div>
+            <button id="btn-freeagent" onclick="freeAgentConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;">🔗 FreeAgent</button>
+            <button id="btn-qbo" onclick="qboConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;border-color:#2CA01C;color:#2CA01C;">🔗 QuickBooks</button>
+            <button id="btn-sage" onclick="sageConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;border-color:#00D639;color:#00D639;">🔗 Sage</button>
+        </div>
+    </div>
+
+</div>
+<!-- PRIVACY POLICY SCREEN -->
+<div id="screen-privacy" class="screen hidden" style="background:#0f172a;min-height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goBack()" class="btn-back">← Back</button>
+        <h2 class="header-title">Legal</h2>
+        <div style="width:60px;"></div>
+    </div></header>
+    <div class="page-body" style="padding:16px;">
+
+        <!-- PRIVACY POLICY -->
+        <div style="font-size:18px;font-weight:700;color:#f1f5f9;margin-bottom:4px;">Privacy Policy</div>
+        <div class="form-card" style="margin-bottom:20px;">
+            <p style="font-size:13px;color:#94a3b8;margin-bottom:16px;">Last updated: April 2026</p>
+            <div style="font-size:14px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+                TileIQ Pro is a professional job management app for UK tiling contractors.
+                Your data belongs to you — we never sell it or use it for advertising.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">WHAT WE COLLECT</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                Your email address, company details, jobs, customer names and contact details, and device push notification token.
+                We do not collect analytics or tracking data.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">HOW IT'S STORED</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                All data is stored in Supabase (EU-hosted) with row-level security — only you can access your own data.
+                All connections are encrypted over HTTPS.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">YOUR RIGHTS (UK GDPR)</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                You have the right to access, correct, export or delete your data at any time.
+                Contact us at <span style="color:#f59e0b;">privacy@tileiq.app</span> to exercise these rights.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">THIRD-PARTY SERVICES</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                Supabase (database), Resend (email), Cloudflare (hosting), Firebase (push notifications), RevenueCat (subscriptions).
+                Accounting integrations (FreeAgent, QuickBooks, Sage) are optional and only activated by you.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">CONTACT</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:20px;">
+                For privacy enquiries: <span style="color:#f59e0b;">privacy@tileiq.app</span>
+            </div>
+            <button onclick="openPrivacyWeb()" style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:13px;font-size:14px;color:#94a3b8;cursor:pointer;">
+                🌐 View Full Policy at tileiq.app/privacy
+            </button>
+        </div>
+
+        <!-- TERMS OF SERVICE -->
+        <div class="terms-anchor"></div>
+        <div style="font-size:18px;font-weight:700;color:#f1f5f9;margin-bottom:4px;">Terms of Service</div>
+        <div class="form-card" style="margin-bottom:20px;">
+            <p style="font-size:13px;color:#94a3b8;margin-bottom:16px;">Last updated: April 2026</p>
+            <div style="font-size:14px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+                These Terms of Service govern your use of TileIQ Pro. By creating an account you agree to these terms.
+                TileIQ Pro is operated by Kevin Woodley, trading as TileIQ Pro, United Kingdom.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">1. WHO CAN USE THIS APP</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                TileIQ Pro is intended for professional tiling contractors and related trades operating in the United Kingdom.
+                You must be at least 18 years old and using the app for business purposes only.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">2. SUBSCRIPTION &amp; BILLING</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                TileIQ Pro offers a Free tier and a Pro subscription at £19.99/month or £149.99/year (inc. VAT).
+                Pro subscriptions include a 7-day free trial. Billing is handled via Google Play.
+                You may cancel at any time; cancellation takes effect at the end of the current billing period.
+                Refunds are subject to Google Play's refund policy.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">3. YOUR DATA</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                You retain full ownership of all data you enter into TileIQ Pro including jobs, customers, quotes and invoices.
+                We act as a data processor on your behalf. See our Privacy Policy for full details.
+                You are responsible for ensuring your use of customer data complies with UK GDPR.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">4. ACCEPTABLE USE</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                You agree not to misuse TileIQ Pro, attempt to reverse-engineer the app, scrape data, or use the service
+                for any unlawful purpose. One account per user. Sharing accounts is not permitted.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">5. AI FEATURES</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                AI-generated content (quotes, summaries, suggestions) is provided as assistance only.
+                You are responsible for reviewing all AI output before sending it to customers.
+                We make no warranty as to the accuracy or completeness of AI-generated content.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">6. LIMITATION OF LIABILITY</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                TileIQ Pro is provided "as is". To the fullest extent permitted by UK law, we exclude all liability for
+                loss of data, loss of revenue, or any indirect or consequential losses arising from your use of the app.
+                Our total liability shall not exceed the subscription fees paid by you in the preceding 12 months.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">7. TERMINATION</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                We reserve the right to suspend or terminate accounts that violate these terms.
+                You may delete your account at any time from Settings. On deletion, your data will be permanently removed within 30 days.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">8. CHANGES TO THESE TERMS</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
+                We may update these terms from time to time. We will notify you via the app or by email.
+                Continued use of TileIQ Pro after changes constitutes acceptance of the new terms.
+            </div>
+            <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">9. GOVERNING LAW</div>
+            <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:20px;">
+                These terms are governed by the laws of England and Wales.
+                Any disputes shall be subject to the exclusive jurisdiction of the courts of England and Wales.
+            </div>
+            <button onclick="openTermsWeb()" style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:13px;font-size:14px;color:#94a3b8;cursor:pointer;">
+                🌐 View Full Terms at tileiq.app/terms
+            </button>
+        </div>
+
+        <div style="margin-top:8px;text-align:center;font-size:12px;color:#475569;padding-bottom:80px;">
+            © 2026 TileIQ Pro
+        </div>
+    </div>
+</div>
+
+<div id="screen-terms" class="screen hidden"></div>
+
+<!-- BOTTOM NAV BAR -->
+<div id="bottom-nav" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9000;background:#0f172a;border-top:1px solid #1e293b;padding-bottom:env(safe-area-inset-bottom);flex-direction:row;align-items:stretch;backdrop-filter:none;">
+    <button onclick="goHome()" id="bnav-home" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
+        <span style="font-size:22px;">🏠</span>Home
+    </button>
+    <button onclick="goDashboard()" id="bnav-jobs" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
+        <span style="font-size:22px;">📋</span>Jobs
+    </button>
+    <button onclick="goCustomers()" id="bnav-customers" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
+        <span style="font-size:22px;">👤</span>Customers
+    </button>
+    <button onclick="goSettings()" id="bnav-settings" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
+        <span style="font-size:22px;">⚙️</span>Settings
+    </button>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="vendor/supabase.min.js"></script>
+<script src="vendor/jspdf.min.js"></script>
+<script src="vendor/biometric-auth.js"></script>
+<script src="js/bluetooth-le.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
