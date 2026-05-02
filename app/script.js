@@ -150,6 +150,7 @@ function _updateBottomNav(screenId) {
         "bnav-jobs":      ["screen-dashboard","screen-job","screen-room","screen-quote",
                            "screen-new-job","screen-edit-job","screen-materials"],
         "bnav-customers": ["screen-customers"],
+        "bnav-calendar":  ["screen-calendar"],
         "bnav-settings":  ["screen-settings"]
     };
     Object.entries(map).forEach(([btnId, screens]) => {
@@ -497,6 +498,7 @@ function initDeepLinks() {
         if (!App) { setTimeout(initDeepLinks, 500); return; }
         App.getLaunchUrl().then(r => { if (r && r.url) handleDeepLink(r.url); }).catch(() => {});
         App.addListener("appUrlOpen", d => { if (d && d.url) handleDeepLink(d.url); });
+        App.addListener("appStateChange", ({ isActive }) => { if (isActive) setTimeout(checkJobReminders, 500); });
     }
 }
 
@@ -686,6 +688,7 @@ async function authSignIn() {
             stripPhotosFromJobs();
             setTimeout(syncAllQuoteStatuses, 500);
             setTimeout(initPushNotifications, 1000);
+            setTimeout(checkJobReminders, 2000);
             setTimeout(initRevenueCat, 1500);
         }).catch(e => { isLoadingJobs = false; renderHomeScreen(); console.error(e); });
 
@@ -1466,6 +1469,7 @@ async function loadUserData() {
     // Silently sync any pending quote statuses in the background
     setTimeout(syncAllQuoteStatuses, 1500);
     setTimeout(initPushNotifications, 2000);
+    setTimeout(checkJobReminders, 3000);
     setTimeout(initRevenueCat, 2500);
 }
 
@@ -2466,6 +2470,7 @@ function saveSchedule() {
     j.jobEndDate   = end || start;
     saveAll();
     renderJobQuoteStatusBar();
+    autoAddToDeviceCalendar(j);
 }
 
 async function saveAndSendSchedule() {
@@ -2480,6 +2485,7 @@ async function saveAndSendSchedule() {
     j.jobEndDate   = end || start;
     saveAll();
     renderJobQuoteStatusBar();
+    autoAddToDeviceCalendar(j);
 
     // If no email just close
     if (!j.email) {
@@ -4676,6 +4682,249 @@ function helpAddMsg(text, role) {
 }
 
 
+
+/* ─── DEVICE CALENDAR AUTO-ADD ────────────────────────────────── */
+function autoAddToDeviceCalendar(j) {
+    if (!j?.jobStartDate) return;
+    try {
+        const ics = buildICS(j);
+        const b64 = safeBase64(ics);
+        const { Filesystem, FileOpener } = window.Capacitor?.Plugins || {};
+        if (!Filesystem) return;
+        const fname = "tileiq-job-" + (j.id || Date.now()) + ".ics";
+        Filesystem.writeFile({
+            path: fname,
+            data: b64,
+            directory: "CACHE"
+        }).then(res => {
+            if (FileOpener) {
+                FileOpener.open({ filePath: res.uri, contentType: "text/calendar" }).catch(() => {});
+            }
+        }).catch(() => {});
+    } catch(e) { console.warn("autoAddToDeviceCalendar:", e.message); }
+}
+/* ─── END DEVICE CALENDAR AUTO-ADD ────────────────────────────── */
+
+/* ─── JOB REMINDER BANNERS ─────────────────────────────────────── */
+const REMINDER_KEY = "tileiq-reminders-shown";
+
+function checkJobReminders() {
+    try {
+        const todayStr    = toDateStr(new Date());
+        const tomorrowStr = toDateStr(new Date(Date.now() + 86400000));
+        const shownRaw    = localStorage.getItem(REMINDER_KEY);
+        const shown       = shownRaw ? JSON.parse(shownRaw) : {};
+
+        // Clean up entries older than 2 days
+        Object.keys(shown).forEach(k => { if (k < todayStr) delete shown[k]; });
+
+        const reminders = [];
+
+        jobs.forEach(j => {
+            if (!j.jobStartDate || j.jobArchived) return;
+            const start = j.jobStartDate.split("T")[0];
+            const name  = j.customerName || "Job";
+            const type  = j.jobType ? ` – ${j.jobType}` : "";
+
+            if (start === tomorrowStr && !shown[`tomorrow-${j.id}`]) {
+                reminders.push({ key: `tomorrow-${j.id}`, title: "📅 Tomorrow", body: `${name}${type}`, jobId: j.id, delay: 0 });
+                shown[`tomorrow-${j.id}`] = todayStr;
+            }
+            if (start === todayStr && !shown[`today-${j.id}`]) {
+                reminders.push({ key: `today-${j.id}`, title: "🔨 Starting today", body: `${name}${type}`, jobId: j.id, delay: 500 });
+                shown[`today-${j.id}`] = todayStr;
+            }
+        });
+
+        localStorage.setItem(REMINDER_KEY, JSON.stringify(shown));
+
+        reminders.forEach((r, i) => {
+            setTimeout(() => showPushBanner(r.title, r.body, { jobId: r.jobId }), r.delay + i * 3500);
+        });
+    } catch(e) { console.warn("checkJobReminders:", e.message); }
+}
+/* ─── END JOB REMINDER BANNERS ─────────────────────────────────── */
+
+/* ─── CALENDAR ─────────────────────────────────────────────────── */
+let calYear  = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-indexed
+let calSelectedDate = null; // "YYYY-MM-DD"
+
+function goCalendar() {
+    show("screen-calendar");
+    renderCalendar();
+}
+
+function calToday() {
+    const now = new Date();
+    calYear  = now.getFullYear();
+    calMonth = now.getMonth();
+    calSelectedDate = toDateStr(now);
+    renderCalendar();
+}
+
+function calPrevMonth() {
+    calMonth--;
+    if (calMonth < 0) { calMonth = 11; calYear--; }
+    calSelectedDate = null;
+    renderCalendar();
+}
+
+function calNextMonth() {
+    calMonth++;
+    if (calMonth > 11) { calMonth = 0; calYear++; }
+    calSelectedDate = null;
+    renderCalendar();
+}
+
+function toDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+}
+
+function getJobsForDate(dateStr) {
+    return jobs.filter(j => {
+        if (!j.jobStartDate) return false;
+        const start = j.jobStartDate.split("T")[0];
+        const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
+        return dateStr >= start && dateStr <= end;
+    });
+}
+
+function renderCalendar() {
+    const MONTHS = ["January","February","March","April","May","June",
+                    "July","August","September","October","November","December"];
+    document.getElementById("cal-month-label").textContent = `${MONTHS[calMonth]} ${calYear}`;
+
+    const grid = document.getElementById("cal-grid");
+    grid.innerHTML = "";
+
+    // First day of month — Monday=0 offset
+    const firstDay = new Date(calYear, calMonth, 1);
+    let offset = firstDay.getDay(); // 0=Sun
+    offset = offset === 0 ? 6 : offset - 1; // convert to Mon=0
+
+    const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+    const todayStr = toDateStr(new Date());
+
+    // Blanks
+    for (let i = 0; i < offset; i++) {
+        grid.insertAdjacentHTML("beforeend", `<div></div>`);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        const dayJobs = getJobsForDate(dateStr);
+        const isToday    = dateStr === todayStr;
+        const isSelected = dateStr === calSelectedDate;
+        const hasJobs    = dayJobs.length > 0;
+
+        // Day-of-week for weekend colouring (Mon=0, Sat=5, Sun=6)
+        const dow = (offset + d - 1) % 7;
+        const isWeekend = dow >= 5;
+
+        const bg      = isSelected ? "#f59e0b" : isToday ? "#1e3a5f" : "transparent";
+        const color   = isSelected ? "#0f172a" : isWeekend ? "#94a3b8" : "var(--text-primary)";
+        const border  = isToday && !isSelected ? "1px solid #f59e0b" : "1px solid transparent";
+        const radius  = "8px";
+
+        // Dot colours for first 3 jobs
+        const dots = dayJobs.slice(0,3).map(j => {
+            const cfg = {
+                enquiry:"#93c5fd",surveyed:"#a5b4fc",quoted:"#7dd3fc",
+                accepted:"#6ee7b7",scheduled:"#fcd34d",in_progress:"#fde68a",complete:"#86efac"
+            };
+            return `<span style="width:5px;height:5px;border-radius:50%;background:${cfg[j.status]||"#64748b"};display:inline-block;"></span>`;
+        }).join("");
+
+        grid.insertAdjacentHTML("beforeend", `
+            <div onclick="calSelectDay('${dateStr}')" style="
+                background:${bg};border:${border};border-radius:${radius};
+                padding:4px 2px;min-height:48px;cursor:pointer;text-align:center;
+                display:flex;flex-direction:column;align-items:center;gap:2px;
+            ">
+                <span style="font-size:13px;font-weight:${isToday||isSelected?700:500};color:${color};line-height:1.4;">${d}</span>
+                <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;">${dots}</div>
+            </div>
+        `);
+    }
+
+    // Show jobs for selected date or empty state
+    if (calSelectedDate) {
+        renderCalDayPanel(calSelectedDate);
+    } else {
+        document.getElementById("cal-day-label").textContent = "Tap a day to see jobs";
+        document.getElementById("cal-day-jobs").innerHTML = "";
+    }
+}
+
+function calSelectDay(dateStr) {
+    calSelectedDate = dateStr;
+    renderCalendar();
+}
+
+function renderCalDayPanel(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    const DAYS  = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const label = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    document.getElementById("cal-day-label").textContent = label;
+
+    const dayJobs = getJobsForDate(dateStr);
+    const container = document.getElementById("cal-day-jobs");
+
+    if (!dayJobs.length) {
+        container.innerHTML = `<p style="color:#64748b;font-size:14px;text-align:center;margin-top:20px;">No jobs scheduled</p>`;
+        return;
+    }
+
+    container.innerHTML = dayJobs.map(j => {
+        const name      = j.customerName || "No customer";
+        const type      = j.jobType || "";
+        const start     = j.jobStartDate ? j.jobStartDate.split("T")[0] : "";
+        const end       = j.jobEndDate   ? j.jobEndDate.split("T")[0]   : start;
+        const dateRange = start === end ? start : `${start} → ${end}`;
+        const addr      = [j.address, j.city, j.postcode].filter(Boolean).join(", ");
+        const phone     = j.phone  || "";
+        const email     = j.email  || "";
+        const notes     = j.notes  || "";
+
+        // Count working days
+        let dayCount = "";
+        if (start && end) {
+            let s = new Date(start), e = new Date(end), days = 0;
+            while (s <= e) { const dow = s.getDay(); if (dow !== 0 && dow !== 6) days++; s.setDate(s.getDate()+1); }
+            dayCount = days > 0 ? `${days} working day${days !== 1 ? "s" : ""}` : "";
+        }
+
+        return `
+        <div onclick="openJobFromCal('${j.id}')" style="
+            background:#1e293b;border-radius:12px;padding:14px 16px;margin-bottom:10px;
+            cursor:pointer;border-left:3px solid #f59e0b;
+        ">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;">
+                <div style="font-weight:700;font-size:16px;color:var(--text-primary);">${name}</div>
+                ${statusBadge(j.status)}
+            </div>
+            ${type ? `<div style="font-size:13px;color:#94a3b8;margin-bottom:6px;">🪣 ${type}</div>` : ""}
+            ${addr ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📍 ${addr}</div>` : ""}
+            ${phone ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📞 ${phone}</div>` : ""}
+            ${email ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">✉️ ${email}</div>` : ""}
+            ${dateRange ? `<div style="font-size:12px;color:#64748b;margin-bottom:2px;">📅 ${dateRange}${dayCount ? ` · ${dayCount}` : ""}</div>` : ""}
+            ${notes ? `<div style="font-size:12px;color:#64748b;margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-style:italic;">${notes}</div>` : ""}
+            <div style="text-align:right;margin-top:8px;font-size:11px;color:#f59e0b;font-weight:600;">Tap to open job →</div>
+        </div>`;
+    }).join("");
+}
+
+function openJobFromCal(jobId) {
+    goJob(jobId);
+}
+/* ─── END CALENDAR ─────────────────────────────────────────────── */
+
+
 function goSettings() {
     settingsTab("profile"); // always open on profile tab
     const s = settings;
@@ -4724,6 +4973,8 @@ function goSettings() {
     document.getElementById("set-sealer-coats").value    = s.sealerCoats         || 2;
     document.getElementById("set-vat").value            = s.applyVat !== false ? "true" : "false";
     document.getElementById("set-company-name").value   = s.companyName    || "";
+    if (document.getElementById("set-voicemail-name")) document.getElementById("set-voicemail-name").value = s.voicemailName || "";
+    if (document.getElementById("set-twilio-number")) document.getElementById("set-twilio-number").value = s.twilioNumber || "";
     const addrEl = document.getElementById("set-company-address");
     if (addrEl) addrEl.value = s.companyAddress || "";
     document.getElementById("set-company-phone").value  = s.companyPhone || "";
@@ -4796,6 +5047,9 @@ function saveSettings() {
         sealerCoats:         parseInt(document.getElementById("set-sealer-coats").value)       || 2,
         applyVat:      document.getElementById("set-vat").value === "true",
         companyName:    document.getElementById("set-company-name").value.trim(),
+        voicemailName:  (document.getElementById("set-voicemail-name")?.value || "").trim(),
+        twilioNumber:   (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, ""),
+        mobileNumber:   (document.getElementById("set-mobile-number")?.value || "").trim().replace(/\s/g, ""),
         companyAddress: (document.getElementById("set-company-address")?.value || "").trim(),
         companyPhone:  document.getElementById("set-company-phone").value.trim(),
         companyEmail:  document.getElementById("set-company-email").value.trim(),
@@ -4823,6 +5077,23 @@ function saveSettings() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "d1_save_settings", user_id: currentUser.id, settings })
         }).catch(e => console.error("saveSettings D1 error:", e));
+        const vmName = (document.getElementById("set-voicemail-name")?.value || "").trim();
+        const vmNumber = (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, "");
+        if ((vmName || vmNumber) && currentUser) {
+            const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+            const hdrs = { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY), "Content-Type": "application/json" };
+            fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id + "&select=data&limit=1", { headers: hdrs })
+            .then(r => r.json())
+            .then(rows => {
+                const existing = (rows && rows[0] && rows[0].data) ? rows[0].data : {};
+                const merged = Object.assign({}, existing, { voicemailName: vmName, twilioNumber: vmNumber });
+                return fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
+                    method: "PATCH",
+                    headers: Object.assign({}, hdrs, { "Prefer": "return=minimal" }),
+                    body: JSON.stringify({ data: merged })
+                });
+            }).catch(e => console.error("voicemail settings save error:", e));
+        }
     }
     goDashboard();
 }
@@ -7318,5 +7589,124 @@ function checkProFeature(featureName) {
     if (isPro()) return true;
     showPaywall(featureName);
     return false;
+}
+
+
+/* ─── VOICEMAILS ─────────────────────────────────────────────── */
+function goVoicemails() {
+  show("screen-voicemails");
+  loadVoicemails();
+}
+
+async function loadVoicemails() {
+  const list = document.getElementById("voicemails-list");
+  if (!list) return;
+  list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>';
+
+  try {
+    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+    const token = session?.access_token;
+    if (!token) { list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Sign in required</div>'; return; }
+
+    const headers = { "apikey": SB_KEY, "Authorization": "Bearer " + token };
+    const resp = await fetch(SB_URL + "/rest/v1/customer_voicemails?order=created_at.desc&limit=50", { headers });
+    const rows = await resp.json();
+
+    if (!rows || !rows.length) {
+      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">No voicemails yet</div><div style=\"font-size:13px;\">When existing customers press 2, their messages appear here.</div></div>';
+      return;
+    }
+
+    list.innerHTML = rows.map(v => {
+      const date = new Date(v.created_at);
+      const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      const dur = v.duration_seconds || 0;
+      const durStr = dur >= 60 ? Math.floor(dur/60) + "m " + (dur%60) + "s" : dur + "s";
+      const unread = !v.listened;
+      return `<div id="vm-${v.id}" style="background:var(--card-bg);border:1px solid ${unread ? "var(--accent)" : "var(--border)"};border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      ${unread ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;display:inline-block;"></span>' : ''}
+      <div>
+        <div style="font-weight:700;font-size:15px;">${v.caller_number || "Unknown"}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${dateStr} · ${durStr}</div>
+      </div>
+    </div>
+    <button onclick="deleteVoicemail('${v.id}')" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;">🗑</button>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button onclick="playVoicemail('${v.id}','${v.recording_url}')" style="flex:1;background:var(--accent);color:#000;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;">▶ Play</button>
+    <a href="tel:${v.caller_number}" style="flex:1;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px;font-weight:700;color:var(--text);text-decoration:none;display:flex;align-items:center;justify-content:center;">📞 Call back</a>
+  </div>
+</div>`;
+    }).join("");
+
+  } catch(e) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Failed to load voicemails</div>';
+    console.error("loadVoicemails error:", e);
+  }
+}
+
+async function playVoicemail(id, url) {
+  // Mark as listened
+  try {
+    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+    const token = session?.access_token;
+    await fetch(SB_URL + "/rest/v1/customer_voicemails?id=eq." + id, {
+      method: "PATCH",
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ listened: true })
+    });
+    // Remove unread dot
+    const card = document.getElementById("vm-" + id);
+    if (card) {
+      card.style.borderColor = "var(--border)";
+      const dot = card.querySelector('span[style*="border-radius:50%"]');
+      if (dot) dot.remove();
+    }
+  } catch(e) {}
+
+  // Play audio via proxy
+  const proxyUrl = "https://damp-bread-e0f9.kevin-woodley.workers.dev/audio-proxy?url=" + encodeURIComponent(url);
+  const audio = new Audio(proxyUrl);
+  audio.play().catch(e => {
+    // Fallback - open in browser
+    window.open(proxyUrl, "_blank");
+  });
+}
+
+async function deleteVoicemail(id) {
+  if (!confirm("Delete this voicemail?")) return;
+  try {
+    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+    const token = session?.access_token;
+    await fetch(SB_URL + "/rest/v1/customer_voicemails?id=eq." + id, {
+      method: "DELETE",
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + token }
+    });
+    const card = document.getElementById("vm-" + id);
+    if (card) card.remove();
+  } catch(e) {
+    alert("Failed to delete voicemail");
+  }
+}
+
+
+/* ─── DIVERT SETUP ───────────────────────────────────────────── */
+function setupDivert() {
+    const twilioNum = (settings.twilioNumber || "").replace(/\s/g, "");
+    if (!twilioNum) {
+        alert("Please enter your TileIQ Business Number above and save settings first.");
+        return;
+    }
+    // Format for divert code: convert 07xxx to +447xxx
+    let e164 = twilioNum;
+    if (e164.startsWith("07")) e164 = "+44" + e164.slice(1);
+    else if (e164.startsWith("447")) e164 = "+" + e164;
+    // Divert on no answer after 20 seconds (works on EE, O2, Vodafone, Three)
+    const code = "**61*" + e164 + "*11*20#";
+    if (confirm("This will open your dialler with the divert setup code.\n\nJust press Call and your missed calls will go to your TileIQ voicemail automatically.\n\nCode: " + code)) {
+        window.open("tel:" + code);
+    }
 }
 
