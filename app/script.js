@@ -422,12 +422,15 @@ if (IS_DEMO) {
     const _demoUser = _demoSession ? JSON.parse(_demoSession)?.user?.email : null;
     if (_demoUser !== "demo@tileiq.app") {
       // Not logged in as demo - login first then reload
-      supabase.auth.signInWithPassword({ email: "demo@tileiq.app", password: "TileIQDemo2024" })
-        .then(({ data, error }) => {
-          if (!error && data?.session) {
-            window.location.reload();
-          }
-        });
+      // Use setTimeout to ensure sb is initialised
+      setTimeout(() => {
+        sb.auth.signInWithPassword({ email: "demo@tileiq.app", password: "TileIQDemo2024" })
+          .then(({ data, error }) => {
+            if (!error && data?.session) {
+              window.location.reload();
+            }
+          });
+      }, 100);
     }
     setTimeout(() => {
       const emailEl = document.getElementById("login-email") || document.querySelector("input[type=email]");
