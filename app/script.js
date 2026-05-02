@@ -429,26 +429,20 @@ if (IS_DEMO) {
         }
       });
       // Add demo login button to login screen
-      const loginScreen = document.getElementById("screen-login");
+      const loginScreen = document.getElementById("screen-signin");
       if (loginScreen && !document.getElementById("demo-login-btn")) {
         const btn = document.createElement("button");
         btn.id = "demo-login-btn";
         btn.textContent = "🎮 Try Demo";
         btn.style.cssText = "width:100%;padding:14px;background:#f59e0b;color:#000;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:12px;";
         btn.onclick = () => {
-          const emailEl = document.getElementById("login-email") || document.querySelector("#screen-login input[type=email]");
-          const passEl = document.getElementById("login-password") || document.querySelector("#screen-login input[type=password]");
-          if (emailEl) emailEl.value = "demo@tileiq.app";
-          if (passEl) passEl.value = "TileIQDemo2024";
-          // Find and click the login button
-          const loginBtn = document.querySelector("#screen-login button[type=submit], #screen-login .btn-primary, #btn-login, #login-submit");
-          if (loginBtn) loginBtn.click();
-          else doLogin("demo@tileiq.app", "TileIQDemo2024");
+          document.getElementById("si-email").value = "demo@tileiq.app";
+          document.getElementById("si-password").value = "TileIQDemo2024";
+          authSignIn();
         };
-        // Insert before the first button in login screen
-        const firstBtn = loginScreen.querySelector("button");
-        if (firstBtn) firstBtn.parentNode.insertBefore(btn, firstBtn.nextSibling);
-        else loginScreen.appendChild(btn);
+        // Insert after sign in button
+        const siSubmit = document.getElementById("si-submit");
+        if (siSubmit) siSubmit.parentNode.insertBefore(btn, siSubmit.nextSibling);
       }
     }, 800);
   });
