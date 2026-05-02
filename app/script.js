@@ -203,6 +203,7 @@ let _syncTimer    = null;
 
 // ── 1. Write locally immediately, then schedule cloud sync ───
 function saveAll() {
+    if (IS_DEMO) { console.log("Demo mode - save skipped"); return; }
     if (!currentUser) return;
 
     // Stamp updatedAt on current job so sort-by-recent works
@@ -403,6 +404,31 @@ function toggleTheme() {
 const SB_URL = "https://lzwmqabxpxuuznhbpewm.supabase.co";
 const SB_KEY = "sb_publishable_bbLOe7wwtEWJhRxXZEKuuQ_QANTrsyr";
 const IS_NATIVE = typeof Capacitor !== "undefined" && Capacitor.isNativePlatform?.();
+
+// Demo mode - auto login on tile-iq.com
+const IS_DEMO = window.location.hostname === "tile-iq.com" || window.location.hostname.includes("tileiq-site.pages.dev");
+if (IS_DEMO) {
+  window.addEventListener("DOMContentLoaded", async () => {
+    // Show demo banner
+    const banner = document.createElement("div");
+    banner.id = "demo-banner";
+    banner.innerHTML = "🎮 Demo Mode — changes are not saved";
+    banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#f59e0b;color:#000;text-align:center;padding:6px;font-size:13px;font-weight:700;";
+    document.body.prepend(banner);
+
+    // Auto login as demo user if not already logged in
+    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+    if (!session?.access_token) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: "demo@tileiq.app",
+          password: "TileIQDemo2024"
+        });
+        if (error) console.error("Demo login failed:", error);
+      } catch(e) { console.error("Demo login error:", e); }
+    }
+  });
+}
 
 const sb = supabase.createClient(SB_URL, SB_KEY, {
     auth: {
