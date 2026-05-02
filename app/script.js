@@ -416,22 +416,8 @@ if (IS_DEMO) {
     banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#f59e0b;color:#000;text-align:center;padding:6px;font-size:13px;font-weight:700;";
     document.body.prepend(banner);
 
-    // Demo mode - auto login before app starts
+    // Demo mode flag
     window._demoIsPro = true;
-    const _demoSession = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token");
-    const _demoUser = _demoSession ? JSON.parse(_demoSession)?.user?.email : null;
-    if (_demoUser !== "demo@tileiq.app") {
-      // Not logged in as demo - login first then reload
-      // Use setTimeout to ensure sb is initialised
-      setTimeout(() => {
-        sb.auth.signInWithPassword({ email: "demo@tileiq.app", password: "TileIQDemo2024" })
-          .then(({ data, error }) => {
-            if (!error && data?.session) {
-              window.location.reload();
-            }
-          });
-      }, 100);
-    }
     setTimeout(() => {
       const emailEl = document.getElementById("login-email") || document.querySelector("input[type=email]");
       const passEl = document.getElementById("login-password") || document.querySelector("input[type=password]");
