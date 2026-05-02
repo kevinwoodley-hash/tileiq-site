@@ -425,9 +425,9 @@ if (IS_DEMO) {
       if (passEl) passEl.value = "TileIQDemo2024";
       document.querySelectorAll("a, button, span, div").forEach(el => {
         const t = el.textContent.trim().toLowerCase();
-        if (t === "forgot password" || t === "reset password" || t === "create account" ||
-            t === "sign up" || t === "register" || t === "change password" ||
-            t === "new account") {
+        if (t.includes("forgot") || t.includes("reset password") || t.includes("create account") ||
+            t.includes("sign up") || t.includes("register") || t.includes("change password") ||
+            t.includes("new account")) {
           el.style.display = "none";
         }
       });
