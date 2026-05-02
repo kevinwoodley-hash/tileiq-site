@@ -420,7 +420,7 @@ if (IS_DEMO) {
     window._demoIsPro = true;
     setTimeout(() => {
       // Hide auth links
-      document.querySelectorAll("a, button, span, div").forEach(el => {
+      document.querySelectorAll("a, button").forEach(el => {
         const t = el.textContent.trim().toLowerCase();
         if (t.includes("forgot") || t.includes("reset password") || t.includes("create account") ||
             t.includes("sign up") || t.includes("register") || t.includes("change password") ||
