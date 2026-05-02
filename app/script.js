@@ -416,12 +416,21 @@ if (IS_DEMO) {
     banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#f59e0b;color:#000;text-align:center;padding:6px;font-size:13px;font-weight:700;";
     document.body.prepend(banner);
 
-    // Pre-fill demo credentials
+    // Pre-fill demo credentials and hide auth links
+    window._demoIsPro = true;
     setTimeout(() => {
       const emailEl = document.getElementById("login-email") || document.querySelector("input[type=email]");
       const passEl = document.getElementById("login-password") || document.querySelector("input[type=password]");
       if (emailEl) emailEl.value = "demo@tileiq.app";
       if (passEl) passEl.value = "TileIQDemo2024";
+      document.querySelectorAll("a, button, span, div").forEach(el => {
+        const t = el.textContent.trim().toLowerCase();
+        if (t === "forgot password" || t === "reset password" || t === "create account" ||
+            t === "sign up" || t === "register" || t === "change password" ||
+            t === "new account") {
+          el.style.display = "none";
+        }
+      });
     }, 500);
   });
 }
@@ -7281,7 +7290,8 @@ async function refreshProStatus() {
     }
 }
 
-function isPro() { return _proStatus === true || checkAccessCodePro(); }
+function isPro() {
+    if (window._demoIsPro) return true; return _proStatus === true || checkAccessCodePro(); }
 
 function updateProBadge() {
     // Also refresh the home screen tier badge whenever Pro status changes
