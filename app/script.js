@@ -416,17 +416,13 @@ if (IS_DEMO) {
     banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#f59e0b;color:#000;text-align:center;padding:6px;font-size:13px;font-weight:700;";
     document.body.prepend(banner);
 
-    // Auto login as demo user if not already logged in
-    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
-    if (!session?.access_token) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: "demo@tileiq.app",
-          password: "TileIQDemo2024"
-        });
-        if (error) console.error("Demo login failed:", error);
-      } catch(e) { console.error("Demo login error:", e); }
-    }
+    // Pre-fill demo credentials
+    setTimeout(() => {
+      const emailEl = document.getElementById("login-email") || document.querySelector("input[type=email]");
+      const passEl = document.getElementById("login-password") || document.querySelector("input[type=password]");
+      if (emailEl) emailEl.value = "demo@tileiq.app";
+      if (passEl) passEl.value = "TileIQDemo2024";
+    }, 500);
   });
 }
 
