@@ -419,10 +419,7 @@ if (IS_DEMO) {
     // Demo mode flag
     window._demoIsPro = true;
     setTimeout(() => {
-      const emailEl = document.getElementById("login-email") || document.querySelector("input[type=email]");
-      const passEl = document.getElementById("login-password") || document.querySelector("input[type=password]");
-      if (emailEl) emailEl.value = "demo@tileiq.app";
-      if (passEl) passEl.value = "TileIQDemo2024";
+      // Hide auth links
       document.querySelectorAll("a, button, span, div").forEach(el => {
         const t = el.textContent.trim().toLowerCase();
         if (t.includes("forgot") || t.includes("reset password") || t.includes("create account") ||
@@ -431,7 +428,29 @@ if (IS_DEMO) {
           el.style.display = "none";
         }
       });
-    }, 500);
+      // Add demo login button to login screen
+      const loginScreen = document.getElementById("screen-login");
+      if (loginScreen && !document.getElementById("demo-login-btn")) {
+        const btn = document.createElement("button");
+        btn.id = "demo-login-btn";
+        btn.textContent = "🎮 Try Demo";
+        btn.style.cssText = "width:100%;padding:14px;background:#f59e0b;color:#000;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:12px;";
+        btn.onclick = () => {
+          const emailEl = document.getElementById("login-email") || document.querySelector("#screen-login input[type=email]");
+          const passEl = document.getElementById("login-password") || document.querySelector("#screen-login input[type=password]");
+          if (emailEl) emailEl.value = "demo@tileiq.app";
+          if (passEl) passEl.value = "TileIQDemo2024";
+          // Find and click the login button
+          const loginBtn = document.querySelector("#screen-login button[type=submit], #screen-login .btn-primary, #btn-login, #login-submit");
+          if (loginBtn) loginBtn.click();
+          else doLogin("demo@tileiq.app", "TileIQDemo2024");
+        };
+        // Insert before the first button in login screen
+        const firstBtn = loginScreen.querySelector("button");
+        if (firstBtn) firstBtn.parentNode.insertBefore(btn, firstBtn.nextSibling);
+        else loginScreen.appendChild(btn);
+      }
+    }, 800);
   });
 }
 
