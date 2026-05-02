@@ -11,7 +11,7 @@ window.onerror = function(msg, src, line) {
 };
 
 /* ─── BLOCK WEB BROWSER ACCESS ──────────────────────────────── */
-if (!window.Capacitor || !window.Capacitor.isNativePlatform()) {
+if ((!window.Capacitor || !window.Capacitor.isNativePlatform()) && window.location.hostname !== "tile-iq.com" && !window.location.hostname.includes("tileiq-site.pages.dev")) {
   document.body.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;background:#0f172a;color:#f1f5f9;text-align:center;padding:2rem;">
       <img src="assets/icon.png" style="width:80px;margin-bottom:1.5rem;border-radius:16px;" />
