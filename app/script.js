@@ -1,3 +1,4 @@
+const IS_DEMO = window.location.hostname === "tile-iq.com" || window.location.hostname.includes("tileiq-site.pages.dev");
 /* ================================================================
    TileIQ Pro – script.js  (clean rewrite)
    Flow: Dashboard → New Job (customer details) → Job View (rooms)
@@ -404,7 +405,6 @@ function toggleTheme() {
 const SB_URL = "https://lzwmqabxpxuuznhbpewm.supabase.co";
 const SB_KEY = "sb_publishable_bbLOe7wwtEWJhRxXZEKuuQ_QANTrsyr";
 const IS_NATIVE = typeof Capacitor !== "undefined" && Capacitor.isNativePlatform?.();
-const IS_DEMO = window.location.hostname === "tile-iq.com" || window.location.hostname.includes("tileiq-site.pages.dev");
 
 // Demo mode - auto login on tile-iq.com
 if (IS_DEMO) {
