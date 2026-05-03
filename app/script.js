@@ -420,6 +420,11 @@ if (IS_DEMO) {
     window._demoIsPro = true;
     setTimeout(() => {
       // Hide auth links
+      // Hide specific auth elements in demo
+      ["screen-forgot", "screen-signup"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = "none";
+      });
       document.querySelectorAll("a, button").forEach(el => {
         const t = el.textContent.trim().toLowerCase();
         if (t.includes("forgot") || t.includes("reset password") || t.includes("create account") ||
@@ -428,6 +433,14 @@ if (IS_DEMO) {
           el.style.display = "none";
         }
       });
+      // Override showForgot to do nothing
+      window.showForgot = () => {};
+      window.show = (function(origShow) {
+        return function(screenId) {
+          if (IS_DEMO && (screenId === "screen-forgot" || screenId === "screen-signup")) return;
+          return origShow(screenId);
+        };
+      })(window.show);
       // Add demo login button to login screen
       const loginScreen = document.getElementById("screen-signin");
       if (loginScreen && !document.getElementById("demo-login-btn")) {
