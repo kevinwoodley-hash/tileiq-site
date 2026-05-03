@@ -435,6 +435,7 @@ if (IS_DEMO) {
       });
       // Override showForgot and block signup in demo
       window.showForgot = () => { alert("Password reset is not available in demo mode."); };
+      window.changePassword = () => { alert("Password changes are not available in demo mode."); };
       // Add demo login button to login screen
       const loginScreen = document.getElementById("screen-signin");
       if (loginScreen && !document.getElementById("demo-login-btn")) {
