@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get a Tiling Quote</title>
+<meta name="description" content="Request a free tiling quote — takes 2 minutes, no obligation.">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --midnight: #1B2A3C;
+    --slate: #2B3D54;
+    --amber: #E07A2F;
+    --amber-light: #F09040;
+    --stone: #F2EAD8;
+    --stone-dark: #E8DCC8;
+    --white: #ffffff;
+    --text-muted: #7A8FA6;
+  }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--stone);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .card {
+    background: var(--white);
+    border-radius: 16px;
+    max-width: 560px;
+    width: 100%;
+    overflow: hidden;
+    box-shadow: 0 8px 48px rgba(27,42,60,0.12);
+  }
+  .card-header {
+    background: var(--midnight);
+    padding: 32px 36px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card-header::before {
+    content: '';
+    position: absolute;
+    top: -30px; right: -30px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: rgba(224,122,47,0.15);
+  }
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .logo-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 10px);
+    grid-template-rows: repeat(3, 10px);
+    gap: 2px;
+  }
+  .logo-grid span { display: block; border-radius: 2px; background: var(--slate); }
+  .logo-grid span.accent { background: var(--amber); }
+  .brand-name { font-family: 'DM Serif Display', serif; color: var(--white); font-size: 18px; }
+  .brand-name em { color: var(--amber); font-style: normal; }
+  .company-name {
+    font-size: 13px;
+    color: var(--amber);
+    font-weight: 600;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+    min-height: 18px;
+  }
+  .header-title {
+    font-family: 'DM Serif Display', serif;
+    color: var(--white);
+    font-size: 26px;
+    line-height: 1.2;
+    margin-bottom: 6px;
+    position: relative;
+    z-index: 1;
+  }
+  .header-sub { color: var(--text-muted); font-size: 14px; position: relative; z-index: 1; }
+
+  /* Loading state */
+  .loading-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 36px;
+    gap: 16px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--stone-dark);
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--text-muted); font-size: 14px; }
+
+  /* Error state */
+  .error-screen {
+    display: none;
+    padding: 48px 36px;
+    text-align: center;
+  }
+  .error-icon { font-size: 40px; margin-bottom: 16px; }
+  .error-title { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--midnight); margin-bottom: 8px; }
+  .error-sub { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+  .form-body { padding: 32px 36px; display: none; }
+  .step { display: none; }
+  .step.active { display: block; }
+  .step-indicator { display: flex; gap: 6px; margin-bottom: 28px; }
+  .step-dot { height: 4px; border-radius: 2px; background: var(--stone-dark); flex: 1; transition: background 0.3s; }
+  .step-dot.done { background: var(--amber); }
+  .step-dot.active { background: var(--amber); }
+  .step-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 18px; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--midnight); margin-bottom: 6px; }
+  input[type="text"], input[type="tel"], input[type="email"], select, textarea {
+    width: 100%; padding: 11px 14px; border: 1.5px solid var(--stone-dark); border-radius: 8px;
+    font-family: 'DM Sans', sans-serif; font-size: 15px; color: var(--midnight);
+    background: var(--white); transition: border-color 0.2s; outline: none; appearance: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--amber); }
+  textarea { resize: vertical; min-height: 90px; }
+  .select-wrap { position: relative; }
+  .select-wrap::after { content: '▾'; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; font-size: 13px; }
+  .tile-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile-option {
+    border: 1.5px solid var(--stone-dark); border-radius: 8px; padding: 10px 12px;
+    cursor: pointer; transition: all 0.2s; font-size: 13px; font-weight: 500;
+    color: var(--slate); text-align: center; user-select: none;
+  }
+  .tile-option:hover { border-color: var(--amber); color: var(--amber); }
+  .tile-option.selected { border-color: var(--amber); background: rgba(224,122,47,0.08); color: var(--amber); font-weight: 600; }
+  .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+  .check-item { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; color: var(--slate); }
+  .check-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--amber); cursor: pointer; flex-shrink: 0; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn-row { display: flex; gap: 10px; margin-top: 28px; }
+  .btn { flex: 1; padding: 13px 20px; border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+  .btn-back { background: var(--stone); color: var(--slate); flex: 0 0 auto; padding: 13px 20px; }
+  .btn-back:hover { background: var(--stone-dark); }
+  .btn-next { background: var(--amber); color: var(--white); }
+  .btn-next:hover { background: var(--amber-light); transform: translateY(-1px); }
+  .btn-submit { background: var(--midnight); color: var(--white); }
+  .btn-submit:hover { background: var(--slate); transform: translateY(-1px); }
+
+  .success-screen { display: none; padding: 32px 36px; text-align: center; }
+  .success-icon { width: 64px; height: 64px; background: rgba(224,122,47,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 28px; }
+  .success-title { font-family: 'DM Serif Display', serif; font-size: 24px; color: var(--midnight); margin-bottom: 8px; }
+  .success-sub { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+  .powered-by { margin-top: 20px; font-size: 11px; color: var(--stone-dark); text-align: center; }
+  .powered-by a { color: var(--amber); text-decoration: none; font-weight: 600; }
+
+  @media (max-width: 480px) {
+    .card-header { padding: 24px 20px 20px; }
+    .form-body { padding: 24px 20px; }
+    .success-screen { padding: 24px 20px; }
+    .row-2 { grid-template-columns: 1fr; }
+    .tile-options { grid-template-columns: 1fr; }
+    .header-title { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="card-header">
+    <div class="logo-row" id="tileiqLogoRow">
+      <div class="logo-grid">
+        <span></span><span></span><span></span>
+        <span></span><span class="accent"></span><span></span>
+        <span></span><span></span><span></span>
+      </div>
+      <span class="brand-name">Tile<em>IQ</em></span>
+    </div>
+    <div id="logoRow" style="display:none;align-items:center;margin-bottom:12px;">
+      <img id="tilerLogo" src="" alt="Company Logo" style="display:none;max-height:56px;max-width:160px;object-fit:contain;border-radius:6px;background:#fff;padding:4px;">
+    </div>
+    <div class="company-name" id="companyName"></div>
+    <div class="header-title">Get a Free Quote</div>
+    <div class="header-sub">Takes 2 minutes · No obligation</div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-screen" id="loadingScreen">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading...</div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-screen" id="errorScreen">
+    <div class="error-icon">🔍</div>
+    <div class="error-title">Link Not Found</div>
+    <div class="error-sub">This enquiry link doesn't seem to be valid. Please contact your tiler directly for a quote.</div>
+  </div>
+
+  <!-- Form -->
+  <div class="form-body" id="formBody">
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot1"></div>
+      <div class="step-dot" id="dot2"></div>
+      <div class="step-dot" id="dot3"></div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="step active" id="step1">
+      <div class="step-label">Step 1 of 3 · Your Project</div>
+      <div class="field">
+        <label>What needs tiling?</label>
+        <div class="tile-options" id="jobTypeOptions">
+          <div class="tile-option" data-val="Bathroom">🚿 Bathroom</div>
+          <div class="tile-option" data-val="Kitchen">🍳 Kitchen</div>
+          <div class="tile-option" data-val="Wet Room">💧 Wet Room</div>
+          <div class="tile-option" data-val="Hallway / Floor">🏠 Hallway / Floor</div>
+          <div class="tile-option" data-val="Outdoor / Patio">🌿 Outdoor / Patio</div>
+          <div class="tile-option" data-val="Other">✏️ Other</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Roughly how big is the area?</label>
+        <div class="select-wrap">
+          <select id="areaSize">
+            <option value="">Select approximate size</option>
+            <option>Small – under 5m²</option>
+            <option>Medium – 5 to 15m²</option>
+            <option>Large – 15 to 30m²</option>
+            <option>Extra large – 30m²+</option>
+            <option>Not sure</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>What surfaces need tiling?</label>
+        <div class="checkbox-group">
+          <label class="check-item"><input type="checkbox" name="surface" value="Floor"> Floor</label>
+          <label class="check-item"><input type="checkbox" name="surface" value="Walls"> Walls</label>
+          <label class="check-item"><input type="checkbox" name="surface" value="Shower enclosure"> Shower enclosure</label>
+          <label class="check-item"><input type="checkbox" name="surface" value="Splashback only"> Splashback only</label>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-next" onclick="goStep(2)">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step" id="step2">
+      <div class="step-label">Step 2 of 3 · A Bit More Detail</div>
+      <div class="field">
+        <label>Do you have tiles already, or do you need them supplied?</label>
+        <div class="select-wrap">
+          <select id="tileSupply">
+            <option value="">Select...</option>
+            <option>I have the tiles already</option>
+            <option>I need tiles supplied too</option>
+            <option>Not decided yet</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Are the existing tiles being removed first?</label>
+        <div class="select-wrap">
+          <select id="removal">
+            <option value="">Select...</option>
+            <option>Yes – strip out needed</option>
+            <option>No – tiling over existing</option>
+            <option>No existing tiles</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>When are you looking to get started?</label>
+        <div class="select-wrap">
+          <select id="timescale">
+            <option value="">Select...</option>
+            <option>ASAP</option>
+            <option>Within the next month</option>
+            <option>1–3 months</option>
+            <option>Just planning ahead</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Anything else we should know? <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <textarea id="extraInfo" placeholder="e.g. heated floor, awkward layout, specific tile style, approximate m²..."></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-back" onclick="goStep(1)">← Back</button>
+        <button class="btn btn-next" onclick="goStep(3)">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step" id="step3">
+      <div class="step-label">Step 3 of 3 · Your Details</div>
+      <div class="row-2">
+        <div class="field">
+          <label>First name</label>
+          <input type="text" id="firstName" placeholder="Jane">
+        </div>
+        <div class="field">
+          <label>Last name</label>
+          <input type="text" id="lastName" placeholder="Smith">
+        </div>
+      </div>
+      <div class="field">
+        <label>Phone number</label>
+        <input type="tel" id="phone" placeholder="07700 000000">
+      </div>
+      <div class="field">
+        <label>Email address <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <input type="email" id="email" placeholder="jane@example.com">
+      </div>
+      <div class="field">
+        <label>Postcode</label>
+        <input type="text" id="postcode" placeholder="OX12 9AA" style="text-transform:uppercase">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-back" onclick="goStep(2)">← Back</button>
+        <button class="btn btn-submit" id="submitBtn" onclick="submitForm()">Send Enquiry ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success -->
+  <div class="success-screen" id="successScreen">
+    <div class="success-icon">✓</div>
+    <div class="success-title">Enquiry Sent!</div>
+    <div class="success-sub">Thanks — <span id="successCompany">your tiler</span> will be in touch shortly to discuss your project and arrange a free quote.</div>
+    <div class="powered-by">Powered by <a href="https://tile-iq.com" target="_blank">TileIQ Pro</a></div>
+  </div>
+</div>
+
+<script>
+  const WORKER = 'https://damp-bread-e0f9.kevin-woodley.workers.dev';
+
+  // Get slug from query param: /enquire/?t=kevin-woodley
+  const slug = new URLSearchParams( window.location.search).get('t') || '';
+
+  let tilerInfo = null;
+  let currentStep = 1;
+  let selectedJobType = '';
+
+  async function init() {
+    if (!slug || slug === 'enquire') {
+      showError(); return;
+    }
+    try {
+      const resp = await fetch(`${WORKER}/tiler-info?slug=${encodeURIComponent(slug)}`);
+      if (!resp.ok) { showError(); return; }
+      tilerInfo = await resp.json();
+      if (tilerInfo.error) { showError(); return; }
+
+      // Personalise header
+      document.getElementById('companyName').textContent = tilerInfo.companyName;
+      document.title = `Get a Quote — ${tilerInfo.companyName}`;
+      document.getElementById('successCompany').textContent = tilerInfo.companyName;
+
+      if (tilerInfo.logoUrl) {
+        const logoEl = document.getElementById('tilerLogo');
+        if (logoEl) { logoEl.src = tilerInfo.logoUrl; logoEl.style.display = 'block'; }
+        const logoRow = document.getElementById('logoRow');
+        if (logoRow) logoRow.style.display = 'flex';
+        const tileiqLogo = document.getElementById('tileiqLogoRow');
+        if (tileiqLogo) tileiqLogo.style.display = 'none';
+      }
+
+      // Show form
+      document.getElementById('loadingScreen').style.display = 'none';
+      document.getElementById('formBody').style.display = 'block';
+    } catch(e) {
+      showError();
+    }
+  }
+
+  function showError() {
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('errorScreen').style.display = 'block';
+  }
+
+  // Tile option selection
+  document.querySelectorAll('.tile-option').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.tile-option').forEach(o => o.classList.remove('selected'));
+      el.classList.add('selected');
+      selectedJobType = el.dataset.val;
+    });
+  });
+
+  function updateDots(step) {
+    for (let i = 1; i <= 3; i++) {
+      const dot = document.getElementById('dot' + i);
+      dot.classList.remove('active', 'done');
+      if (i < step) dot.classList.add('done');
+      else if (i === step) dot.classList.add('active');
+    }
+  }
+
+  function goStep(n) {
+    if (n > currentStep) {
+      if (currentStep === 1 && !selectedJobType) { alert('Please select what needs tiling.'); return; }
+      if (currentStep === 3) {
+        if (!document.getElementById('firstName').value.trim()) { alert('Please enter your first name.'); return; }
+        if (!document.getElementById('phone').value.trim()) { alert('Please enter your phone number.'); return; }
+        if (!document.getElementById('postcode').value.trim()) { alert('Please enter your postcode.'); return; }
+      }
+    }
+    document.getElementById('step' + currentStep).classList.remove('active');
+    currentStep = n;
+    document.getElementById('step' + n).classList.add('active');
+    updateDots(n);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function submitForm() {
+    const firstName = document.getElementById('firstName').value.trim();
+    const phone     = document.getElementById('phone').value.trim();
+    const postcode  = document.getElementById('postcode').value.trim();
+    if (!firstName) { alert('Please enter your first name.'); return; }
+    if (!phone)     { alert('Please enter your phone number.'); return; }
+    if (!postcode)  { alert('Please enter your postcode.'); return; }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    const surfaces = [...document.querySelectorAll('input[name="surface"]:checked')].map(c => c.value);
+    const payload = {
+      slug,
+      name:       firstName + ' ' + document.getElementById('lastName').value.trim(),
+      phone,
+      email:      document.getElementById('email').value.trim(),
+      postcode:   postcode.toUpperCase(),
+      jobType:    selectedJobType,
+      areaSize:   document.getElementById('areaSize').value,
+      surfaces,
+      tileSupply: document.getElementById('tileSupply').value,
+      removal:    document.getElementById('removal').value,
+      timescale:  document.getElementById('timescale').value,
+      extraInfo:  document.getElementById('extraInfo').value,
+      submittedAt: new Date().toISOString()
+    };
+
+    try {
+      const resp = await fetch(`${WORKER}/enquiry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || 'Failed');
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = 'Send Enquiry ✓';
+      alert('Something went wrong — please try again or call us directly.');
+      return;
+    }
+
+    document.getElementById('formBody').style.display = 'none';
+    document.getElementById('successScreen').style.display = 'block';
+  }
+
+  init();
+</script>
+</body>
+</html>
