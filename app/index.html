@@ -30,6 +30,32 @@
 <body>
 <div id="app">
 
+<!-- Desktop Sidebar — hidden on mobile via CSS -->
+<div id="desktop-sidebar" class="sidebar-hidden">
+    <div class="sidebar-logo">
+        <div style="width:32px;height:32px;background:#1B2A3C;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">🔷</div>
+        <span>TileIQ Pro</span>
+    </div>
+    <nav class="sidebar-nav">
+        <button class="sidebar-btn" id="snav-home" onclick="goHome()">
+            <span class="btn-icon">🏠</span> Home
+        </button>
+        <button class="sidebar-btn" id="snav-jobs" onclick="goDashboard()">
+            <span class="btn-icon">📋</span> Jobs
+        </button>
+        <button class="sidebar-btn" id="snav-customers" onclick="goCustomers()">
+            <span class="btn-icon">👤</span> Customers
+        </button>
+        <button class="sidebar-btn" id="snav-calendar" onclick="goCalendar()">
+            <span class="btn-icon">📅</span> Calendar
+        </button>
+        <div class="sidebar-divider"></div>
+        <button class="sidebar-btn" id="snav-settings" onclick="goSettings()">
+            <span class="btn-icon">⚙️</span> Settings
+        </button>
+    </nav>
+</div>
+
 <!-- LOADING -->
 <div id="screen-loading" class="screen">
     <div class="loading-center">
@@ -1828,5 +1854,9 @@
 <script src="vendor/biometric-auth.js"></script>
 <script src="js/bluetooth-le.js"></script>
 <script src="script.js"></script>
+<script>
+if (window.location.pathname === "/qbo-callback") { window.location.href = "tileiq://qbo-connected" + window.location.search; }
+if (window.location.pathname === "/fa-callback") { window.location.href = "tileiq://freeagent-callback" + window.location.search; }
+</script>
 </body>
 </html>
