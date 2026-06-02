@@ -1994,13 +1994,9 @@
 <script src="vendor/biometric-auth.js"></script>
 <script src="js/bluetooth-le.js"></script>
 <script src="script.js"></script>
+<script>
+if (window.location.pathname === "/qbo-callback") { window.location.href = "tileiq://qbo-connected" + window.location.search; }
+if (window.location.pathname === "/fa-callback") { window.location.href = "tileiq://freeagent-callback" + window.location.search; }
+</script>
 </body>
 </html>
-<script>
-if (window.location.pathname === '/qbo-callback') {
-    window.location.href = 'tileiq://qbo-connected' + window.location.search;
-}
-if (window.location.pathname === '/fa-callback') {
-    window.location.href = 'tileiq://freeagent-callback' + window.location.search;
-}
-</script>
