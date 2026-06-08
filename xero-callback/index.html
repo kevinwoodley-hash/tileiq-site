@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TileIQ Pro – Connecting Xero...</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: sans-serif; background: #1B2A3C; color: #fff;
+           display: flex; flex-direction: column; align-items: center;
+           justify-content: center; min-height: 100vh; margin: 0; text-align: center; padding: 20px; }
+    .logo { font-size: 28px; font-weight: 800; color: #E07A2F; margin-bottom: 16px; }
+    .tick { font-size: 64px; margin: 16px 0; }
+    h2 { color: #10b981; }
+    p { color: #94a3b8; font-size: 14px; }
+    .btn { background: #13B5EA; color: #fff; border: none; padding: 16px 32px;
+           border-radius: 8px; font-size: 18px; font-weight: 700; cursor: pointer;
+           margin-top: 20px; text-decoration: none; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="logo">TileIQ Pro</div>
+  <div class="tick">✅</div>
+  <h2>Xero Connected!</h2>
+  <p>Returning to TileIQ Pro...</p>
+  <a id="deep-link" class="btn" href="#">Open TileIQ Pro</a>
+
+  <script>
+    // Pass the full query string (code, state, error) to the app via deep link
+    var qs     = window.location.search;  // e.g. ?code=xxx&state=yyy
+    var target = "tileiq://xero-connected" + qs;
+    document.getElementById("deep-link").href = target;
+    // Auto-redirect after 500ms
+    setTimeout(function() { window.location.href = target; }, 500);
+  </script>
+</body>
+</html>
