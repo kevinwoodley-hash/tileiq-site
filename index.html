@@ -150,6 +150,13 @@
       .pricing-grid{grid-template-columns:1fr}
       .pills{display:none}
       footer{flex-direction:column;align-items:flex-start;gap:10px}
+      .mobile-hide{display:none !important}
+      section{padding:36px 0}
+      .beta-box{padding:16px}
+      .hero{padding:16px 0 28px}
+    }
+    @media(max-width:768px){
+      .pricing-comparison-wrap{grid-template-columns:1fr !important}
     }
   </style>
 </head>
@@ -204,7 +211,7 @@
   </div>
 
   <!-- HOW IT WORKS -->
-  <section>
+  <section class="mobile-hide">
     <div class="section-label">How It Works</div>
     <div class="steps">
       <div class="step"><div class="step-num">📐</div><div class="step-label">Step 1</div><div class="step-title">Measure</div><div class="step-desc">Enter room dimensions or connect a Leica Disto D2 via Bluetooth for instant readings.</div></div>
@@ -215,7 +222,7 @@
   </section>
 
   <!-- FEATURES -->
-  <section>
+  <section class="mobile-hide">
     <div class="section-label">Everything You Need</div>
     <div class="features-grid">
       <div class="feat-card"><div class="feat-icon">🏠</div><div class="feat-title">Room Types</div><div class="feat-desc">Full room, floor only, wall only, shower enclosures and wet rooms. Multiple surfaces per room.</div></div>
@@ -228,8 +235,8 @@
   </section>
 
   <!-- PRICING + COMPARISON side by side -->
-  <section>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start">
+  <section class="mobile-hide">
+    <div class="pricing-comparison-wrap" style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start">
       <div>
         <div class="section-label">Simple Pricing</div>
         <div class="pricing-grid">
