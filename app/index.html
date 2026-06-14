@@ -25,36 +25,42 @@
             -webkit-text-fill-color: var(--ink) !important;
             -webkit-box-shadow: 0 0 0px 1000px var(--surface) inset !important;
         }
+
+        /* Room screen section toggles */
+        .rm-section-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0 6px;
+            border-top: 0.5px solid var(--border);
+            margin-top: 4px;
+            cursor: pointer;
+        }
+        .rm-section-toggle .rm-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .rm-section-toggle .rm-section-badge {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-left: 8px;
+        }
+        .rm-section-toggle .rm-section-arrow {
+            font-size: 16px;
+            color: var(--text-muted);
+        }
+        .rm-section-toggle.active .rm-section-title {
+            color: #E07A2F;
+        }
+        .rm-section-toggle.active .rm-section-arrow {
+            color: #E07A2F;
+        }
     </style>
 </head>
 <body>
 <div id="app">
-
-<!-- Desktop Sidebar — hidden on mobile via CSS -->
-<div id="desktop-sidebar" class="sidebar-hidden">
-    <div class="sidebar-logo">
-        <div style="width:32px;height:32px;background:#1B2A3C;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">🔷</div>
-        <span>TileIQ Pro</span>
-    </div>
-    <nav class="sidebar-nav">
-        <button class="sidebar-btn" id="snav-home" onclick="goHome()">
-            <span class="btn-icon">🏠</span> Home
-        </button>
-        <button class="sidebar-btn" id="snav-jobs" onclick="goDashboard()">
-            <span class="btn-icon">📋</span> Jobs
-        </button>
-        <button class="sidebar-btn" id="snav-customers" onclick="goCustomers()">
-            <span class="btn-icon">👤</span> Customers
-        </button>
-        <button class="sidebar-btn" id="snav-calendar" onclick="goCalendar()">
-            <span class="btn-icon">📅</span> Calendar
-        </button>
-        <div class="sidebar-divider"></div>
-        <button class="sidebar-btn" id="snav-settings" onclick="goSettings()">
-            <span class="btn-icon">⚙️</span> Settings
-        </button>
-    </nav>
-</div>
 
 <!-- LOADING -->
 <div id="screen-loading" class="screen">
@@ -353,7 +359,7 @@
                 <div style="font-size:13px;font-weight:500;color:var(--text-muted);margin-top:2px;">Manage saved customers</div>
             </div>
         </button>
-<button onclick="goVoicemails()" style="width:100%;max-width:320px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;">
+<button onclick="goVoicemails()" style="display:none;width:100%;max-width:320px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;align-items:center;gap:16px;text-align:left;">
     <span style="font-size:36px;">📞</span>
     <div>
         <div>Voicemails</div>
@@ -528,6 +534,21 @@
             </div>
             <div class="field-row">
                 <div class="field-group">
+                    <label>Total Area (m²)</label>
+                    <input id="nj-area" type="number" min="0" step="0.5" placeholder="e.g. 12.5">
+                </div>
+                <div class="field-group">
+                    <label>Work Type</label>
+                    <select id="nj-worktype">
+                        <option value="">Unknown</option>
+                        <option value="floor">Floor</option>
+                        <option value="wall">Wall</option>
+                        <option value="both">Floor + Wall</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
                     <label>Status</label>
                     <select id="nj-status">
                         <option value="enquiry">Enquiry</option>
@@ -543,7 +564,7 @@
                     <label>Tile Supply</label>
                     <select id="nj-supply">
                         <option value="contractor">We supply tiles</option>
-                        <option value="customer">Customer supplies</option>
+                        <option value="customer" selected>Customer supplies</option>
                     </select>
                 </div>
             </div>
@@ -574,9 +595,12 @@
         </div>
         <div id="job-running-total" class="running-total hidden"></div>
         <div class="job-actions">
-            <button onclick="goEditJob()" class="btn-secondary">✏ Edit Details</button>
-            <button onclick="goMaterials()" class="btn-secondary">📦 Materials</button>
-            <button onclick="goQuote()" class="btn-primary">Quote →</button>
+            <button onclick="goEditJob()" class="btn-secondary" style="width:100%;margin-bottom:8px;">✏ Edit Customer Details</button>
+            <div style="display:flex;gap:8px;">
+                <button onclick="goMaterials()" class="btn-secondary" style="flex:1;">📦 Materials</button>
+                <button onclick="goQuote();setTimeout(previewQuote,400)" class="btn-secondary" style="flex:1;">👁 Preview</button>
+                <button onclick="goQuote()" class="btn-primary" style="flex:1;">Quote →</button>
+            </div>
         </div>
         <div id="job-quote-status-bar" style="display:none;margin-top:10px;"></div>
         <div id="job-messages-btn-wrap" style="display:none;margin-top:10px;">
@@ -679,6 +703,21 @@
             </div>
             <div class="field-row">
                 <div class="field-group">
+                    <label>Total Area (m²)</label>
+                    <input id="ej-area" type="number" min="0" step="0.5" placeholder="e.g. 12.5">
+                </div>
+                <div class="field-group">
+                    <label>Work Type</label>
+                    <select id="ej-worktype">
+                        <option value="">Unknown</option>
+                        <option value="floor">Floor</option>
+                        <option value="wall">Wall</option>
+                        <option value="both">Floor + Wall</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
                     <label>Status</label>
                     <select id="ej-status">
                         <option value="enquiry">Enquiry</option>
@@ -694,7 +733,7 @@
                     <label>Tile Supply</label>
                     <select id="ej-supply">
                         <option value="contractor">We supply tiles</option>
-                        <option value="customer">Customer supplies</option>
+                        <option value="customer" selected>Customer supplies</option>
                     </select>
                 </div>
             </div>
@@ -715,59 +754,27 @@
     </div></header>
     <div class="page-body">
 
-        <div class="form-card" style="margin-bottom:14px;">
-            <div class="field-group" style="margin-bottom:10px;">
-                <label>Room Name *</label>
-                <input id="rm-name" placeholder="e.g. Main Bathroom">
-            </div>
-            <div class="field-group" style="margin-bottom:10px;">
-                <label>Tile Type</label>
-                <select id="rm-tile-type" onchange="updateTileTypeNote();rmCalc()">
-                    <option value="ceramic">Ceramic</option>
-                    <option value="porcelain">Porcelain</option>
-                    <option value="natural_stone">Natural Stone</option>
-                    <option value="modular">Modular Pattern</option>
-                    <option value="herringbone">Herringbone</option>
-                    <option value="mosaic">Mosaic</option>
-                </select>
-            </div>
-            <div id="rm-tile-type-rate-note" class="field-group" style="margin-bottom:10px;font-size:12px;color:var(--text-muted);"></div>
-            <label class="checkbox-label" style="margin-bottom:12px;">
-                <input type="checkbox" id="rm-customer-tiles" onchange="rmCalc()">
-                Customer supplies tiles (no tile cost)
-            </label>
-            <div class="field-group" style="margin-bottom:0;">
-                <label>Labour Pricing</label>
-                <div class="labour-toggle">
-                    <button id="ltbtn-m2"  onclick="setLabourType('m2')"  class="ltbtn ltbtn-active">£/m²</button>
-                    <button id="ltbtn-day" onclick="setLabourType('day')" class="ltbtn">Day Rate</button>
-                </div>
-            </div>
-            <div id="labour-day-opts" class="hidden" style="margin-top:10px;">
-                <div class="field-row" style="margin-bottom:0;">
-                    <div class="field-group" style="margin-bottom:0;">
-                        <label>Days</label>
-                        <input id="rm-days" type="number" step="0.5" min="0.5" placeholder="e.g. 2" oninput="rmCalc()">
-                    </div>
-                    <div class="field-group" style="margin-bottom:0;">
-                        <label>Day Rate (£)</label>
-                        <input id="rm-dayrate" type="number" step="10" oninput="rmCalc()">
-                    </div>
-                </div>
-            </div>
-        </div>
-
+        <!-- TYPE SELECTOR -->
         <div class="form-section-label" style="margin-bottom:10px;">What are you tiling?</div>
-        <div class="stype-row">
-            <button id="stype-btn-room"  onclick="rmSelectType('room')"  class="stype-btn stype-room">🏠<br><span>Full Room</span></button>
-            <button id="stype-btn-floor" onclick="rmSelectType('floor')" class="stype-btn">⬜<br><span>Floor only</span></button>
-            <button id="stype-btn-wall"  onclick="rmSelectType('wall')"  class="stype-btn">🧱<br><span>Wall only</span></button>
+        <div class="stype-row" style="margin-bottom:14px;">
+            <button id="stype-btn-room"   onclick="rmSelectType('room')"   class="stype-btn stype-room">🏠<br><span>Full Room</span></button>
+            <button id="stype-btn-floor"  onclick="rmSelectType('floor')"  class="stype-btn">⬜<br><span>Floor only</span></button>
+            <button id="stype-btn-wall"   onclick="rmSelectType('wall')"   class="stype-btn">🧱<br><span>Wall only</span></button>
+            <button id="stype-btn-shower" onclick="rmSelectType('shower')" class="stype-btn">🚿<br><span>Shower</span></button>
         </div>
 
+        <!-- NAME -->
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="field-group" style="margin-bottom:0;">
+                <label>Room Name *</label>
+                <input id="rm-name" placeholder="e.g. Main Bathroom" oninput="rmCalc()">
+            </div>
+        </div>
 
-        <!-- FULL ROOM -->
+        <!-- MEASUREMENTS -->
+        <div id="rm-step-measurements" style="margin-bottom:8px;">
         <div id="rm-form-room" class="measure-form">
-            <div class="form-section-label">Room Measurements</div>
+        <div class="form-card" style="margin-bottom:8px;">
             <div class="field-row">
                 <div class="field-group">
                     <label>Length (m)</label>
@@ -798,73 +805,12 @@
                     </div>
                 </div>
             </div>
+        </div><!-- /measurements card -->
 
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('sealant')" id="collapse-toggle-sealant">
-                Sealant (silicone) <span class="deduct-toggle-arrow" id="collapse-arrow-sealant">▸</span>
-            </div>
-            <div id="collapse-panel-sealant" class="hidden">
-            <div class="field-row">
-                <div class="field-group">
-                    <label>Include sealant</label>
-                    <select id="rm-sealant-enabled" onchange="rmCalc()">
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
-                    </select>
-                </div>
-
-                <div class="field-group">
-                    <label>Sealant for floor perimeter</label>
-                    <input id="rm-sealant-floorperim" type="checkbox" checked onchange="rmCalc()">
-                    <div class="small-note" style="margin-top:4px;">Adds 2×(L+W) once per room.</div>
-                </div>
-
-                <div class="field-group">
-                    <label>External corners</label>
-                    <input id="rm-sealant-corners" type="number" step="1" min="0" placeholder="e.g. 2" oninput="rmCalc()">
-                </div>
-            </div>
-            <div class="small-note" style="margin-top:-6px;">
-                Uses (optional) floor perimeter + (external corners × room height). Floor perimeter is counted once per room.
-            </div>
-            </div>
-
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('extrawork')" id="collapse-toggle-extrawork">
-                Extra Work <span class="deduct-toggle-arrow" id="collapse-arrow-extrawork">▸</span>
-            </div>
-            <div id="collapse-panel-extrawork" class="hidden">
-            <div class="field-row">
-                <div class="field-group" style="flex:2;">
-                    <label>Description</label>
-                    <input id="rm-extra-desc" type="text" placeholder="e.g. Remove & refit toilet" oninput="rmCalc()">
-                </div>
-                <div class="field-group" style="flex:1;">
-                    <label>Cost (£)</label>
-                    <input id="rm-extra-cost" type="number" step="0.01" placeholder="0" oninput="rmCalc()">
-                </div>
-            </div>
-            </div>
-
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('trim')" id="collapse-toggle-trim">
-                Tile Trim <span class="deduct-toggle-arrow" id="collapse-arrow-trim">▸</span>
-                <span id="trim-r-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span>
-            </div>
-            <div id="collapse-panel-trim" class="hidden">
-            <div class="field-row">
-                <div class="field-group">
-                    <label>Lengths (× 2.5m)</label>
-                    <input id="rm-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('r')">
-                </div>
-                <div class="field-group">
-                    <label>Price per length (£) <span class="pc-trim" style="color:var(--muted);font-weight:400;"></span></label>
-                    <input id="rm-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('r')">
-                </div>
-            </div>
-            <div class="small-note">Trim at <span class="pc-trim-len">2.5</span>m per length. Override price here or set default in Settings.</div>
-            </div>
-
-            <div class="divider-label deduct-toggle" onclick="toggleDeductPanel('r')" id="deduct-toggle-r">
-                Deductions <span class="deduct-toggle-arrow">▸</span>
-                <span id="deduct-total-badge" style="background:#c00;color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-left:6px;display:none;"></span>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleDeductPanel('r')" id="deduct-toggle-r">
+                <div><span class="rm-section-title">Deductions</span></div>
+                <span class="rm-section-arrow">▸</span>
             </div>
             <div id="deduct-panel-r" class="hidden">
             <div id="deduct-wall-chips" class="deduct-chips">
@@ -880,45 +826,155 @@
             </div>
             <input id="rm-r-deduct" type="hidden" value="0">
             <input id="rm-r-fdeduct" type="hidden" value="0">
+        </div>
 
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles">
-                Wall Tiles <span class="deduct-toggle-arrow" id="collapse-arrow-walltiles">▸</span>
-                <span id="walltiles-badge" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;"></span>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('room-wall-opts')" id="collapse-toggle-room-wall-opts">
+                <div><span class="rm-section-title">Wall Options</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-room-wall-opts">▸</span>
             </div>
-            <div id="collapse-panel-walltiles" class="hidden">
-            <div class="field-row">
-                <div class="field-group">
-                    <label>Tile W (mm)</label>
-                    <input id="rm-r-wtilew" type="number" value="300" oninput="rmCalc();updateWallTilesBadge()">
+            <div id="collapse-panel-room-wall-opts" class="hidden" style="padding-top:10px;">
+                <div class="field-group" style="margin-bottom:10px;">
+                    <label>Tile Type</label>
+                    <select id="rm-tile-type" onchange="updateTileTypeNote();rmCalc();rmUpdateOptionsBadge()">
+                        <option value="ceramic">Ceramic</option>
+                        <option value="porcelain">Porcelain</option>
+                        <option value="natural_stone">Natural Stone</option>
+                        <option value="modular">Modular Pattern</option>
+                        <option value="herringbone">Herringbone</option>
+                        <option value="mosaic">Mosaic</option>
+                    </select>
+                </div>
+                <div id="rm-tile-type-rate-note" class="field-group" style="margin-bottom:10px;font-size:12px;color:var(--text-muted);"></div>
+                <div class="field-row" style="margin-bottom:10px;">
+                    <div class="field-group">
+                        <label>Adhesive Colour</label>
+                        <select id="rm-adh-colour" onchange="rmCalc();rmUpdateOptionsBadge()">
+                            <option value="grey">Grey</option>
+                            <option value="white">White</option>
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label>Adhesive Type</label>
+                        <select id="rm-adh-type" onchange="rmCalc();rmUpdateOptionsBadge()">
+                            <option value="standard">Standard</option>
+                            <option value="rapid">Rapid Set</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles" style="border-top:0.5px solid var(--border);padding-top:8px;">
+                    <div><span class="rm-section-title">Wall Tiles</span><span id="walltiles-badge" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;"></span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-walltiles">▸</span>
+                </div>
+                <div id="collapse-panel-walltiles" class="hidden">
+                <div class="field-row">
+                    <div class="field-group">
+                        <label>Tile W (mm)</label>
+                        <input id="rm-r-wtilew" type="number" value="300" oninput="rmCalc();updateWallTilesBadge()">
+                    </div>
+                    <div class="field-group">
+                        <label>Tile H (mm)</label>
+                        <input id="rm-r-wtileh" type="number" value="600" oninput="rmCalc();updateWallTilesBadge()">
+                    </div>
+                    <div class="field-group">
+                        <label>Tile Thickness (mm)</label>
+                        <input id="rm-r-wtilethick" type="number" value="8" oninput="rmCalc()">
+                    </div>
                 </div>
                 <div class="field-group">
-                    <label>Tile H (mm)</label>
-                    <input id="rm-r-wtileh" type="number" value="600" oninput="rmCalc();updateWallTilesBadge()">
+                    <label>Wall Grout Joint (mm)</label>
+                    <input id="rm-r-wgrout" type="number" value="2" oninput="rmCalc()">
                 </div>
-                <div class="field-group">
-                    <label>Tile Thickness (mm)</label>
-                    <input id="rm-r-wtilethick" type="number" value="8" oninput="rmCalc()">
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('room-wall-prep')" id="collapse-toggle-room-wall-prep" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
+                    <div><span class="rm-section-title">Wall Preparation</span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-room-wall-prep">▸</span>
+                </div>
+                <div id="collapse-panel-room-wall-prep" class="hidden">
+                    <div class="prep-options">
+                        <label class="prep-option">
+                            <input type="checkbox" id="rm-r-wprimer" onchange="rmCalc()">
+                            <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                        </label>
+                        <label class="prep-option">
+                            <input type="checkbox" id="rm-r-wstone" onchange="rmToggleWStoneR()">
+                            <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                        </label>
+                        <div id="rm-r-wsealer-row" class="hidden">
+                        <label class="prep-option">
+                            <input type="checkbox" id="rm-r-wsealer" onchange="rmCalc()">
+                            <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                        </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('niches-r')" id="collapse-toggle-niches-r" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
+                    <div><span class="rm-section-title">Niches</span><span id="niches-r-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-niches-r">▸</span>
+                </div>
+                <div id="collapse-panel-niches-r" class="hidden">
+                    <div id="niche-list-r"></div>
+                    <button type="button" class="btn-add-surface" onclick="addNiche('r')">+ Add Niche</button>
                 </div>
             </div>
-            <div class="field-group">
-                <label>Wall Grout Joint (mm)</label>
-                <input id="rm-r-wgrout" type="number" value="2" oninput="rmCalc()">
+        </div>
+
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-opts')" id="collapse-toggle-room-floor-opts">
+                <div><span class="rm-section-title">Floor Options</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-room-floor-opts">▸</span>
             </div>
-            </div>
-            <div class="divider-label">Floor</div>
+            <div id="collapse-panel-room-floor-opts" class="hidden" style="padding-top:8px;">
             <label class="checkbox-label" style="margin-bottom:10px;">
                 <input type="checkbox" id="rm-r-inclfloor" checked onchange="rmToggleFloor()">
                 Include floor
             </label>
             <div id="rm-r-floor-opts">
+                <label class="checkbox-label" style="margin-bottom:10px;">
+                    <input type="checkbox" id="rm-r-wetroom" onchange="rmToggleWetRoomR()">
+                    Wetroom Tray
+                </label>
+                <div id="rm-r-wetroom-opts" class="hidden">
+                    <div class="prep-options" style="margin-bottom:8px;">
+                        <label class="prep-option">
+                            <input type="checkbox" id="rm-r-tray" onchange="rmRTrayToggle()">
+                            <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray-r"></span> flat rate</span></div>
+                        </label>
+                        <div id="rm-r-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
+                            <div class="field-row" style="gap:8px;">
+                                <div class="field-group">
+                                    <label>Tray Price (£)</label>
+                                    <input id="rm-r-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
+                                </div>
+                                <div class="field-group">
+                                    <label>Width (mm)</label>
+                                    <input id="rm-r-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                </div>
+                                <div class="field-group">
+                                    <label>Depth (mm)</label>
+                                    <input id="rm-r-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                </div>
+                            </div>
+                        </div>
+                        <label class="prep-option">
+                            <input type="checkbox" id="rm-r-ftanking" onchange="rmCalc()" checked>
+                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span id="pc-tank-r"></span>/m²</span></div>
+                        </label>
+                    </div>
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-tile')" id="collapse-toggle-room-floor-tile" style="border-top:0.5px solid var(--border);padding-top:8px;">
+                    <div><span class="rm-section-title">Floor Tile</span><span id="room-floor-tile-badge" class="rm-section-badge"></span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-room-floor-tile">▸</span>
+                </div>
+                <div id="collapse-panel-room-floor-tile" class="hidden">
                 <div class="field-row">
                     <div class="field-group">
                         <label>Floor Tile W (mm)</label>
-                        <input id="rm-r-ftilew" type="number" value="600" oninput="rmCalc()">
+                        <input id="rm-r-ftilew" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
                     </div>
                     <div class="field-group">
                         <label>Floor Tile H (mm)</label>
-                        <input id="rm-r-ftileh" type="number" value="600" oninput="rmCalc()">
+                        <input id="rm-r-ftileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
                     </div>
                     <div class="field-group">
                         <label>Tile Thickness (mm)</label>
@@ -927,13 +983,18 @@
                 </div>
                 <div class="field-group">
                     <label>Floor Grout Joint (mm)</label>
-                    <input id="rm-r-fgrout" type="number" value="2" oninput="rmCalc()">
+                    <input id="rm-r-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
                 </div>
                 <label class="checkbox-label">
                     <input type="checkbox" id="rm-r-ufh" onchange="rmCalc()">
                     Underfloor Heating (UFH)
                 </label>
-                <div class="divider-label">Floor Preparation</div>
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-prep')" id="collapse-toggle-room-floor-prep" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
+                    <div><span class="rm-section-title">Floor Preparation</span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-room-floor-prep">▸</span>
+                </div>
+                <div id="collapse-panel-room-floor-prep" class="hidden">
                 <div class="prep-options">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-cementboard" onchange="rmCalc()">
@@ -980,29 +1041,107 @@
                     </label>
                     </div>
                 </div>
-                <div class="divider-label">Wall Preparation</div>
-                <div class="prep-options">
-                    <label class="prep-option">
-                        <input type="checkbox" id="rm-r-wprimer" onchange="rmCalc()">
-                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
-                    </label>
-                    <label class="prep-option">
-                        <input type="checkbox" id="rm-r-wstone" onchange="rmToggleWStoneR()">
-                        <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
-                    </label>
-                    <div id="rm-r-wsealer-row" class="hidden">
-                    <label class="prep-option">
-                        <input type="checkbox" id="rm-r-wsealer" onchange="rmCalc()">
-                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
-                    </label>
-                    </div>
+                </div>
+            </div><!-- /rm-r-floor-opts -->
+            </div><!-- /collapse-panel-room-floor-opts -->
+        </div>
+
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('sealant')" id="collapse-toggle-sealant">
+                <div><span class="rm-section-title">Sealant</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-sealant">▸</span>
+            </div>
+            <div id="collapse-panel-sealant" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Include sealant</label>
+                    <select id="rm-sealant-enabled" onchange="rmCalc()">
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Sealant for floor perimeter</label>
+                    <input id="rm-sealant-floorperim" type="checkbox" checked onchange="rmCalc()">
+                </div>
+                <div class="field-group">
+                    <label>External corners</label>
+                    <input id="rm-sealant-corners" type="number" step="1" min="0" placeholder="e.g. 2" oninput="rmCalc()">
                 </div>
             </div>
+            </div>
         </div>
+
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('extrawork')" id="collapse-toggle-extrawork">
+                <div><span class="rm-section-title">Extra Work</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-extrawork">▸</span>
+            </div>
+            <div id="collapse-panel-extrawork" class="hidden">
+            <div class="field-row">
+                <div class="field-group" style="flex:2;">
+                    <label>Description</label>
+                    <input id="rm-extra-desc" type="text" placeholder="e.g. Remove &amp; refit toilet" oninput="rmCalc()">
+                </div>
+                <div class="field-group" style="flex:1;">
+                    <label>Cost (£)</label>
+                    <input id="rm-extra-cost" type="number" step="0.01" placeholder="0" oninput="rmCalc()">
+                </div>
+            </div>
+            </div>
+        </div>
+
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('trim')" id="collapse-toggle-trim">
+                <div><span class="rm-section-title">Tile Trim</span><span id="trim-r-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-trim">▸</span>
+            </div>
+            <div id="collapse-panel-trim" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Lengths (× 2.5m)</label>
+                    <input id="rm-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('r')">
+                </div>
+                <div class="field-group">
+                    <label>Price per length (£)</label>
+                    <input id="rm-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('r')">
+                </div>
+            </div>
+            </div>
+        </div>
+
+        <!-- Extra floors for Full Room -->
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('room-extra-floors')" id="collapse-toggle-room-extra-floors">
+                <div><span class="rm-section-title">Additional Floors</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-room-extra-floors">▸</span>
+            </div>
+            <div id="collapse-panel-room-extra-floors" class="hidden" style="padding-top:8px;">
+                <div id="extra-floors-list-room"></div>
+                <button type="button" class="btn-add-surface" onclick="addExtraSurfaceRoom('floor')">+ Add Another Floor Area</button>
+            </div>
+        </div>
+        <!-- Extra walls for Full Room -->
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('room-extra-walls')" id="collapse-toggle-room-extra-walls">
+                <div><span class="rm-section-title">Additional Walls</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-room-extra-walls">▸</span>
+            </div>
+            <div id="collapse-panel-room-extra-walls" class="hidden" style="padding-top:8px;">
+                <div id="extra-walls-list-room"></div>
+                <button type="button" class="btn-add-surface" onclick="addExtraSurfaceRoom('wall')">+ Add Another Wall</button>
+            </div>
+        </div>
+        </div><!-- /rm-form-room -->
 
         <!-- FLOOR ONLY -->
         <div id="rm-form-floor" class="measure-form hidden">
             <div class="form-section-label">Floor Measurements</div>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="field-group" style="margin-bottom:8px;">
+                <label style="color:var(--amber,#E07A2F);">Total m² <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
+                <input id="rm-f-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-f-area-direct','rm-f-length','rm-f-width')">
+            </div>
             <div class="field-row">
                 <div class="field-group">
                     <label>Length (m)</label>
@@ -1013,16 +1152,19 @@
                     <input id="rm-f-width" type="number" step="0.01" placeholder="e.g. 2.2" oninput="rmCalc()" data-disto>
                 </div>
             </div>
-            <div class="field-group" style="margin-bottom:6px;">
-                <label>Wastage % <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(tile over-order allowance)</span></label>
+            <div class="field-group" style="margin-bottom:0;">
+                <label>Wastage %</label>
                 <div style="display:flex;align-items:center;gap:8px;">
                     <input id="rm-f-wastage" type="number" min="0" max="50" step="1" value="10" oninput="rmCalc()" style="width:80px;">
                     <span style="color:var(--text-muted);font-size:13px;">%</span>
                     <span id="rm-f-wastage-note" style="font-size:12px;color:var(--text-muted);"></span>
                 </div>
             </div>
-            <div class="divider-label deduct-toggle" onclick="toggleDeductPanel('f')" id="deduct-toggle-f">
-                Deductions <span class="deduct-toggle-arrow">▸</span>
+        </div>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleDeductPanel('f')" id="deduct-toggle-f">
+                <div><span class="rm-section-title">Deductions</span></div>
+                <span class="rm-section-arrow">▸</span>
             </div>
             <div id="deduct-panel-f" class="hidden">
             <div class="deduct-chips">
@@ -1032,9 +1174,54 @@
             <div id="deduct-f-manual" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
             <div id="deduct-f-total" style="display:none;font-size:12px;color:#c00;font-weight:600;margin-bottom:8px;"></div>
             </div>
+
             <input id="rm-f-deduct" type="hidden" value="0">
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('extrawork-f')" id="collapse-toggle-extrawork-f">
-                Extra Work <span class="deduct-toggle-arrow" id="collapse-arrow-extrawork-f">▸</span>
+        </div>
+        <!-- WET ROOM FLOOR -->
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('wetroom-f')" id="collapse-toggle-wetroom-f">
+                <div><span class="rm-section-title">Wetroom Tray</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-wetroom-f">▸</span>
+            </div>
+            <div id="collapse-panel-wetroom-f" class="hidden" style="padding-top:8px;">
+                <label class="checkbox-label" style="margin-bottom:10px;">
+                    <input type="checkbox" id="rm-f-wetroom" onchange="rmToggleWetRoomF()">
+                    Wetroom Tray
+                </label>
+                <div id="rm-f-wetroom-opts" class="hidden">
+                    <div class="prep-options">
+                        <label class="prep-option">
+                            <input type="checkbox" id="rm-f-tray" onchange="rmFTrayToggle()">
+                            <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray-f"></span> flat rate</span></div>
+                        </label>
+                        <div id="rm-f-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
+                            <div class="field-row" style="gap:8px;">
+                                <div class="field-group">
+                                    <label>Tray Price (£)</label>
+                                    <input id="rm-f-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
+                                </div>
+                                <div class="field-group">
+                                    <label>Width (mm)</label>
+                                    <input id="rm-f-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                </div>
+                                <div class="field-group">
+                                    <label>Depth (mm)</label>
+                                    <input id="rm-f-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                </div>
+                            </div>
+                        </div>
+                        <label class="prep-option">
+                            <input type="checkbox" id="rm-f-tanking" onchange="rmCalc()">
+                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span id="pc-tank-f"></span>/m²</span></div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('extrawork-f')" id="collapse-toggle-extrawork-f">
+                <div><span class="rm-section-title">Extra Work</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-extrawork-f">▸</span>
             </div>
             <div id="collapse-panel-extrawork-f" class="hidden">
             <div class="field-row">
@@ -1048,9 +1235,9 @@
                 </div>
             </div>
             </div>
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('trim-f')" id="collapse-toggle-trim-f">
-                Tile Trim <span class="deduct-toggle-arrow" id="collapse-arrow-trim-f">▸</span>
-                <span id="trim-f-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span>
+            <div class="rm-section-toggle" onclick="toggleCollapse('trim-f')" id="collapse-toggle-trim-f">
+                <div><span class="rm-section-title">Tile Trim</span><span id="trim-f-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-trim-f">▸</span>
             </div>
             <div id="collapse-panel-trim-f" class="hidden">
             <div class="field-row">
@@ -1064,15 +1251,19 @@
                 </div>
             </div>
             </div>
-            <div class="divider-label">Tile</div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('floor-tile')" id="collapse-toggle-floor-tile">
+                <div><span class="rm-section-title">Tile</span><span id="floor-tile-badge" class="rm-section-badge"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-floor-tile">▸</span>
+            </div>
+            <div id="collapse-panel-floor-tile" class="hidden">
             <div class="field-row">
                 <div class="field-group">
                     <label>Tile W (mm)</label>
-                    <input id="rm-f-tilew" type="number" value="600" oninput="rmCalc()">
+                    <input id="rm-f-tilew" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
                 </div>
                 <div class="field-group">
                     <label>Tile H (mm)</label>
-                    <input id="rm-f-tileh" type="number" value="600" oninput="rmCalc()">
+                    <input id="rm-f-tileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
                 </div>
                 <div class="field-group">
                     <label>Tile Thickness (mm)</label>
@@ -1081,13 +1272,18 @@
             </div>
             <div class="field-group">
                 <label>Grout Joint (mm)</label>
-                <input id="rm-f-grout" type="number" value="2" oninput="rmCalc()">
+                <input id="rm-f-grout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
             </div>
             <label class="checkbox-label" style="margin-bottom:4px;">
                 <input type="checkbox" id="rm-f-ufh" onchange="rmCalc()">
                 Underfloor Heating (UFH)
             </label>
-            <div class="divider-label">Floor Preparation</div>
+            </div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('floor-prep')" id="collapse-toggle-floor-prep">
+                <div><span class="rm-section-title">Floor Preparation</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-floor-prep">▸</span>
+            </div>
+            <div id="collapse-panel-floor-prep" class="hidden">
             <div class="prep-options">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-cementboard" onchange="rmCalc()">
@@ -1134,14 +1330,20 @@
                 </label>
                 </div>
             </div>
+            </div>
             <!-- Extra floors -->
             <div id="extra-floors-list"></div>
             <button type="button" class="btn-add-surface" onclick="addExtraSurface('floor')">+ Add Another Floor Area</button>
-        </div>
+        </div><!-- /collapsed card -->
+        </div><!-- /rm-form-floor -->
 
         <!-- WALL ONLY -->
         <div id="rm-form-wall" class="measure-form hidden">
-            <div class="form-section-label">Wall Measurements</div>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="field-group" style="margin-bottom:8px;">
+                <label style="color:var(--amber,#E07A2F);">Total m² <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
+                <input id="rm-w-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-w-area-direct','rm-w-width','rm-w-height')">
+            </div>
             <div class="field-row">
                 <div class="field-group">
                     <label>Width (m)</label>
@@ -1152,15 +1354,18 @@
                     <input id="rm-w-height" type="number" step="0.01" placeholder="e.g. 2.4" oninput="rmCalc()" data-disto>
                 </div>
             </div>
-            <div class="field-group" style="margin-bottom:6px;">
-                <label>Wastage % <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(tile over-order allowance)</span></label>
+            <div class="field-group" style="margin-bottom:0;">
+                <label>Wastage %</label>
                 <div style="display:flex;align-items:center;gap:8px;">
                     <input id="rm-w-wastage" type="number" min="0" max="50" step="1" value="12" oninput="rmCalc()" style="width:80px;">
                     <span style="color:var(--text-muted);font-size:13px;">%</span>
                 </div>
             </div>
-            <div class="divider-label deduct-toggle" onclick="toggleDeductPanel('w')" id="deduct-toggle-w">
-                Deductions <span class="deduct-toggle-arrow">▸</span>
+        </div>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleDeductPanel('w')" id="deduct-toggle-w">
+                <div><span class="rm-section-title">Deductions</span></div>
+                <span class="rm-section-arrow">▸</span>
             </div>
             <div id="deduct-panel-w" class="hidden">
             <div class="deduct-chips">
@@ -1173,8 +1378,19 @@
             <div id="deduct-w-manual" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
             </div>
             <input id="rm-w-deduct" type="hidden" value="0">
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('extrawork-w')" id="collapse-toggle-extrawork-w">
-                Extra Work <span class="deduct-toggle-arrow" id="collapse-arrow-extrawork-w">▸</span>
+        </div>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('niches-w')" id="collapse-toggle-niches-w">
+                <div><span class="rm-section-title">Niches</span><span id="niches-w-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-niches-w">▸</span>
+            </div>
+            <div id="collapse-panel-niches-w" class="hidden">
+                <div id="niche-list-w"></div>
+                <button type="button" class="btn-add-surface" onclick="addNiche('w')">+ Add Niche</button>
+            </div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('extrawork-w')" id="collapse-toggle-extrawork-w">
+                <div><span class="rm-section-title">Extra Work</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-extrawork-w">▸</span>
             </div>
             <div id="collapse-panel-extrawork-w" class="hidden">
             <div class="field-row">
@@ -1188,9 +1404,9 @@
                 </div>
             </div>
             </div>
-            <div class="divider-label deduct-toggle" onclick="toggleCollapse('trim-w')" id="collapse-toggle-trim-w">
-                Tile Trim <span class="deduct-toggle-arrow" id="collapse-arrow-trim-w">▸</span>
-                <span id="trim-w-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span>
+            <div class="rm-section-toggle" onclick="toggleCollapse('trim-w')" id="collapse-toggle-trim-w">
+                <div><span class="rm-section-title">Tile Trim</span><span id="trim-w-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-trim-w">▸</span>
             </div>
             <div id="collapse-panel-trim-w" class="hidden">
             <div class="field-row">
@@ -1204,15 +1420,19 @@
                 </div>
             </div>
             </div>
-            <div class="divider-label">Tile</div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('wall-tile')" id="collapse-toggle-wall-tile">
+                <div><span class="rm-section-title">Tile</span><span id="wall-tile-badge" class="rm-section-badge"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-wall-tile">▸</span>
+            </div>
+            <div id="collapse-panel-wall-tile" class="hidden">
             <div class="field-row">
                 <div class="field-group">
                     <label>Tile W (mm)</label>
-                    <input id="rm-w-tilew" type="number" value="300" oninput="rmCalc()">
+                    <input id="rm-w-tilew" type="number" value="300" oninput="rmCalc();rmUpdateTileBadge('wall-tile','rm-w-tilew','rm-w-tileh','rm-w-grout')">
                 </div>
                 <div class="field-group">
                     <label>Tile H (mm)</label>
-                    <input id="rm-w-tileh" type="number" value="600" oninput="rmCalc()">
+                    <input id="rm-w-tileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('wall-tile','rm-w-tilew','rm-w-tileh','rm-w-grout')">
                 </div>
                 <div class="field-group">
                     <label>Tile Thickness (mm)</label>
@@ -1221,9 +1441,14 @@
             </div>
             <div class="field-group">
                 <label>Grout Joint (mm)</label>
-                <input id="rm-w-grout" type="number" value="2" oninput="rmCalc()">
+                <input id="rm-w-grout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('wall-tile','rm-w-tilew','rm-w-tileh','rm-w-grout')">
             </div>
-            <div class="divider-label">Wall Preparation</div>
+            </div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('wall-prep')" id="collapse-toggle-wall-prep">
+                <div><span class="rm-section-title">Wall Preparation</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-wall-prep">▸</span>
+            </div>
+            <div id="collapse-panel-wall-prep" class="hidden">
             <div class="prep-options">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-w-tanking" onchange="rmCalc()">
@@ -1244,9 +1469,235 @@
                 </label>
                 </div>
             </div>
+            </div>
             <!-- Extra walls -->
             <div id="extra-walls-list"></div>
             <button type="button" class="btn-add-surface" onclick="addExtraSurface('wall')">+ Add Another Wall</button>
+        </div><!-- /collapsed card -->
+        </div><!-- /rm-form-wall -->
+
+        <!-- SHOWER -->
+        <div id="rm-form-shower" class="measure-form hidden">
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Width (m)</label>
+                    <input id="rm-sh-width" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc()" data-disto>
+                </div>
+                <div class="field-group">
+                    <label>Depth (m)</label>
+                    <input id="rm-sh-depth" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc()" data-disto>
+                </div>
+                <div class="field-group">
+                    <label>Height (m)</label>
+                    <input id="rm-sh-height" type="number" step="0.01" placeholder="e.g. 2.1" oninput="rmCalc()" data-disto>
+                </div>
+            </div>
+            <div class="field-group" style="margin-bottom:10px;">
+                <label>Number of Tiled Walls</label>
+                <select id="rm-sh-walls" onchange="rmCalc()">
+                    <option value="2">2 walls (corner enclosure)</option>
+                    <option value="3">3 walls (alcove)</option>
+                </select>
+            </div>
+            <div class="field-group" style="margin-bottom:0;">
+                <label>Wall Wastage %</label>
+                <input id="rm-sh-wwastage" type="number" min="0" max="50" step="1" value="15" oninput="rmCalc()" style="width:80px;">
+            </div>
+        </div>
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('niches-sh')" id="collapse-toggle-niches-sh">
+                <div><span class="rm-section-title">Niches</span><span id="niches-sh-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-niches-sh">▸</span>
+            </div>
+            <div id="collapse-panel-niches-sh" class="hidden">
+                <div id="niche-list-sh"></div>
+                <button type="button" class="btn-add-surface" onclick="addNiche('sh')">+ Add Niche</button>
+            </div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('shower-wall-tile')" id="collapse-toggle-shower-wall-tile">
+                <div><span class="rm-section-title">Wall Tiles</span><span id="shower-wall-tile-badge" class="rm-section-badge"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-shower-wall-tile">▸</span>
+            </div>
+            <div id="collapse-panel-shower-wall-tile" class="hidden">
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Tile W (mm)</label>
+                    <input id="rm-sh-wtilew" type="number" value="300" oninput="rmCalc();rmUpdateTileBadge('shower-wall-tile','rm-sh-wtilew','rm-sh-wtileh','rm-sh-wgrout')">
+                </div>
+                <div class="field-group">
+                    <label>Tile H (mm)</label>
+                    <input id="rm-sh-wtileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('shower-wall-tile','rm-sh-wtilew','rm-sh-wtileh','rm-sh-wgrout')">
+                </div>
+                <div class="field-group">
+                    <label>Thickness (mm)</label>
+                    <input id="rm-sh-wtilethick" type="number" value="8" oninput="rmCalc()">
+                </div>
+            </div>
+            <div class="field-group">
+                <label>Wall Grout Joint (mm)</label>
+                <input id="rm-sh-wgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('shower-wall-tile','rm-sh-wtilew','rm-sh-wtileh','rm-sh-wgrout')">
+            </div>
+            </div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('shower-wall-prep')" id="collapse-toggle-shower-wall-prep">
+                <div><span class="rm-section-title">Wall Preparation</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-shower-wall-prep">▸</span>
+            </div>
+            <div id="collapse-panel-shower-wall-prep" class="hidden">
+            <div class="prep-options">
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-sh-tanking" onchange="rmCalc()" checked>
+                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-sh"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-sh-wprimer" onchange="rmCalc()">
+                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                </label>
+                <label class="prep-option">
+                    <input type="checkbox" id="rm-sh-wstone" onchange="rmToggleWStoneShower()">
+                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                </label>
+                <div id="rm-sh-wsealer-row" class="hidden">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-sh-wsealer" onchange="rmCalc()">
+                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                    </label>
+                </div>
+            </div>
+            </div>
+            <div class="divider-label">Wetroom Tray</div>
+            <label class="checkbox-label" style="margin-bottom:10px;">
+                <input type="checkbox" id="rm-sh-inclfloor" onchange="rmToggleShowerFloor()">
+                Include Wetroom Tray
+            </label>
+            <div id="rm-sh-floor-opts" class="hidden">
+                <div class="field-group" style="margin-bottom:6px;">
+                    <label>Floor Wastage %</label>
+                    <input id="rm-sh-fwastage" type="number" min="0" max="50" step="1" value="10" oninput="rmCalc()" style="width:80px;">
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('shower-floor-tile')" id="collapse-toggle-shower-floor-tile">
+                    <div><span class="rm-section-title">Floor Tiles</span><span id="shower-floor-tile-badge" class="rm-section-badge"></span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-shower-floor-tile">▸</span>
+                </div>
+                <div id="collapse-panel-shower-floor-tile" class="hidden">
+                <div class="field-row">
+                    <div class="field-group">
+                        <label>Tile W (mm)</label>
+                        <input id="rm-sh-ftilew" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('shower-floor-tile','rm-sh-ftilew','rm-sh-ftileh','rm-sh-fgrout')">
+                    </div>
+                    <div class="field-group">
+                        <label>Tile H (mm)</label>
+                        <input id="rm-sh-ftileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('shower-floor-tile','rm-sh-ftilew','rm-sh-ftileh','rm-sh-fgrout')">
+                    </div>
+                    <div class="field-group">
+                        <label>Thickness (mm)</label>
+                        <input id="rm-sh-ftilethick" type="number" value="10" oninput="rmCalc()">
+                    </div>
+                </div>
+                <div class="field-group">
+                    <label>Floor Grout Joint (mm)</label>
+                    <input id="rm-sh-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('shower-floor-tile','rm-sh-ftilew','rm-sh-ftileh','rm-sh-fgrout')">
+                </div>
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('shower-floor-prep')" id="collapse-toggle-shower-floor-prep">
+                <div><span class="rm-section-title">Floor Preparation</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-shower-floor-prep">▸</span>
+                </div>
+                <div id="collapse-panel-shower-floor-prep" class="hidden">
+                <div class="prep-options">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-sh-tray" onchange="rmShTrayToggle()">
+                        <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray"></span> flat rate</span></div>
+                    </label>
+                    <div id="rm-sh-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
+                            <div class="field-row" style="gap:8px;">
+                                <div class="field-group">
+                                    <label>Tray Price (£)</label>
+                                    <input id="rm-sh-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
+                                </div>
+                                <div class="field-group">
+                                    <label>Width (mm)</label>
+                                    <input id="rm-sh-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                </div>
+                                <div class="field-group">
+                                    <label>Depth (mm)</label>
+                                    <input id="rm-sh-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                </div>
+                            </div>
+                        </div>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-sh-ftanking" onchange="rmCalc()" checked>
+                        <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-sh"></span>/m²</span></div>
+                    </label>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-sh-levelling" onchange="rmToggleLevelSh()">
+                        <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+£<span class="pc-lev-sh"></span>/m²</span></div>
+                    </label>
+                    <div id="rm-sh-level-depth" class="prep-depth hidden">
+                        <label>Depth</label>
+                        <select id="rm-sh-leveldepth" onchange="rmCalc()">
+                            <option value="2">2 mm</option>
+                            <option value="3">3 mm</option>
+                            <option value="4">4 mm</option>
+                        </select>
+                    </div>
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-sh-primer" onchange="rmCalc()">
+                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                    </label>
+                </div>
+                </div>
+            </div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('extrawork-sh')" id="collapse-toggle-extrawork-sh">
+                <div><span class="rm-section-title">Extra Work</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-extrawork-sh">▸</span>
+            </div>
+            <div id="collapse-panel-extrawork-sh" class="hidden">
+                <div class="field-row">
+                    <div class="field-group" style="flex:2;">
+                        <label>Description</label>
+                        <input id="rm-sh-extra-desc" type="text" placeholder="e.g. Remove old tiles" oninput="rmCalc()">
+                    </div>
+                    <div class="field-group" style="flex:1;">
+                        <label>Cost (£)</label>
+                        <input id="rm-sh-extra-cost" type="number" step="0.01" placeholder="0" oninput="rmCalc()">
+                    </div>
+                </div>
+            </div>
+        </div><!-- /collapsed card -->
+        </div><!-- /rm-form-shower -->
+
+        </div><!-- /rm-step-measurements -->
+
+        <div class="form-card" style="margin-bottom:8px;">
+            <div class="rm-section-toggle" onclick="toggleCollapse('room-labour')" id="collapse-toggle-room-labour">
+                <div><span class="rm-section-title">Labour</span><span id="room-labour-badge" class="rm-section-badge"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-room-labour">▸</span>
+            </div>
+            <div id="collapse-panel-room-labour" class="hidden" style="padding-top:10px;">
+                <label class="checkbox-label" style="margin-bottom:12px;">
+                    <input type="checkbox" id="rm-customer-tiles" onchange="rmCalc()">
+                    Customer supplies tiles (no tile cost)
+                </label>
+                <div class="field-group" style="margin-bottom:0;">
+                    <label>Labour Pricing</label>
+                    <div class="labour-toggle">
+                        <button id="ltbtn-m2"  onclick="setLabourType('m2')"  class="ltbtn ltbtn-active">£/m²</button>
+                        <button id="ltbtn-day" onclick="setLabourType('day')" class="ltbtn">Day Rate</button>
+                    </div>
+                </div>
+                <div id="labour-day-opts" class="hidden" style="margin-top:10px;">
+                    <div class="field-row" style="margin-bottom:0;">
+                        <div class="field-group" style="margin-bottom:0;">
+                            <label>Days</label>
+                            <input id="rm-days" type="number" step="0.5" min="0.5" placeholder="e.g. 2" oninput="rmCalc()">
+                        </div>
+                        <div class="field-group" style="margin-bottom:0;">
+                            <label>Day Rate (£)</label>
+                            <input id="rm-dayrate" type="number" step="10" oninput="rmCalc()">
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="live-total-card">
@@ -1374,7 +1825,21 @@
             </div>
             <div class="form-card">
                 <div class="form-section-label">Company Details</div>
-                <div class="field-group"><label>Company Name</label><input id="set-company-name" placeholder="Your Tiling Co."></div>
+                <div class="field-group"><label>Company Name</label><input id="set-company-name" placeholder="Your Tiling Co." oninput="if(typeof updateEnquiryLinkPreview==='function')updateEnquiryLinkPreview()"></div>
+                <div class="field-group">
+                    <label>Company Logo <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(shown on your enquiry form)</span></label>
+                    <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+                        <div id="logo-preview-wrap" style="width:64px;height:64px;border-radius:10px;border:1.5px solid #334155;background:#1e293b;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                            <img id="set-logo-preview" style="width:64px;height:64px;object-fit:contain;display:none;" alt="Logo">
+                            <span id="logo-placeholder" style="font-size:22px;">🏢</span>
+                        </div>
+                        <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+                            <button type="button" onclick="uploadLogo()" id="btn-upload-logo" style="background:#e07a2f;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;">📷 Upload Logo</button>
+                            <button type="button" onclick="removeLogo()" id="btn-remove-logo" style="display:none;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">✕ Remove</button>
+                        </div>
+                    </div>
+                    <div id="logo-upload-msg" style="font-size:12px;color:#94a3b8;margin-top:6px;"></div>
+                </div>
                 <div class="field-row">
                     <div class="field-group"><label>Phone</label><input id="set-company-phone" type="tel"></div>
                     <div class="field-group"><label>Email</label><input id="set-company-email" type="email"></div>
@@ -1384,6 +1849,22 @@
                     <label>VAT Number <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(shown on quotes if entered)</span></label>
                     <input id="set-vat-number" placeholder="GB 123 4567 89" autocomplete="off">
                 </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label">Enquiry Link</div>
+                <div style="font-size:13px;color:#94a3b8;line-height:1.5;margin-bottom:12px;">Share your link on your website, Facebook, Instagram or business cards. Customers fill in a short form — the job lands straight in your TileIQ inbox with all the details ready to quote.</div>
+                <label style="font-size:13px;font-weight:600;color:#cbd5e1;">Your unique link name</label>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+                    <input id="set-enquiry-slug" placeholder="e.g. oxfordshire-tiling" style="flex:1;" oninput="if(typeof updateEnquiryLinkPreview==='function')updateEnquiryLinkPreview()">
+                    <button type="button" onclick="generateSlugFromCompany()" style="background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Auto</button>
+                </div>
+                <div id="enquiry-link-preview" style="font-size:12px;color:#64748b;margin-top:6px;word-break:break-all;">Set a link name above to generate your enquiry link</div>
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                    <button type="button" id="btn-copy-enquiry-link" onclick="copyEnquiryLink()" style="flex:1;background:#e07a2f;color:#fff;border:none;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;">📋 Copy Link</button>
+                    <button type="button" onclick="saveSlug()" style="flex:1;background:#10b981;color:#fff;border:none;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;" id="btn-save-slug">💾 Save</button>
+                    <button type="button" onclick="window.open('https://tile-iq.com/enquire/?t='+document.getElementById('set-enquiry-slug').value,'_blank')" style="flex:1;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;">🔗 Test</button>
+                </div>
+                <div id="slug-save-msg" style="font-size:12px;color:#10b981;margin-top:6px;display:none;">✅ Enquiry link saved!</div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Quote Settings</div>
@@ -1426,11 +1907,12 @@
                         <option value="none">None</option>
                         <option value="freeagent">FreeAgent</option>
                         <option value="quickbooks">QuickBooks</option>
+                        <option value="xero">Xero</option>
                         <option value="sage">Sage</option>
                     </select>
                 </div>
             </div>
-            <div class="form-card" style="margin-top:12px;">
+            <div class="form-card" style="display:none;margin-top:12px;">
                 <div class="form-section-label">📞 Business Phone</div>
                 <div class="field-group">
                     <label>Voicemail Greeting Name</label>
@@ -1439,7 +1921,10 @@
                 </div>
                 <div class="field-group">
                     <label>Your TileIQ Business Number</label>
-                    <input id="set-twilio-number" placeholder="e.g. 07428 322727" type="tel">
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input id="set-twilio-number" placeholder="e.g. 07428322727" type="tel" style="flex:1;">
+                        <button onclick="provisionTwilioNumber()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Get Number</button>
+                    </div>
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">The number assigned to you by TileIQ. Set this once to enable personalised greetings.</div>
                 </div>
                 <div class="field-group">
@@ -1475,8 +1960,12 @@
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Adhesive & Silicone</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Adhesive (per 20kg bag) £</label><input id="set-adhesive-price" type="number" step="0.01"></div>
-                    <div class="field-group"><label>Rapid Set (per 20kg bag) £</label><input id="set-rapid-adh-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Grey Standard (per 20kg) £</label><input id="set-adhesive-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Grey Rapid Set (per 20kg) £</label><input id="set-rapid-adh-price" type="number" step="0.01"></div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group"><label>White Standard (per 20kg) £</label><input id="set-adhesive-price-white" type="number" step="0.01"></div>
+                    <div class="field-group"><label>White Rapid Set (per 20kg) £</label><input id="set-rapid-adh-price-white" type="number" step="0.01"></div>
                 </div>
                 <div class="field-row">
                     <div class="field-group"><label>Silicone (per tube) £</label><input id="set-silicone-price" type="number" step="0.01"></div>
@@ -1552,6 +2041,8 @@
                 <div class="field-row">
                     <div class="field-group"><label>UFH Rate (£/m²)</label><input id="set-ufh-m2" type="number" step="0.5"></div>
                     <div class="field-group"><label>UFH Fixed Cost (£)</label><input id="set-ufh-fixed" type="number" step="1"></div>
+                    <div class="field-group"><label>Wet Room Tray (£)</label><input id="set-wet-room-tray" type="number" step="1"></div>
+                    <div class="field-group"><label>Niche Labour (£ each)</label><input id="set-niche-labour" type="number" step="1"></div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
@@ -1606,6 +2097,7 @@
         <button onclick="goJob()" class="btn-back">← Back</button>
         <h2 class="header-title">Quote</h2>
         <div style="display:flex;gap:6px;">
+            <button onclick="previewQuote()" class="btn-secondary" style="padding:8px 14px;font-size:14px;">👁 Preview</button>
             <button onclick="sendQuote()" class="btn-primary" style="padding:8px 14px;font-size:14px;">📤 Send</button>
         </div>
     </div></header>
@@ -1655,6 +2147,7 @@
             <div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:0.05em;margin-bottom:8px;">EXPORT QUOTE</div>
             <button id="btn-freeagent" onclick="freeAgentConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;">🔗 FreeAgent</button>
             <button id="btn-qbo" onclick="qboConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;border-color:#2CA01C;color:#2CA01C;">🔗 QuickBooks</button>
+            <button id="btn-xero" onclick="xeroConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;border-color:#13B5EA;color:#13B5EA;">🔗 Xero</button>
             <button id="btn-sage" onclick="sageConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;border-color:#00D639;color:#00D639;">🔗 Sage</button>
         </div>
     </div>
@@ -1695,7 +2188,7 @@
             <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">THIRD-PARTY SERVICES</div>
             <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
                 Supabase (database), Resend (email), Cloudflare (hosting), Firebase (push notifications), RevenueCat (subscriptions).
-                Accounting integrations (FreeAgent, QuickBooks, Sage) are optional and only activated by you.
+                Accounting integrations (FreeAgent, QuickBooks, Xero, Sage) are optional and only activated by you.
             </div>
             <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">CONTACT</div>
             <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:20px;">
@@ -1828,6 +2321,825 @@
   </div>
 </div>
 
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
 <div id="screen-terms" class="screen hidden"></div>
 
 <!-- BOTTOM NAV BAR -->
@@ -1854,9 +3166,17 @@
 <script src="vendor/biometric-auth.js"></script>
 <script src="js/bluetooth-le.js"></script>
 <script src="script.js"></script>
-<script>
-if (window.location.pathname === "/qbo-callback") { window.location.href = "tileiq://qbo-connected" + window.location.search; }
-if (window.location.pathname === "/fa-callback") { window.location.href = "tileiq://freeagent-callback" + window.location.search; }
-</script>
+<!-- QUOTE PREVIEW MODAL -->
+<div id="screen-quote-preview" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="closeQuotePreview()" class="btn-back">✕ Close</button>
+        <h2 class="header-title">Quote Preview</h2>
+        <button onclick="closeQuotePreview();sendQuote()" class="btn-primary" style="padding:8px 14px;font-size:13px;">📤 Send</button>
+    </div></header>
+    <div class="page-body">
+        <div id="quote-preview-content"></div>
+    </div>
+</div>
+
 </body>
 </html>
