@@ -533,7 +533,7 @@
 <div class="mosaic" aria-hidden="true" id="mosaic"></div>
 
 <script>
-  const mosaic = document.getElementById('mosaic');
+  const mosaic = document.getElementById('mosaic'); if (!mosaic) return;
   const litIndexes = new Set([2, 7, 11, 16, 20, 24, 28]);
   const midIndexes = new Set([0, 5, 10, 14, 18, 22, 30, 32]);
   for (let i = 0; i < 35; i++) {
