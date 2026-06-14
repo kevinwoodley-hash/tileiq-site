@@ -454,5 +454,79 @@
 </script>
 <script src="https://unpkg.com/@formspree/ajax@1" defer></script>
 
+
+<script>
+const WEB_WORKER = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
+const WEB_SYSTEM = `You are TileIQ Pro's assistant on the TileIQ Pro website. TileIQ Pro is a professional Android app for UK tiling contractors. Answer questions about the app clearly and concisely. Keep answers brief and helpful. Key facts: £9.99/month or £79.99/year. Free to download with 3 free jobs. Available on Android via Google Play. Features: tile/adhesive/grout calculations, PDF quotes, job management, Xero/QuickBooks/FreeAgent export, works offline, Leica Disto Bluetooth integration. Built by a professional tiler in Oxfordshire.`;
+let webChatHistory = [];
+
+function webChatAsk(q) {
+  document.getElementById("web-chat-input").value = q;
+  webChatSend();
+}
+
+async function webChatSend() {
+  const input = document.getElementById("web-chat-input");
+  const btn = document.getElementById("web-chat-btn");
+  const msgs = document.getElementById("web-chat-messages");
+  const chips = document.getElementById("web-chat-chips");
+  const text = input.value.trim();
+  if (!text) return;
+
+  // Hide chips after first message
+  if (chips) chips.style.display = "none";
+
+  // Add user message
+  msgs.insertAdjacentHTML("beforeend", `
+    <div style="display:flex;justify-content:flex-end;">
+      <div style="background:rgba(245,166,35,0.15);border:1px solid rgba(245,166,35,0.25);border-radius:10px;padding:10px 14px;font-size:0.85rem;color:var(--smoke);line-height:1.5;max-width:400px;">${text}</div>
+    </div>`);
+  msgs.scrollTop = msgs.scrollHeight;
+  input.value = "";
+  btn.disabled = true;
+  btn.textContent = "…";
+
+  webChatHistory.push({ role: "user", content: text });
+
+  // Typing indicator
+  const typingId = "typing-" + Date.now();
+  msgs.insertAdjacentHTML("beforeend", `
+    <div id="${typingId}" style="display:flex;gap:10px;align-items:flex-start;">
+      <div style="width:28px;height:28px;border-radius:8px;background:rgba(245,166,35,0.15);border:1px solid rgba(245,166,35,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.8rem;">🏠</div>
+      <div style="background:var(--slate-mid);border-radius:10px;padding:10px 14px;font-size:0.85rem;color:var(--stone);">Thinking…</div>
+    </div>`);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  try {
+    const resp = await fetch(WEB_WORKER, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "help", system: WEB_SYSTEM, messages: webChatHistory })
+    });
+    const data = await resp.json();
+    const reply = data.text || "Sorry, I couldn't get a response. Please try again.";
+    webChatHistory.push({ role: "assistant", content: reply });
+
+    document.getElementById(typingId)?.remove();
+    msgs.insertAdjacentHTML("beforeend", `
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <div style="width:28px;height:28px;border-radius:8px;background:rgba(245,166,35,0.15);border:1px solid rgba(245,166,35,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.8rem;">🏠</div>
+        <div style="background:var(--slate-mid);border-radius:10px;padding:10px 14px;font-size:0.85rem;color:var(--smoke);line-height:1.5;max-width:440px;">${reply.replace(/
+/g,"<br>")}</div>
+      </div>`);
+  } catch(e) {
+    document.getElementById(typingId)?.remove();
+    msgs.insertAdjacentHTML("beforeend", `
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <div style="width:28px;height:28px;border-radius:8px;background:rgba(245,166,35,0.15);border:1px solid rgba(245,166,35,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.8rem;">🏠</div>
+        <div style="background:var(--slate-mid);border-radius:10px;padding:10px 14px;font-size:0.85rem;color:#f87171;">Sorry, something went wrong. Please try again.</div>
+      </div>`);
+  }
+
+  btn.disabled = false;
+  btn.textContent = "↑";
+  msgs.scrollTop = msgs.scrollHeight;
+}
+</script>
 </body>
 </html>
