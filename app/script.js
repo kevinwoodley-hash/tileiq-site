@@ -36,7 +36,7 @@ window.onerror = function(msg, src, line) {
 };
 
 /* ─── BLOCK WEB BROWSER ACCESS ──────────────────────────────── */
-if (false && (!window.Capacitor || !window.Capacitor.isNativePlatform())) {
+if (!window.Capacitor || !window.Capacitor.isNativePlatform()) {
   document.body.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;background:#0f172a;color:#f1f5f9;text-align:center;padding:2rem;">
       <img src="assets/icon.png" style="width:80px;margin-bottom:1.5rem;border-radius:16px;" />
@@ -363,6 +363,24 @@ setTimeout(() => {
 
 
 function esc(s)    { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ── Auto-fill demo credentials if ?demo=1 ────────────────────
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") {
+        document.addEventListener("DOMContentLoaded", () => {
+            const emailEl = document.getElementById("si-email");
+            const passEl  = document.getElementById("si-password");
+            if (emailEl) emailEl.value = "demo@tile-iq.com";
+            if (passEl)  passEl.value  = "Demo1234!";
+            // Show a demo banner
+            const banner = document.createElement("div");
+            banner.style.cssText = "position:fixed;top:0;left:0;right:0;background:#E07A2F;color:#000;text-align:center;padding:8px;font-size:13px;font-weight:600;z-index:9999;";
+            banner.textContent = "🎮 Demo Mode — credentials pre-filled. Tap Sign In to explore.";
+            document.body.prepend(banner);
+        });
+    }
+})();
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 
@@ -908,6 +926,12 @@ async function submitNewPassword() {
 }
 
 async function changePassword() {
+    // Block password change for demo account
+    if (currentUser?.email === "demo@tile-iq.com") {
+        const msgEl = document.getElementById("change-pwd-msg");
+        if (msgEl) { msgEl.classList.remove("hidden"); msgEl.textContent = "Password cannot be changed for the demo account."; }
+        return;
+    }
     const newPwd  = document.getElementById("set-new-password").value;
     const confPwd = document.getElementById("set-confirm-password").value;
     const msgEl   = document.getElementById("change-pwd-msg");
