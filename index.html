@@ -133,30 +133,44 @@
 
     /* MOBILE */
     @media(max-width:768px){
-      .hero{grid-template-columns:1fr;gap:32px;padding:24px 0 40px}
+      .hero{grid-template-columns:1fr;gap:28px;padding:24px 0 40px}
       .hero-right{display:none}
-      .steps{grid-template-columns:1fr 1fr;gap:20px}
-      .features-grid{grid-template-columns:1fr 1fr}
+      .hero-desc{font-size:1rem;margin-bottom:24px}
+      .steps{grid-template-columns:1fr 1fr;gap:16px}
+      .features-grid{grid-template-columns:1fr 1fr;gap:10px}
       .pricing-grid{grid-template-columns:1fr 1fr}
-      h1{font-size:2.6rem}
-      .compare-table{font-size:0.78rem}
+      .pricing-comparison-wrap{grid-template-columns:1fr !important}
+      h1{font-size:2.4rem}
       .beta-box{padding:20px}
+      .hero-ctas{gap:10px}
+      .btn-primary,.btn-secondary{width:100%;justify-content:center}
     }
     @media(max-width:480px){
       .wrap{padding:0 16px}
-      h1{font-size:2.2rem}
-      .steps{grid-template-columns:1fr}
-      .features-grid{grid-template-columns:1fr}
-      .pricing-grid{grid-template-columns:1fr}
+      h1{font-size:2rem;margin-bottom:14px}
+      .badge{font-size:0.65rem;padding:5px 10px}
+      .hero{padding:12px 0 24px}
+      .hero-desc{font-size:0.92rem;margin-bottom:20px}
+      .btn-primary{padding:16px 20px;font-size:1rem}
+      .btn-secondary{padding:13px 16px;font-size:0.85rem}
+      .hero-note{font-size:0.72rem}
       .pills{display:none}
-      footer{flex-direction:column;align-items:flex-start;gap:10px}
+      .steps{grid-template-columns:1fr;gap:16px}
+      .features-grid{grid-template-columns:1fr;gap:10px}
+      .pricing-grid{grid-template-columns:1fr;gap:10px}
       .mobile-hide{display:none !important}
-      section{padding:36px 0}
-      .beta-box{padding:16px}
-      .hero{padding:16px 0 28px}
-    }
-    @media(max-width:768px){
-      .pricing-comparison-wrap{grid-template-columns:1fr !important}
+      section{padding:28px 0}
+      .beta-box{padding:16px 18px}
+      .beta-title{font-size:0.95rem}
+      .beta-list span{font-size:0.8rem}
+      .beta-gift{font-size:0.8rem;padding:10px 12px}
+      .price-amount{font-size:1.8rem}
+      .chat-box{border-radius:10px}
+      .chat-messages{max-height:220px}
+      .section-label{font-size:0.65rem;margin-bottom:18px}
+      footer{flex-direction:column;align-items:flex-start;gap:10px}
+      nav{padding:14px 0}
+      .logo-name{font-size:1rem}
     }
   </style>
 </head>
