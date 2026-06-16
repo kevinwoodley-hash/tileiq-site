@@ -6479,6 +6479,7 @@ function renderMaterials() {
     let grandCBBoards = 0, grandLevelBags = 0;
     let grandClips = 0, grandWedges = 0;
     let grandPrimerM2 = 0, grandSealerM2 = 0;
+    let grandTankingM2 = 0;
     let grandTrimLengths = 0;
     let hasUFH = false;
 
@@ -6517,6 +6518,7 @@ function renderMaterials() {
             grandClips    += s.clips ? (s.levelClips  || 0) : 0;
             grandWedges   += s.clips ? (s.levelWedges || 0) : 0;
             if (s.primer)       grandPrimerM2  += s.area || 0;
+            if (s.tanking)      grandTankingM2 += s.area || 0;
             const isStone = s.stone || s.tileType === "natural_stone";
             const hasSealer = s.sealer || s.tileType === "natural_stone";
             if (isStone && hasSealer) grandSealerM2 += s.area || 0;
@@ -6607,6 +6609,7 @@ function renderMaterials() {
             <div class="mat-total-item"><span class="mat-total-label">Grout</span><span class="mat-total-value">Wall: ${grandWallGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br>Floor: ${grandFloorGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br><span style="font-size:11px;font-weight:600;">Total: ${grandWallGroutBags + grandFloorGroutBags} bag${(grandWallGroutBags + grandFloorGroutBags)!==1?"s":""}</span></span></div>
             ${grandSiliconeTubes > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Sealant</span><span class="mat-total-value">${grandSiliconeTubes} tube${grandSiliconeTubes!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${grandSiliconeMetres.toFixed(1)}m total</span><br><span style="font-size:11px;font-weight:400;">Floor perimeter bead: ${grandSiliconeFloor.toFixed(1)}m</span></span></div>` : ""}
             ${grandCBBoards  > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Cement Board</span><span class="mat-total-value">${grandCBBoards} board${grandCBBoards!==1?"s":""}</span></div>` : ""}
+            ${grandTankingM2 > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Tanking</span><span class="mat-total-value">${grandTankingM2.toFixed(2)} m² · £${(grandTankingM2 * (parseFloat(settings?.tanking)||15)).toFixed(2)}</span></div>` : ""}
             ${grandLevelBags > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling</span><span class="mat-total-value">${grandLevelBags} × 20kg bag${grandLevelBags!==1?"s":""}</span></div>` : ""}
             ${grandClips     > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling Clips</span><span class="mat-total-value">${grandClips}</span></div>` : ""}
             ${grandWedges    > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Wedges</span><span class="mat-total-value">${grandWedges}</span></div>` : ""}
