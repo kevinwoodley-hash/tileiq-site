@@ -3857,6 +3857,7 @@ function restoreRoomInputs(room) {
             set("rm-r-wtilethick", walls[0].tileThick || 8);
             set("rm-r-wgrout", walls[0].grout);
             setCb("rm-r-tanking", walls[0].tanking);
+            setCb("rm-r-wtanking", walls[0].tanking);
             setCb("rm-r-wprimer", walls[0].primer);
             setCb("rm-r-wstone",  walls[0].stone);
             setCb("rm-r-wsealer", walls[0].sealer);
