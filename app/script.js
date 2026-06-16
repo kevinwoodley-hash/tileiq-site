@@ -3196,12 +3196,18 @@ function renderJobView() {
         const wedges     = surfaces.reduce((a, s) => a + (s.clips ? (s.levelWedges || 0) : 0), 0);
         const clipCost   = surfaces.reduce((a, s) => a + (s.clipCost      || 0), 0);
 
+        const hasTanking  = surfaces.some(s => s.tanking);
+        const hasPrimer   = surfaces.some(s => s.primer);
+        const tankingCost = surfaces.reduce((a,s) => a + (s.tanking ? (s.area||0) * (parseFloat(settings?.tanking)||15) : 0), 0);
+        const primerCost  = surfaces.reduce((a,s) => a + (s.primer  ? (s.area||0) * (parseFloat(settings?.primerPrice)||3.5) : 0), 0);
         const matSchedule = [
-            adhBags  > 0 ? `Adhesive: ${adhBags} × 20kg`                                       : "",
-            groutBags> 0 ? `Grout: ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""}` : "",
-            cbBoards > 0 ? `Cement Board: ${cbBoards} board${cbBoards !== 1 ? "s" : ""}`       : "",
-            levelBags> 0 ? `Levelling: ${levelBags} × 20kg`                                    : "",
-            clips    > 0 ? `Clips: ${clips}  ·  Wedges: ${wedges}${clipCost > 0 ? `  ·  £${clipCost.toFixed(2)}` : ""}` : "",
+            adhBags   > 0 ? `Adhesive: ${adhBags} × 20kg`                                       : "",
+            groutBags > 0 ? `Grout: ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""}` : "",
+            cbBoards  > 0 ? `Cement Board: ${cbBoards} board${cbBoards !== 1 ? "s" : ""}`       : "",
+            levelBags > 0 ? `Levelling: ${levelBags} × 20kg`                                    : "",
+            hasTanking     ? `Tanking: £${tankingCost.toFixed(2)}`                               : "",
+            hasPrimer      ? `Primer: £${primerCost.toFixed(2)}`                                 : "",
+            clips     > 0 ? `Clips: ${clips}  ·  Wedges: ${wedges}${clipCost > 0 ? `  ·  £${clipCost.toFixed(2)}` : ""}` : "",
         ].filter(Boolean).join("  ·  ");
 
         const seal = calcSealantRoom(r);
@@ -3223,7 +3229,9 @@ function renderJobView() {
                 <span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${mats.toFixed(2)}</span></span>
                 <span class="rcb-sep">|</span>
                 <span class="rcb-item"><span class="rcb-label">Labour</span><span class="rcb-value">£${lab.toFixed(2)}</span></span>
-                ${prep > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep</span><span class="rcb-value">£${prep.toFixed(2)}</span></span>` : ""}
+                ${hasTanking ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Tanking</span><span class="rcb-value">£${tankingCost.toFixed(2)}</span></span>` : ""}
+                ${hasPrimer  ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Primer</span><span class="rcb-value">£${primerCost.toFixed(2)}</span></span>` : ""}
+                ${(prep - tankingCost - primerCost) > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep</span><span class="rcb-value">£${(prep - tankingCost - primerCost).toFixed(2)}</span></span>` : ""}
                 ${ufh  > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">UFH</span><span class="rcb-value">£${ufh.toFixed(2)}</span></span>` : ""}
             </div>
             ${matSchedule ? `<div class="room-mat-schedule">${matSchedule}</div>` : ""}
@@ -3684,7 +3692,7 @@ function rmToggleWetRoomR() {
     const traySpan = document.getElementById("pc-wet-tray-r");
     if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
     const tankSpan = document.getElementById("pc-tank-r");
-    if (tankSpan) tankSpan.textContent = settings?.tankingRate || 12;
+    if (tankSpan) tankSpan.textContent = settings?.tanking || settings?.tankingRate || 15;
     rmCalc();
 }
 function rmRTrayToggle() {
@@ -3707,7 +3715,7 @@ function rmToggleWetRoomF() {
     const traySpan = document.getElementById("pc-wet-tray-f");
     if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
     const tankSpan = document.getElementById("pc-tank-f");
-    if (tankSpan) tankSpan.textContent = settings?.tankingRate || 12;
+    if (tankSpan) tankSpan.textContent = settings?.tanking || settings?.tankingRate || 15;
     rmCalc();
 }
 function rmFTrayToggle() {
@@ -4831,7 +4839,7 @@ const tileCost = customerTiles ? 0 : s.area * S.tilePrice;
             s.prepLines.push(`Levelling Compound ${depth}mm: ${bags} bag${bags !== 1 ? "s" : ""} (£${bagPrice.toFixed(2)}/bag) + labour = £${totalCost.toFixed(2)}`);
         }
     }
-    if (s.type === "wall" && s.tanking) {
+    if (s.tanking) {
         const rate = parseFloat(S.tanking) || 15;
         const c    = s.area * rate;
         s.prepCost += c; s.prepLines.push(`Tanking: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
@@ -6492,7 +6500,9 @@ function renderMaterials() {
             const prepItems = [];
             if (s.cementBoards) prepItems.push(`${s.cementBoards} cement board${s.cementBoards!==1?"s":""}`);
             if (s.levelBags)    prepItems.push(`${s.levelBags} × 20kg levelling bag${s.levelBags!==1?"s":""}`);
-            if (s.tanking)      prepItems.push("tanking applied");
+            if (s.tanking)      prepItems.push(`Tanking £${(s.prepCost > 0 ? s.prepCost : parseFloat(settings?.tanking||15) * s.area).toFixed(2)}`);
+            else if (s.prepCost > 0) prepItems.push(`Prep £${s.prepCost.toFixed(2)}`);
+            if (s.primer && !s.tanking) prepItems.push(`Primer £${(parseFloat(settings?.primerPrice||3.50) * s.area).toFixed(2)}`);
 
             return `
             <tr class="mat-surf-row">
@@ -7491,6 +7501,17 @@ function buildPDFDoc() {
         doc.text(`£${roomTotal.toFixed(2)}`, W - 14, y + 4, { align:"right" });
         y += 7;
 
+        // Show prep line items (tanking, cement board, etc.)
+        const allPrepLines = surfaces.flatMap(s => s.prepLines || []);
+        if (allPrepLines.length > 0) {
+            allPrepLines.forEach(line => {
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(7);
+                doc.setTextColor(...SLATE);
+                doc.text(`  ↳ ${line}`, 16, y + 3.5);
+                y += 5.5;
+            });
+        }
         if (extraCost > 0) {
             doc.setFont("helvetica", "normal");
             doc.setFontSize(7.5);
