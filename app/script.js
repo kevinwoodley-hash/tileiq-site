@@ -4535,7 +4535,8 @@ function buildSurfaces() {
         const wallTileThick = g("rm-r-wtilethick") || 8;
         const wallGrout     = g("rm-r-wgrout")     || 2;
         const totalWallArea = 2 * (rL + rW) * H;
-        const tanking = cb("rm-r-tanking");
+        const tanking = cb("rm-r-wtanking");
+        console.log("WALL TANKING CHECKBOX:", tanking, document.getElementById("rm-r-wtanking")?.checked);
         const wPrimer = cb("rm-r-wprimer");
         const wStone  = cb("rm-r-wstone");
         const wSealer = cb("rm-r-wsealer");
@@ -4553,7 +4554,7 @@ function buildSurfaces() {
             type:"wall", label:w.label, width:w.width, height:w.height,
             wastage: wallWastage,
             tileW:wallTileW, tileH:wallTileH, tileThick:wallTileThick, grout:wallGrout,
-            tanking: tanking || cb("rm-r-wtanking"), primer:wPrimer, stone:wStone, sealer:wSealer,
+            tanking: tanking, primer:wPrimer, stone:wStone, sealer:wSealer,
             area: Math.max(0, w.width * w.height - deduct * (w.width * w.height / totalWallArea))
         }));
 
