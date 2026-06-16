@@ -1111,6 +1111,7 @@ async function initBiometricButton() {
         if (dbg) dbg.textContent = "";
         return;
     }
+
     try {
         await initBiometricPlugin();
         if (BiometricAuth) {
@@ -7881,7 +7882,7 @@ async function addrSearch(prefix) {
             box._results      = results;
             box.style.display = "block";
         } catch(e) { box.style.display = "none"; }
-    }, 400);
+    }, 1200);
 }
 
 function addrPick(prefix, idx) {
