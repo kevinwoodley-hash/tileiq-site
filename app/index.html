@@ -892,10 +892,25 @@
                 </div>
                 <div id="collapse-panel-room-wall-prep" class="hidden">
                     <div class="prep-options">
-                        <label class="prep-option">
-                            <input type="checkbox" id="rm-r-wtanking" onchange="rmCalc()">
-                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-r"></span>/m²</span></div>
-                        </label>
+                        <div class="prep-text" style="margin-bottom:6px;"><span style="font-weight:600;">Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-r"></span>/m²</span></div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;">
+                            <label class="prep-option" style="margin:0;">
+                                <input type="checkbox" id="rm-r-wtanking-a" onchange="rmCalc()">
+                                <div class="prep-text"><span>Wall A (front)</span></div>
+                            </label>
+                            <label class="prep-option" style="margin:0;">
+                                <input type="checkbox" id="rm-r-wtanking-b" onchange="rmCalc()">
+                                <div class="prep-text"><span>Wall B (back)</span></div>
+                            </label>
+                            <label class="prep-option" style="margin:0;">
+                                <input type="checkbox" id="rm-r-wtanking-c" onchange="rmCalc()">
+                                <div class="prep-text"><span>Wall C (left)</span></div>
+                            </label>
+                            <label class="prep-option" style="margin:0;">
+                                <input type="checkbox" id="rm-r-wtanking-d" onchange="rmCalc()">
+                                <div class="prep-text"><span>Wall D (right)</span></div>
+                            </label>
+                        </div>
                         <label class="prep-option">
                             <input type="checkbox" id="rm-r-wprimer" onchange="rmCalc()">
                             <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
@@ -2271,6 +2286,19 @@
             © 2026 TileIQ Pro
         </div>
     </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
 </div>
 
 

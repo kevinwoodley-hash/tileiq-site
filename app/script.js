@@ -3797,7 +3797,7 @@ function clearRoomInputs() {
     document.getElementById("rm-r-floor-opts").style.display = "";
     // reset prep checkboxes
     ["rm-r-cementboard","rm-r-membrane","rm-r-levelling","rm-r-tanking","rm-r-clips",
-     "rm-r-primer","rm-r-stone","rm-r-sealer","rm-r-wprimer","rm-r-wstone","rm-r-wsealer","rm-r-wtanking",
+     "rm-r-primer","rm-r-stone","rm-r-sealer","rm-r-wprimer","rm-r-wstone","rm-r-wsealer","rm-r-wtanking","rm-r-wtanking-a","rm-r-wtanking-b","rm-r-wtanking-c","rm-r-wtanking-d",
      "rm-f-cementboard","rm-f-membrane","rm-f-levelling","rm-f-clips","rm-f-tanking",
      "rm-f-primer","rm-f-stone","rm-f-sealer",
      "rm-w-tanking","rm-w-primer","rm-w-stone","rm-w-sealer",
@@ -3879,7 +3879,10 @@ function restoreRoomInputs(room) {
             set("rm-r-wtilethick", walls[0].tileThick || 8);
             set("rm-r-wgrout", walls[0].grout);
             setCb("rm-r-tanking", walls[0].tanking);
-            setCb("rm-r-wtanking", walls[0].tanking);
+            setCb("rm-r-wtanking-a", walls[0]?.tanking || false);
+            setCb("rm-r-wtanking-b", walls[1]?.tanking || false);
+            setCb("rm-r-wtanking-c", walls[2]?.tanking || false);
+            setCb("rm-r-wtanking-d", walls[3]?.tanking || false);
             setCb("rm-r-wprimer", walls[0].primer);
             setCb("rm-r-wstone",  walls[0].stone);
             setCb("rm-r-wsealer", walls[0].sealer);
@@ -4558,8 +4561,10 @@ function buildSurfaces() {
         const wallTileThick = g("rm-r-wtilethick") || 8;
         const wallGrout     = g("rm-r-wgrout")     || 2;
         const totalWallArea = 2 * (rL + rW) * H;
-        const tanking = cb("rm-r-wtanking");
-        console.log("WALL TANKING CHECKBOX:", tanking, document.getElementById("rm-r-wtanking")?.checked);
+        const tankingA = cb("rm-r-wtanking-a") || cb("rm-r-wtanking");
+        const tankingB = cb("rm-r-wtanking-b") || cb("rm-r-wtanking");
+        const tankingC = cb("rm-r-wtanking-c") || cb("rm-r-wtanking");
+        const tankingD = cb("rm-r-wtanking-d") || cb("rm-r-wtanking");
         const wPrimer = cb("rm-r-wprimer");
         const wStone  = cb("rm-r-wstone");
         const wSealer = cb("rm-r-wsealer");
@@ -4573,11 +4578,11 @@ function buildSurfaces() {
             { label:"Wall B (back)",  width:rL, height:H },
             { label:"Wall C (left)",  width:rW, height:H },
             { label:"Wall D (right)", width:rW, height:H },
-        ].map(w => ({
+        ].map((w, wi) => ({
             type:"wall", label:w.label, width:w.width, height:w.height,
             wastage: wallWastage,
             tileW:wallTileW, tileH:wallTileH, tileThick:wallTileThick, grout:wallGrout,
-            tanking: tanking, primer:wPrimer, stone:wStone, sealer:wSealer,
+            tanking: [tankingA, tankingB, tankingC, tankingD][wi] || false, primer:wPrimer, stone:wStone, sealer:wSealer,
             area: Math.max(0, w.width * w.height - deduct * (w.width * w.height / totalWallArea))
         }));
 
