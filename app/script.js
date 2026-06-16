@@ -3775,7 +3775,7 @@ function clearRoomInputs() {
     document.getElementById("rm-r-floor-opts").style.display = "";
     // reset prep checkboxes
     ["rm-r-cementboard","rm-r-membrane","rm-r-levelling","rm-r-tanking","rm-r-clips",
-     "rm-r-primer","rm-r-stone","rm-r-sealer","rm-r-wprimer","rm-r-wstone","rm-r-wsealer",
+     "rm-r-primer","rm-r-stone","rm-r-sealer","rm-r-wprimer","rm-r-wstone","rm-r-wsealer","rm-r-wtanking",
      "rm-f-cementboard","rm-f-membrane","rm-f-levelling","rm-f-clips","rm-f-tanking",
      "rm-f-primer","rm-f-stone","rm-f-sealer",
      "rm-w-tanking","rm-w-primer","rm-w-stone","rm-w-sealer",
@@ -3926,6 +3926,7 @@ function restoreRoomInputs(room) {
         set("rm-w-tilethick", walls[0].tileThick || 8);
         set("rm-w-grout",  walls[0].grout);
         setCb("rm-w-tanking", walls[0].tanking);
+        setCb("rm-r-wtanking", walls[0].tanking);
         setCb("rm-w-primer",  walls[0].primer);
         setCb("rm-w-stone",   walls[0].stone);
         setCb("rm-w-sealer",  walls[0].sealer);
@@ -4552,7 +4553,7 @@ function buildSurfaces() {
             type:"wall", label:w.label, width:w.width, height:w.height,
             wastage: wallWastage,
             tileW:wallTileW, tileH:wallTileH, tileThick:wallTileThick, grout:wallGrout,
-            tanking, primer:wPrimer, stone:wStone, sealer:wSealer,
+            tanking: tanking || cb("rm-r-wtanking"), primer:wPrimer, stone:wStone, sealer:wSealer,
             area: Math.max(0, w.width * w.height - deduct * (w.width * w.height / totalWallArea))
         }));
 

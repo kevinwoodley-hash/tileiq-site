@@ -893,6 +893,10 @@
                 <div id="collapse-panel-room-wall-prep" class="hidden">
                     <div class="prep-options">
                         <label class="prep-option">
+                            <input type="checkbox" id="rm-r-wtanking" onchange="rmCalc()">
+                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-r"></span>/m²</span></div>
+                        </label>
+                        <label class="prep-option">
                             <input type="checkbox" id="rm-r-wprimer" onchange="rmCalc()">
                             <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
                         </label>
@@ -2267,6 +2271,19 @@
             © 2026 TileIQ Pro
         </div>
     </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
 </div>
 
 
