@@ -4561,6 +4561,16 @@ function buildSurfaces() {
         const wallTileThick = g("rm-r-wtilethick") || 8;
         const wallGrout     = g("rm-r-wgrout")     || 2;
         const totalWallArea = 2 * (rL + rW) * H;
+        const L = parseFloat(document.getElementById("rm-r-length")?.value) || 0;
+        const W = parseFloat(document.getElementById("rm-r-width")?.value) || 0;
+        const H = parseFloat(document.getElementById("rm-r-height")?.value) || 0;
+        // Update wall labels with dimensions
+        if (L && W && H) {
+            const la = document.getElementById("rm-r-wtank-label-a"); if (la) la.textContent = `${L.toFixed(1)}m × ${H.toFixed(1)}m`;
+            const lb = document.getElementById("rm-r-wtank-label-b"); if (lb) lb.textContent = `${L.toFixed(1)}m × ${H.toFixed(1)}m`;
+            const lc = document.getElementById("rm-r-wtank-label-c"); if (lc) lc.textContent = `${W.toFixed(1)}m × ${H.toFixed(1)}m`;
+            const ld = document.getElementById("rm-r-wtank-label-d"); if (ld) ld.textContent = `${W.toFixed(1)}m × ${H.toFixed(1)}m`;
+        }
         const tankingA = cb("rm-r-wtanking-a") || cb("rm-r-wtanking");
         const tankingB = cb("rm-r-wtanking-b") || cb("rm-r-wtanking");
         const tankingC = cb("rm-r-wtanking-c") || cb("rm-r-wtanking");
