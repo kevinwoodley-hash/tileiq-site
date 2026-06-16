@@ -3244,8 +3244,30 @@ function renderJobView() {
     }).join("");
 
     const grandTotal = rooms.reduce((a, r) => a + (r.surfaces||[]).reduce((b,s) => b + parseFloat(s.total||0), 0) + parseFloat(r.extraWorkCost||0), 0);
+
+    // Build prep breakdown across all rooms
+    let totalMats = 0, totalLabour = 0, totalTanking = 0, totalPrep = 0;
+    rooms.forEach(r => {
+        const ct = r.tileSupply === "customer";
+        const totalArea = (r.surfaces||[]).reduce((a,s) => a+(s.area||0), 0);
+        const labourOpts = r.labourType === "day" ? {type:"day", days:r.days||1, dayRate:r.dayRate||settings.dayRate||200, totalArea} : null;
+        (r.surfaces||[]).forEach(s => { s.tileType = s.tileType || r.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
+        totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0);
+        totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0);
+        totalTanking += (r.surfaces||[]).reduce((a,s) => a+(s.tanking ? (s.area||0)*(parseFloat(settings?.tanking)||15) : 0), 0);
+        totalPrep    += (r.surfaces||[]).reduce((a,s) => a+(s.prepCost||0), 0);
+    });
+    const otherPrep = totalPrep - totalTanking;
+
+    const prepBreakdown = [
+        totalMats    > 0 ? `Materials £${totalMats.toFixed(2)}`    : "",
+        totalLabour  > 0 ? `Labour £${totalLabour.toFixed(2)}`      : "",
+        totalTanking > 0 ? `Tanking £${totalTanking.toFixed(2)}`    : "",
+        otherPrep    > 0.01 ? `Prep £${otherPrep.toFixed(2)}`       : "",
+    ].filter(Boolean).join(" · ");
+
     totalEl.classList.remove("hidden");
-    totalEl.innerHTML = `<span>Job Total</span><strong>£${grandTotal.toFixed(2)}</strong>`;
+    totalEl.innerHTML = `<span>Job Total</span><strong>£${grandTotal.toFixed(2)}</strong>${prepBreakdown ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;font-weight:400;">${prepBreakdown}</div>` : ""}`;
 
     // Voicemail transcript below rooms
     const transcriptEl = document.getElementById("job-voicemail-transcript");
