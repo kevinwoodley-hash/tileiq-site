@@ -152,6 +152,10 @@
   .btn-next { background: var(--amber); color: var(--white); }
   .btn-next:hover { background: var(--amber-light); transform: translateY(-1px); }
   .btn-submit { background: var(--midnight); color: var(--white); }
+  .photo-upload-area { border: 2px dashed var(--amber); border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; margin-bottom: 16px; background: rgba(224,122,47,0.04); transition: background 0.2s; }
+  .photo-upload-area:hover { background: rgba(224,122,47,0.08); }
+  .photo-previews { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .photo-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid var(--amber); }
   .btn-submit:hover { background: var(--slate); transform: translateY(-1px); }
 
   .success-screen { display: none; padding: 32px 36px; text-align: center; }
@@ -325,6 +329,7 @@
         <label>Postcode</label>
         <input type="text" id="postcode" placeholder="OX12 9AA" style="text-transform:uppercase">
       </div>
+
       <div class="btn-row">
         <button class="btn btn-back" onclick="goStep(2)">← Back</button>
         <button class="btn btn-submit" id="submitBtn" onclick="submitForm()">Send Enquiry ✓</button>
@@ -422,6 +427,49 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  let photoFiles = [];
+
+  function handlePhotos(input) {
+    const files = [...input.files].slice(0, 3);
+    photoFiles = files;
+    const previews = document.getElementById('photoPreviews');
+    const count = document.getElementById('photoCount');
+    previews.innerHTML = '';
+    files.forEach(f => {
+      const url = URL.createObjectURL(f);
+      const img = document.createElement('img');
+      img.src = url;
+      img.className = 'photo-thumb';
+      previews.appendChild(img);
+    });
+    count.textContent = files.length > 0 ? `${files.length} photo${files.length > 1 ? 's' : ''} selected` : '';
+  }
+
+  async function uploadPhotos(jobId) {
+    const urls = [];
+    for (const file of photoFiles) {
+      try {
+        const ext = (file.name.split('.').pop() || (file.type.split('/')[1]) || 'jpg').toLowerCase().replace('jpeg','jpg');
+        const mimeType = file.type || 'image/jpeg';
+        const path = `enquiry/${jobId}/${Date.now()}.${ext}`;
+        const SB_URL = 'https://lzwmqabxpxuuznhbpewm.supabase.co';
+        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6d21xYWJ4cHh1dXpuaGJwZXdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjk2NDIsImV4cCI6MjA4ODQwNTY0Mn0.N1K9ERPwAV5tcvmLcSrYp7aDKTazDXxFT9sf6GzcXKU';
+        const resp = await fetch(`${SB_URL}/storage/v1/object/enquiry-photos/${path}`, {
+          method: 'POST',
+          headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': mimeType },
+          body: file
+        });
+        const respText = await resp.text();
+        console.log("Upload resp status:", resp.status, "body:", respText);
+        if (resp.status === 200 || resp.status === 201) {
+          urls.push(`${SB_URL}/storage/v1/object/public/enquiry-photos/${path}`);
+        }
+      } catch(e) { console.error("Upload error:", e); alert("Photo upload error: " + e.message); }
+    }
+    console.log("Uploaded URLs:", urls);
+    return urls;
+  }
+
   async function submitForm() {
     const firstName = document.getElementById('firstName').value.trim();
     const phone     = document.getElementById('phone').value.trim();
@@ -452,6 +500,15 @@
     };
 
     try {
+      // Upload photos first if any
+      const tempJobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+      if (photoFiles.length > 0) {
+        btn.textContent = 'Uploading photos…';
+        const photoUrls = await uploadPhotos(tempJobId);
+        if (photoUrls.length > 0) payload.photos = photoUrls;
+        payload.tempJobId = tempJobId;
+      }
+      btn.textContent = 'Sending…';
       const resp = await fetch(`${WORKER}/enquiry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
