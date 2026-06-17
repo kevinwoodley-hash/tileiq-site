@@ -155,6 +155,16 @@ function show(id) {
         }, 50);
     }
     _updateBottomNav(id);
+    logEvent('screen_view', { screen_name: id });
+}
+
+// Firebase Analytics helper
+function logEvent(name, params = {}) {
+    try {
+        const FA = window.Capacitor?.Plugins?.FirebaseAnalytics;
+        if (!FA) return;
+        FA.logEvent({ name, params });
+    } catch(e) {}
 }
 
 function _updateBottomNav(screenId) {
@@ -265,6 +275,7 @@ async function _syncToCloud() {
             body: JSON.stringify({ action: "d1_save_jobs", user_id: currentUser.id, jobs })
         });
         if (!resp.ok) console.warn("D1 save failed:", resp.status);
+        else logEvent('job_saved', { job_count: jobs.length });
         // Save to Supabase via worker (uses service key, bypasses RLS issues)
         fetch(AI_PROXY_URL, {
             method: "POST",
@@ -649,6 +660,7 @@ function tryOfflineLogin(email, password) {
         currentUser = session.user;
         _proStatus = null;
         _rcAppUserId = null;
+        logEvent('login', { method: 'email' });
         try {
             const localJobs = localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id));
             if (localJobs) jobs = JSON.parse(localJobs);
@@ -720,6 +732,7 @@ async function authSignIn() {
         );
 
         currentUser = json.body.user;
+        logEvent('login', { method: 'email' });
 
         // Clear old user's in-memory data if a different user is logging in
         const cachedUserId = localStorage.getItem("tileiq-last-user");
@@ -9053,6 +9066,7 @@ function redeemAccessCode() {
 
         msg.style.color = '#10b981';
         msg.textContent = '✅ Code accepted! Pro unlocked.';
+        logEvent('access_code_redeemed', { code });
         input.value = '';
         setTimeout(() => closePaywall(), 1200);
     } else {

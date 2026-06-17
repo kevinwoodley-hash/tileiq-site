@@ -1,14 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-274KES4P2G"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-274KES4P2G');
-</script>
     <meta charset="UTF-8">
     <title>TileIQ Pro</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -2294,6 +2286,19 @@
             © 2026 TileIQ Pro
         </div>
     </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
 </div>
 
 
