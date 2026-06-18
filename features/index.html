@@ -578,5 +578,26 @@
   </footer>
 
 </div>
+  <style>
+    .scroll-hint{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;opacity:1;transition:opacity 0.5s;pointer-events:none;z-index:100;}
+    .scroll-hint.hidden{opacity:0;}
+    .scroll-hint span{font-size:0.7rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--amber);}
+    .scroll-arrow{width:28px;height:28px;border-right:2px solid var(--amber);border-bottom:2px solid var(--amber);transform:rotate(45deg);animation:bounce 1.2s infinite;}
+    @keyframes bounce{0%,100%{transform:rotate(45deg) translateY(0);}50%{transform:rotate(45deg) translateY(5px);}}
+  </style>
+  <div class="scroll-hint" id="scrollHint">
+    <span>More features</span>
+    <div class="scroll-arrow"></div>
+  </div>
+  <script>
+    const hint = document.getElementById('scrollHint');
+    window.addEventListener('scroll', function() {
+      if (window.scrollY > 200) {
+        hint.classList.add('hidden');
+      } else {
+        hint.classList.remove('hidden');
+      }
+    });
+  </script>
 </body>
 </html>
