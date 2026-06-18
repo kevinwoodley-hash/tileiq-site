@@ -9784,20 +9784,22 @@ function initScreenHelp() {
     btn.className = 'screen-help-btn';
     btn.setAttribute('aria-label', 'Help');
     btn.textContent = '?';
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      if (_helpTooltip.classList.contains('visible')) {
-        hideHelpTooltip();
-      } else {
-        showHelpTooltip(helpText, btn);
-      }
-    });
+    btn.dataset.helpText = helpText;
     title.style.display = 'inline-flex';
     title.style.alignItems = 'center';
     title.appendChild(btn);
   });
   document.addEventListener('click', function(e) {
-    if (e.target.className !== 'screen-help-btn') hideHelpTooltip();
+    if (e.target.classList.contains('screen-help-btn')) {
+      e.stopPropagation();
+      if (_helpTooltip.classList.contains('visible')) {
+        hideHelpTooltip();
+      } else {
+        showHelpTooltip(e.target.dataset.helpText, e.target);
+      }
+    } else {
+      hideHelpTooltip();
+    }
   });
 }
 
