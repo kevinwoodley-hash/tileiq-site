@@ -162,8 +162,8 @@ function show(id) {
 function logEvent(name, params = {}) {
     try {
         const FA = window.Capacitor?.Plugins?.FirebaseAnalytics;
-        if (!FA) return;
-        FA.logEvent({ name, params });
+        if (!FA) { setTimeout(() => logEvent(name, params), 1000); return; }
+        FA.logEvent({ name, params }).catch(() => {});
     } catch(e) {}
 }
 
@@ -661,6 +661,7 @@ function tryOfflineLogin(email, password) {
         _proStatus = null;
         _rcAppUserId = null;
         logEvent('login', { method: 'email' });
+        try { window.Capacitor?.Plugins?.FirebaseAnalytics?.setUserId({ userId: currentUser.id }); } catch(e) {}
         try {
             const localJobs = localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id));
             if (localJobs) jobs = JSON.parse(localJobs);
@@ -3355,10 +3356,12 @@ function renderJobView() {
 function setJobStatus(status) {
     const job = getJob();
     if (!job) return;
+    const prevStatus = job.status;
     job.status = status;
     saveAll();
     renderJobView();
     renderDashboard();
+    logEvent("job_status_changed", { from: prevStatus, to: status });
 }
 
 function toggleExtraWork(jobId, idx, checked) {
@@ -3375,10 +3378,12 @@ function advanceStatus() {
     if (!job) return;
     const idx = PIPELINE.indexOf(job.status);
     if (idx < PIPELINE.length - 1) {
+        const prev = job.status;
         job.status = PIPELINE[idx + 1];
         saveAll();
         renderJobView();
         renderDashboard();
+        logEvent("job_status_changed", { from: prev, to: job.status });
     }
 }
 
@@ -7696,7 +7701,7 @@ function downloadPDF() {
     }
     const result = buildPDFDoc();
     if (!result) { alert("Could not generate PDF."); return; }
-    try { result.doc.save(`${result.safeName}-quote.pdf`); }
+    try { result.doc.save(`${result.safeName}-quote.pdf`); logEvent('pdf_exported', { method: 'download' }); }
     catch(e) { console.error("PDF save failed", e); alert("PDF save failed: " + e.message); }
 }
 
@@ -7724,6 +7729,7 @@ async function shareQuote() {
             await Filesystem.writeFile({ path: pdf.fileName, data: pdf.base64, directory: "CACHE" });
             const { uri } = await Filesystem.getUri({ path: pdf.fileName, directory: "CACHE" });
             await Share.share({ title: `Quote – ${pdf.customerName}`, text: `Please find your quote attached.`, files: [uri], dialogTitle: "Share Quote" });
+            logEvent('pdf_exported', { method: 'share' });
         } else {
             // Fallback for web/browser
             downloadPDF();
@@ -8963,15 +8969,27 @@ async function initRevenueCat() {
         const userId = stored ? JSON.parse(stored).user?.id : null;
         if (!userId) return;
         _rcAppUserId = userId;
+        const RC = window.Capacitor?.Plugins?.Purchases;
+        if (RC) {
+            await RC.configure({ apiKey: "goog_XsqjRLLFdCnGQapXIsTsvTgPsgU", appUserID: userId });
+        }
         await refreshProStatus();
     } catch(e) { console.warn("RC init failed:", e.message); }
 }
-
 async function refreshProStatus() {
     try {
-        // Check access code first
         if (checkAccessCodePro()) { _proStatus = true; updateProBadge(); return true; }
         if (!_rcAppUserId) { _proStatus = false; updateProBadge(); return false; }
+        const RC = window.Capacitor?.Plugins?.Purchases;
+        if (RC) {
+            try {
+                const info = await RC.getCustomerInfo();
+                const entitlements = info?.customerInfo?.entitlements?.active || {};
+                _proStatus = Object.keys(entitlements).length > 0;
+                updateProBadge();
+                return _proStatus;
+            } catch(e) { console.warn("RC native check failed:", e.message); }
+        }
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -8989,7 +9007,6 @@ async function refreshProStatus() {
         return false;
     }
 }
-
 function isPro() { return _proStatus === true || checkAccessCodePro(); }
 
 function updateProBadge() {
@@ -9015,6 +9032,7 @@ function updateProBadge() {
 async function showPaywall(source) {
     show("screen-paywall");
     await loadPaywallPackages();
+    logEvent("paywall_viewed", { source: source || "unknown" });
 }
 
 function closePaywall() {
@@ -9289,28 +9307,60 @@ async function loadPaywallPackages() {
         </button>`;
 }
 
-function openPlayStorePurchase(plan) {
-    const pkg = "com.tileiqpro.android";
-    const sku = plan === "yearly" ? "tileiq_pro_yearly" : "tileiq_pro_monthly";
-    const url = `https://play.google.com/store/account/subscriptions?sku=${sku}&package=${pkg}`;
-    if (window.AndroidBridge?.open) window.AndroidBridge.open(url);
-    else window.open(url, "_system");
-    setTimeout(async () => {
-        await refreshProStatus();
-        if (_proStatus) { closePaywall(); alert("🎉 Welcome to TileIQ Pro!"); }
-    }, 3000);
-}
-
-async function restorePurchases() {
-    await refreshProStatus();
-    if (_proStatus) {
-        closePaywall();
-        alert("✅ Pro subscription restored!");
-    } else {
-        alert("No active subscription found.\n\nIf you've subscribed via Google Play, please allow a few minutes and try again.");
+async function openPlayStorePurchase(plan) {
+    try {
+        const RC = window.Capacitor?.Plugins?.Purchases;
+        if (!RC) {
+            alert("In-app purchases not available. Please try again.");
+            return;
+        }
+        const offerings = await RC.getOfferings();
+        const current = offerings?.current;
+        if (!current) { alert("No subscription plans available. Please try again."); return; }
+        const pkg = plan === "yearly"
+            ? current.annual || current.availablePackages?.find(p => p.packageType === "ANNUAL")
+            : current.monthly || current.availablePackages?.find(p => p.packageType === "MONTHLY");
+        if (!pkg) { alert("Plan not found. Please try again."); return; }
+        const result = await RC.purchasePackage({ aPackage: pkg });
+        const entitlements = result?.customerInfo?.entitlements?.active || {};
+        if (Object.keys(entitlements).length > 0) {
+            _proStatus = true;
+            updateProBadge();
+            closePaywall();
+            alert("🎉 Welcome to TileIQ Pro!");
+            logEvent("subscription_started", { plan: plan });
+        }
+    } catch(e) {
+        if (!e.message?.includes("UserCancelled")) {
+            alert("Purchase failed: " + e.message);
+        }
     }
 }
-
+async function restorePurchases() {
+    try {
+        const RC = window.Capacitor?.Plugins?.Purchases;
+        if (RC) {
+            const info = await RC.restorePurchases();
+            const entitlements = info?.customerInfo?.entitlements?.active || {};
+            if (Object.keys(entitlements).length > 0) {
+                _proStatus = true;
+                updateProBadge();
+                closePaywall();
+                alert("✅ Pro subscription restored!");
+                return;
+            }
+        }
+        await refreshProStatus();
+        if (_proStatus) {
+            closePaywall();
+            alert("✅ Pro subscription restored!");
+        } else {
+            alert("No active subscription found.\n\nIf you've subscribed via Google Play, please allow a few minutes and try again.");
+        }
+    } catch(e) {
+        alert("Restore failed: " + e.message);
+    }
+}
 function checkJobLimit() {
     if (isPro()) return true;
     if (jobs.length < FREE_JOB_LIMIT) return true;
