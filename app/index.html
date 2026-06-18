@@ -1869,6 +1869,21 @@
                     <input id="set-vat-number" placeholder="GB 123 4567 89" autocomplete="off">
                 </div>
             </div>
+            <div class="form-card" id="domain-verify-card" style="margin-top:12px;">
+                <div class="form-section-label">Custom Email Domain <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(send quotes from your own email)</span></div>
+                <div style="font-size:13px;color:#94a3b8;line-height:1.5;margin-bottom:12px;">Verify your domain so quotes are sent from your business email address instead of TileIQ.</div>
+                <div id="domain-status-badge" style="margin-bottom:10px;"></div>
+                <div class="field-group"><label>Your Domain</label><input id="set-custom-domain" type="text" placeholder="e.g. yourbusiness.co.uk"></div>
+                <div id="domain-verified-info" style="display:none;font-size:12px;color:#10b981;margin-bottom:8px;"></div>
+                <div id="domain-dns-records" style="display:none;margin-bottom:10px;"></div>
+                <div id="domain-check-row" style="display:none;">
+                    <button onclick="checkDomainVerification()" class="btn-secondary" style="width:100%;margin-bottom:8px;">🔄 Check Verification Status</button>
+                </div>
+                <div id="domain-remove-row" style="display:none;">
+                    <button onclick="removeDomain()" style="width:100%;background:transparent;border:1px solid #ef4444;color:#ef4444;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;">✕ Remove Domain</button>
+                </div>
+                <button onclick="verifyDomain()" id="btn-verify-domain" class="btn-primary" style="width:100%;">🔒 Verify Domain</button>
+            </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Enquiry Link</div>
                 <div style="font-size:13px;color:#94a3b8;line-height:1.5;margin-bottom:12px;">Share your link on your website, Facebook, Instagram or business cards. Customers fill in a short form — the job lands straight in your TileIQ inbox with all the details ready to quote.</div>
@@ -2287,6 +2302,19 @@
             © 2026 TileIQ Pro
         </div>
     </div>
+</div>
+
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
 </div>
 
 
