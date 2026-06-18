@@ -9775,9 +9775,9 @@ function initScreenHelp() {
   Object.entries(SCREEN_HELP).forEach(function(entry) {
     var screenId = entry[0];
     var helpText = entry[1];
-    var screen = document.getElementById(screenId);
-    if (!screen) return;
-    var title = screen.querySelector('.header-title, .page-title');
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
     if (!title) return;
     if (title.querySelector('.screen-help-btn')) return;
     var btn = document.createElement('button');
