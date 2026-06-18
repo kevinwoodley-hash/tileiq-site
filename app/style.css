@@ -1095,3 +1095,32 @@ textarea { resize: vertical; }
 
 /* Settings tab panels */
 .hidden-panel { display: none !important; }
+
+/* ── Screen help tooltips ── */
+.screen-help-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50
+/* ── Screen help tooltips ── */
+.screen-help-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(255,255,255,0.15); border: 1.5px solid rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600;
+  cursor: pointer; margin-left: 8px; vertical-align: middle;
+  position: relative; flex-shrink: 0; -webkit-tap-highlight-color: transparent;
+}
+.screen-help-btn:hover { background: rgba(255,255,255,0.25); }
+.screen-help-tooltip {
+  display: none; position: fixed; z-index: 9999;
+  background: #1B2A3C; color: #F7F4EF; font-size: 13px; line-height: 1.5;
+  padding: 10px 14px; border-radius: 10px; max-width: 260px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(224,122,47,0.3);
+  pointer-events: none;
+}
+.screen-help-tooltip.visible { display: block; }
+.screen-help-tooltip::before {
+  content: ""; position: absolute; top: -6px; left: 18px;
+  width: 10px; height: 10px; background: #1B2A3C;
+  border-left: 1px solid rgba(224,122,47,0.3); border-top: 1px solid rgba(224,122,47,0.3);
+  transform: rotate(45deg);
+}
