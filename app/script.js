@@ -9748,9 +9748,7 @@ const SCREEN_HELP = {
   'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app.",
 };
 
-const _helpTooltip = document.createElement('div');
-_helpTooltip.className = 'screen-help-tooltip';
-document.body.appendChild(_helpTooltip);
+let _helpTooltip = null;
 let _helpTooltipTimeout = null;
 
 function showHelpTooltip(text, btn) {
@@ -9772,6 +9770,11 @@ function hideHelpTooltip() {
 }
 
 function initScreenHelp() {
+  if (!_helpTooltip) {
+    _helpTooltip = document.createElement('div');
+    _helpTooltip.className = 'screen-help-tooltip';
+    document.body.appendChild(_helpTooltip);
+  }
   Object.entries(SCREEN_HELP).forEach(function(entry) {
     var screenId = entry[0];
     var helpText = entry[1];
