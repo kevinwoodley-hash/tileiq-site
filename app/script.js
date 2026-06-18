@@ -9801,4 +9801,4 @@ function initScreenHelp() {
   });
 }
 
-if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", initScreenHelp); } else { initScreenHelp(); }
+setTimeout(initScreenHelp, 2000);
