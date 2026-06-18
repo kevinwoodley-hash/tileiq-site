@@ -9801,4 +9801,4 @@ function initScreenHelp() {
   });
 }
 
-setTimeout(initScreenHelp, 2000);
+setTimeout(initScreenHelp, 5000); document.addEventListener("click", function _initOnce(){ initScreenHelp(); document.removeEventListener("click", _initOnce); });
