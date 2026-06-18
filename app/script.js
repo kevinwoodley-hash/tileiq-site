@@ -9728,3 +9728,77 @@ async function provisionTwilioNumber() {
         if (btn) { btn.disabled = false; btn.textContent = "Get Number"; }
     }
 }
+
+// ── Screen help tooltips ──────────────────────────────────────
+const SCREEN_HELP = {
+  'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+  'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+  'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+  'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+  'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+  'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+  'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+  'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+  'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+  'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+  'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+  'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+  'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+  'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+  'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app.",
+};
+
+const _helpTooltip = document.createElement('div');
+_helpTooltip.className = 'screen-help-tooltip';
+document.body.appendChild(_helpTooltip);
+let _helpTooltipTimeout = null;
+
+function showHelpTooltip(text, btn) {
+  _helpTooltip.textContent = text;
+  _helpTooltip.classList.add('visible');
+  const r = btn.getBoundingClientRect();
+  let left = r.left;
+  let top = r.bottom + 8;
+  if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+  if (left < 8) left = 8;
+  _helpTooltip.style.left = left + 'px';
+  _helpTooltip.style.top = top + 'px';
+  clearTimeout(_helpTooltipTimeout);
+  _helpTooltipTimeout = setTimeout(hideHelpTooltip, 4000);
+}
+
+function hideHelpTooltip() {
+  _helpTooltip.classList.remove('visible');
+}
+
+function initScreenHelp() {
+  Object.entries(SCREEN_HELP).forEach(function(entry) {
+    var screenId = entry[0];
+    var helpText = entry[1];
+    var screen = document.getElementById(screenId);
+    if (!screen) return;
+    var title = screen.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.screen-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'screen-help-btn';
+    btn.setAttribute('aria-label', 'Help');
+    btn.textContent = '?';
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (_helpTooltip.classList.contains('visible')) {
+        hideHelpTooltip();
+      } else {
+        showHelpTooltip(helpText, btn);
+      }
+    });
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  });
+  document.addEventListener('click', function(e) {
+    if (e.target.className !== 'screen-help-btn') hideHelpTooltip();
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initScreenHelp);
