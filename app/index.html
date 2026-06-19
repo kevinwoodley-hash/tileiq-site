@@ -3734,6 +3734,19 @@
   </div>
 </div>
 
+
+<!-- VOICEMAILS SCREEN -->
+<div id="screen-voicemails" class="screen hidden">
+  <header class="app-header"><div class="header-row">
+    <button onclick="goHome()" class="btn-back">← Home</button>
+    <h2 class="header-title">📞 Voicemails</h2>
+    <button onclick="loadVoicemails()" class="btn-icon" title="Refresh">↻</button>
+  </div></header>
+  <div class="page-body" id="voicemails-list" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+    <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>
+  </div>
+</div>
+
 <div id="screen-terms" class="screen hidden"></div>
 
 <!-- BOTTOM NAV BAR -->
