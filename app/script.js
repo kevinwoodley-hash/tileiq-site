@@ -9748,7 +9748,9 @@ const SCREEN_HELP = {
   'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app.",
 };
 
-let _helpTooltip = null;
+const _helpTooltip = document.createElement('div');
+_helpTooltip.className = 'screen-help-tooltip';
+document.body.appendChild(_helpTooltip);
 let _helpTooltipTimeout = null;
 
 function showHelpTooltip(text, btn) {
@@ -9770,40 +9772,101 @@ function hideHelpTooltip() {
 }
 
 function initScreenHelp() {
-  if (!_helpTooltip) {
-    _helpTooltip = document.createElement('div');
-    _helpTooltip.className = 'screen-help-tooltip';
-    document.body.appendChild(_helpTooltip);
-  }
   Object.entries(SCREEN_HELP).forEach(function(entry) {
     var screenId = entry[0];
     var helpText = entry[1];
-    var scrn = document.getElementById(screenId);
-    if (!scrn) return;
-    var title = scrn.querySelector('.header-title, .page-title');
+    var screen = document.getElementById(screenId);
+    if (!screen) return;
+    var title = screen.querySelector('.header-title, .page-title');
     if (!title) return;
     if (title.querySelector('.screen-help-btn')) return;
     var btn = document.createElement('button');
     btn.className = 'screen-help-btn';
     btn.setAttribute('aria-label', 'Help');
     btn.textContent = '?';
-    btn.dataset.helpText = helpText;
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (_helpTooltip.classList.contains('visible')) {
+        hideHelpTooltip();
+      } else {
+        showHelpTooltip(helpText, btn);
+      }
+    });
     title.style.display = 'inline-flex';
     title.style.alignItems = 'center';
     title.appendChild(btn);
   });
   document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('screen-help-btn')) {
-      e.stopPropagation();
-      if (_helpTooltip.classList.contains('visible')) {
-        hideHelpTooltip();
-      } else {
-        showHelpTooltip(e.target.dataset.helpText, e.target);
-      }
-    } else {
-      hideHelpTooltip();
-    }
+    if (e.target.className !== 'screen-help-btn') hideHelpTooltip();
   });
 }
 
-setTimeout(initScreenHelp, 3000);
+document.addEventListener('DOMContentLoaded', initScreenHelp);
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
