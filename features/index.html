@@ -38,6 +38,14 @@
     .logo-name em{font-style:normal;color:var(--amber)}
     nav a.nav-btn{padding:8px 16px;border:1px solid rgba(245,166,35,0.4);border-radius:8px;color:var(--amber);text-decoration:none;font-size:0.82rem;font-weight:600;transition:all 0.2s}
     nav a.nav-btn:hover{background:rgba(245,166,35,0.1)}
+  .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:8px;background:var(--amber);border:none;border-radius:6px;}
+  .hamburger span{display:block;width:22px;height:2px;background:var(--midnight);border-radius:2px;}
+  .mobile-menu{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--midnight);z-index:100;flex-direction:column;align-items:center;justify-content:center;gap:24px;}
+  .mobile-menu.open{display:flex}
+  .mobile-menu a{font-size:1.4rem;font-weight:700;color:var(--white);text-decoration:none;padding:8px 24px;border-radius:10px;}
+  .mobile-menu a.cta{background:var(--amber);color:var(--midnight);}
+  .mobile-menu-close{position:absolute;top:24px;right:24px;background:none;border:none;color:var(--white);font-size:28px;cursor:pointer;}
+  @media(max-width:768px){.nav-links{display:none !important}.hamburger{display:flex !important}}
 
     /* PAGE HERO */
     .page-hero{padding:48px 0 56px;max-width:640px}
