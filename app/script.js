@@ -9293,6 +9293,7 @@ async function loadPaywallPackages() {
         <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="font-size:16px;font-weight:800;">Monthly</div>
+                            <div style="font-size:11px;font-weight:700;margin-top:2px;color:#10b981;">1 month free trial</div>
                 <div style="font-size:20px;font-weight:800;">£9.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
             </div>
         </button>
@@ -9315,8 +9316,9 @@ async function openPlayStorePurchase(plan) {
             return;
         }
         const offerings = await RC.getOfferings();
+        console.log("RC offerings:", JSON.stringify(offerings));
         const current = offerings?.current;
-        if (!current) { alert("No subscription plans available. Please try again."); return; }
+        if (!current) { alert("RC Error: No current offering.\nOfferings: " + JSON.stringify(offerings)); return; }
         const pkg = plan === "yearly"
             ? current.annual || current.availablePackages?.find(p => p.packageType === "ANNUAL")
             : current.monthly || current.availablePackages?.find(p => p.packageType === "MONTHLY");
