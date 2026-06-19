@@ -180,6 +180,17 @@
       nav{padding:14px 0}
       .logo-name{font-size:1rem}
     }
+  .hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:4px;background:none;border:none;}
+  .hamburger span{display:block;width:22px;height:2px;background:var(--white);border-radius:2px;transition:all 0.3s}
+  .mobile-menu{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--midnight);z-index:100;flex-direction:column;align-items:center;justify-content:center;gap:24px;}
+  .mobile-menu.open{display:flex}
+  .mobile-menu a{font-size:1.4rem;font-weight:700;color:var(--white);text-decoration:none;padding:8px 24px;border-radius:10px;}
+  .mobile-menu a.cta{background:var(--amber);color:var(--midnight);}
+  .mobile-menu-close{position:absolute;top:24px;right:24px;background:none;border:none;color:var(--white);font-size:28px;cursor:pointer;}
+  @media(max-width:600px){
+    .nav-links{display:none}
+    .hamburger{display:flex}
+  }
   </style>
 </head>
 <body>
@@ -196,13 +207,24 @@
       </div>
       <div class="logo-name">TileIQ <em>Pro</em></div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
+    <div class="nav-links" style="display:flex;align-items:center;gap:10px;">
       <a href="/features" class="nav-demo">✦ Features</a>
       <a href="#ai-chat" class="nav-demo" style="border-color:var(--amber);color:var(--amber);background:rgba(245,166,35,0.08);">💬 Ask a question</a>
       <a href="/app?demo=1" class="nav-demo" target="_blank">🖥 Try Demo</a>
       <a href="/contact" class="nav-demo">Contact</a>
       <a href="/signup" class="nav-demo" style="background:var(--amber);color:var(--midnight);border-color:var(--amber);">Sign Up</a>
     </div>
+    <button class="hamburger" onclick="document.getElementById('mobile-menu').classList.toggle('open')">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <div class="mobile-menu" id="mobile-menu">
+    <button class="mobile-menu-close" onclick="document.getElementById('mobile-menu').classList.remove('open')">✕</button>
+    <a href="/features" onclick="document.getElementById('mobile-menu').classList.remove('open')">✦ Features</a>
+    <a href="#ai-chat" onclick="document.getElementById('mobile-menu').classList.remove('open')">💬 Ask a question</a>
+    <a href="/app?demo=1" target="_blank">🖥 Try Demo</a>
+    <a href="/contact" onclick="document.getElementById('mobile-menu').classList.remove('open')">Contact</a>
+    <a href="/signup" class="cta">Sign Up</a>
   </nav>
 
   <!-- HERO -->
