@@ -191,11 +191,21 @@
       </div>
       <div class="logo-name">TileIQ <em>Pro</em></div>
     </a>
-    <div style="display:flex;align-items:center;gap:10px;">
+    <div class="nav-links" style="display:flex;align-items:center;gap:10px;">
       <a href="/app?demo=1" class="nav-btn" target="_blank">🖥 Try Demo</a>
       <a href="https://play.google.com/apps/testing/com.tileiqpro.android" class="nav-btn" target="_blank" style="background:rgba(245,166,35,0.1);">📱 Download</a>
     </div>
+    <button class="hamburger" onclick="document.getElementById('mobile-menu').classList.toggle('open')">
+      <span></span><span></span><span></span>
+    </button>
   </nav>
+  <div class="mobile-menu" id="mobile-menu">
+    <button class="mobile-menu-close" onclick="document.getElementById('mobile-menu').classList.remove('open')">✕</button>
+    <a href="/" onclick="document.getElementById('mobile-menu').classList.remove('open')">Home</a>
+    <a href="/app?demo=1" target="_blank">Try Demo</a>
+    <a href="/contact" onclick="document.getElementById('mobile-menu').classList.remove('open')">Contact</a>
+    <a href="/signup" class="cta">Sign Up</a>
+  </div>
 
   <!-- PAGE HERO -->
   <div class="page-hero">
