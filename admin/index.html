@@ -366,6 +366,7 @@
   <div class="topbar-tabs">
     <button class="tab-btn active" onclick="switchTab('support')">💬 Support</button>
     <button class="tab-btn" onclick="switchTab('announce')">📢 Announce</button>
+    <button class="tab-btn" onclick="switchTab('stats')">📊 Stats</button>
   </div>
   <button class="logout-btn" onclick="doLogout()">Sign out</button>
 </div>
@@ -374,6 +375,7 @@
 <div class="mobile-tabs" id="mobile-tabs">
   <button class="mobile-tab active" onclick="switchTab('support')">💬 Support</button>
   <button class="mobile-tab" onclick="switchTab('announce')">📢 Announce</button>
+  <button class="mobile-tab" onclick="switchTab('stats')">📊 Stats</button>
 </div>
 
 <!-- Main -->
@@ -450,6 +452,49 @@
 
 </div>
 
+<!-- Stats Tab -->
+<div id="tab-stats" style="display:none;flex:1;padding:24px;overflow-y:auto;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;max-width:900px;margin-bottom:24px;">
+    <div class="stat-card" id="stat-total-users"><div class="stat-label">Total Users</div><div class="stat-value" id="val-total-users">—</div></div>
+    <div class="stat-card" id="stat-new-users"><div class="stat-label">New This Week</div><div class="stat-value" id="val-new-users">—</div></div>
+    <div class="stat-card"><div class="stat-label">Active (7 days)</div><div class="stat-value" id="val-active-7">—</div></div>
+    <div class="stat-card"><div class="stat-label">Active (30 days)</div><div class="stat-value" id="val-active-30">—</div></div>
+    <div class="stat-card"><div class="stat-label">Support Messages</div><div class="stat-value" id="val-messages">—</div></div>
+    <div class="stat-card"><div class="stat-label">Announcements Sent</div><div class="stat-value" id="val-announcements">—</div></div>
+    <div class="stat-card"><div class="stat-label">Pro Users</div><div class="stat-value" id="val-pro" style="color:var(--amber)">—</div></div>
+    <div class="stat-card"><div class="stat-label">Free Users</div><div class="stat-value" id="val-free">—</div></div>
+  </div>
+  <div style="max-width:900px;">
+    <h3 style="font-size:14px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Recent Signups</h3>
+    <div id="stats-recent-users" style="background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<style>
+.stat-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+</style>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -516,10 +561,11 @@ function switchTab(tab) {
   document.getElementById('tab-support').style.display = tab === 'support' ? 'flex' : 'none';
   const announce = document.getElementById('tab-announce');
   announce.classList.toggle('visible', tab === 'announce');
+  const stats = document.getElementById('tab-stats');
+  if (stats) stats.style.display = tab === 'stats' ? 'block' : 'none';
 
-  if (tab === 'announce') {
-    loadAnnounceHistory();
-  }
+  if (tab === 'announce') loadAnnounceHistory();
+  if (tab === 'stats') loadStats();
 }
 
 // ── API ───────────────────────────────────────────────────────
@@ -770,6 +816,55 @@ async function deleteAnnouncement(id) {
     showToast('Announcement deleted', 'success');
   } catch(e) {
     showToast('Failed to delete', 'error');
+  }
+}
+
+async function loadStats() {
+  try {
+    // Users
+    const usersData = await api('/api/admin/users');
+    const total = usersData.length;
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const newThisWeek = usersData.filter(u => u.created_at > weekAgo).length;
+
+    document.getElementById('val-total-users').textContent = total;
+    document.getElementById('val-new-users').textContent = newThisWeek;
+
+    // Active users (based on last_sign_in_at from users list — approximate)
+    // We use created_at as fallback since we don't have last_sign_in in our user list
+    // For now show total as placeholder — would need auth admin API for last_sign_in
+    document.getElementById('val-active-7').textContent = '—';
+    document.getElementById('val-active-30').textContent = '—';
+
+    // Messages
+    const msgsRes = await fetch(`${WORKER_URL}/api/admin/stats`, {
+      headers: { 'x-admin-secret': ADMIN_SECRET }
+    });
+    if (msgsRes.ok) {
+      const stats = await msgsRes.json();
+      document.getElementById('val-messages').textContent = stats.total_messages || 0;
+      document.getElementById('val-announcements').textContent = stats.total_announcements || 0;
+      document.getElementById('val-active-7').textContent = stats.active_7d || '—';
+      document.getElementById('val-active-30').textContent = stats.active_30d || '—';
+      document.getElementById('val-pro').textContent = stats.pro_users || 0;
+      document.getElementById('val-free').textContent = stats.free_users || 0;
+    }
+
+    // Recent signups table
+    const recent = [...usersData].sort((a,b) => b.created_at.localeCompare(a.created_at)).slice(0, 10);
+    const el = document.getElementById('stats-recent-users');
+    el.innerHTML = recent.map(u => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:14px;font-weight:500;">${escHtml(u.name || u.email)}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${escHtml(u.email)}</div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">${timeAgo(u.created_at)}</div>
+      </div>`).join('');
+
+  } catch(e) {
+    console.error('loadStats error:', e);
   }
 }
 
