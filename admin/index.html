@@ -454,21 +454,59 @@
 
 <!-- Stats Tab -->
 <div id="tab-stats" style="display:none;flex:1;padding:24px;overflow-y:auto;">
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;max-width:900px;margin-bottom:24px;">
-    <div class="stat-card" id="stat-total-users"><div class="stat-label">Total Users</div><div class="stat-value" id="val-total-users">—</div></div>
-    <div class="stat-card" id="stat-new-users"><div class="stat-label">New This Week</div><div class="stat-value" id="val-new-users">—</div></div>
-    <div class="stat-card"><div class="stat-label">Active (7 days)</div><div class="stat-value" id="val-active-7">—</div></div>
-    <div class="stat-card"><div class="stat-label">Active (30 days)</div><div class="stat-value" id="val-active-30">—</div></div>
-    <div class="stat-card"><div class="stat-label">Support Messages</div><div class="stat-value" id="val-messages">—</div></div>
-    <div class="stat-card"><div class="stat-label">Announcements Sent</div><div class="stat-value" id="val-announcements">—</div></div>
+
+  <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Users</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;max-width:900px;margin-bottom:24px;">
+    <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="val-total-users">—</div></div>
+    <div class="stat-card"><div class="stat-label">New This Week</div><div class="stat-value" id="val-new-users">—</div></div>
+    <div class="stat-card"><div class="stat-label">Active 7d</div><div class="stat-value" id="val-active-7">—</div></div>
+    <div class="stat-card"><div class="stat-label">Active 30d</div><div class="stat-value" id="val-active-30">—</div></div>
     <div class="stat-card"><div class="stat-label">Pro Users</div><div class="stat-value" id="val-pro" style="color:var(--amber)">—</div></div>
     <div class="stat-card"><div class="stat-label">Free Users</div><div class="stat-value" id="val-free">—</div></div>
+    <div class="stat-card"><div class="stat-label">Est. MRR</div><div class="stat-value" id="val-mrr" style="color:#48BB78">—</div></div>
+    <div class="stat-card"><div class="stat-label">App Installs</div><div class="stat-value" id="val-installs">—</div></div>
   </div>
-  <div style="max-width:900px;">
-    <h3 style="font-size:14px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Recent Signups</h3>
-    <div id="stats-recent-users" style="background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-      <div class="loading">Loading…</div>
+
+  <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Jobs & Quotes</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;max-width:900px;margin-bottom:24px;">
+    <div class="stat-card"><div class="stat-label">Total Jobs</div><div class="stat-value" id="val-total-jobs">—</div></div>
+    <div class="stat-card"><div class="stat-label">Jobs This Week</div><div class="stat-value" id="val-jobs-week">—</div></div>
+    <div class="stat-card"><div class="stat-label">Jobs This Month</div><div class="stat-value" id="val-jobs-month">—</div></div>
+    <div class="stat-card"><div class="stat-label">Quotes Sent</div><div class="stat-value" id="val-quotes">—</div></div>
+    <div class="stat-card"><div class="stat-label">Accepted</div><div class="stat-value" id="val-accepted" style="color:#48BB78">—</div></div>
+    <div class="stat-card"><div class="stat-label">Declined</div><div class="stat-value" id="val-declined" style="color:#FC8181">—</div></div>
+    <div class="stat-card"><div class="stat-label">Accept Rate</div><div class="stat-value" id="val-accept-rate">—</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Quote</div><div class="stat-value" id="val-avg-quote" style="color:var(--amber)">—</div></div>
+    <div class="stat-card"><div class="stat-label">Total Value</div><div class="stat-value" id="val-total-value" style="color:var(--amber)">—</div></div>
+  </div>
+
+  <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Engagement</h3>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;max-width:900px;margin-bottom:24px;">
+    <div class="stat-card"><div class="stat-label">Support Messages</div><div class="stat-value" id="val-messages">—</div></div>
+    <div class="stat-card"><div class="stat-label">Customer Messages</div><div class="stat-value" id="val-cust-msgs">—</div></div>
+    <div class="stat-card"><div class="stat-label">Voicemails</div><div class="stat-value" id="val-voicemails">—</div></div>
+    <div class="stat-card"><div class="stat-label">Announcements</div><div class="stat-value" id="val-announcements">—</div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px;margin-bottom:24px;">
+    <div>
+      <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Jobs by Source</h3>
+      <div id="stats-by-source" style="background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;"><div class="loading">Loading…</div></div>
     </div>
+    <div>
+      <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Top Cities</h3>
+      <div id="stats-top-cities" style="background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <div style="max-width:900px;margin-bottom:24px;">
+    <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Jobs by Status</h3>
+    <div id="stats-by-status" style="background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;"><div class="loading">Loading…</div></div>
+  </div>
+
+  <div style="max-width:900px;">
+    <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Recent Signups</h3>
+    <div id="stats-recent-users" style="background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;"><div class="loading">Loading…</div></div>
   </div>
 </div>
 
@@ -821,43 +859,84 @@ async function deleteAnnouncement(id) {
 
 async function loadStats() {
   try {
-    // Users
-    const usersData = await api('/api/admin/users');
-    const total = usersData.length;
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const [usersData, statsRes] = await Promise.all([
+      api('/api/admin/users'),
+      fetch(`${WORKER_URL}/api/admin/stats`, { headers: { 'x-admin-secret': ADMIN_SECRET } })
+    ]);
+
+    const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString();
     const newThisWeek = usersData.filter(u => u.created_at > weekAgo).length;
 
-    document.getElementById('val-total-users').textContent = total;
+    document.getElementById('val-total-users').textContent = usersData.length;
     document.getElementById('val-new-users').textContent = newThisWeek;
 
-    // Active users (based on last_sign_in_at from users list — approximate)
-    // We use created_at as fallback since we don't have last_sign_in in our user list
-    // For now show total as placeholder — would need auth admin API for last_sign_in
-    document.getElementById('val-active-7').textContent = '—';
-    document.getElementById('val-active-30').textContent = '—';
+    if (statsRes.ok) {
+      const s = await statsRes.json();
 
-    // Messages
-    const msgsRes = await fetch(`${WORKER_URL}/api/admin/stats`, {
-      headers: { 'x-admin-secret': ADMIN_SECRET }
-    });
-    if (msgsRes.ok) {
-      const stats = await msgsRes.json();
-      document.getElementById('val-messages').textContent = stats.total_messages || 0;
-      document.getElementById('val-announcements').textContent = stats.total_announcements || 0;
-      document.getElementById('val-active-7').textContent = stats.active_7d || '—';
-      document.getElementById('val-active-30').textContent = stats.active_30d || '—';
-      document.getElementById('val-pro').textContent = stats.pro_users || 0;
-      document.getElementById('val-free').textContent = stats.free_users || 0;
+      // Users
+      document.getElementById('val-active-7').textContent = s.active_7d || 0;
+      document.getElementById('val-active-30').textContent = s.active_30d || 0;
+      document.getElementById('val-pro').textContent = s.pro_users || 0;
+      document.getElementById('val-free').textContent = s.free_users || 0;
+      document.getElementById('val-mrr').textContent = '£' + (s.estimated_mrr || '0.00');
+      document.getElementById('val-installs').textContent = s.device_tokens || 0;
+
+      // Jobs
+      document.getElementById('val-total-jobs').textContent = s.total_jobs || 0;
+      document.getElementById('val-jobs-week').textContent = s.jobs_this_week || 0;
+      document.getElementById('val-jobs-month').textContent = s.jobs_this_month || 0;
+      document.getElementById('val-quotes').textContent = s.quotes_sent || 0;
+      document.getElementById('val-accepted').textContent = s.quotes_accepted || 0;
+      document.getElementById('val-declined').textContent = s.quotes_declined || 0;
+      document.getElementById('val-accept-rate').textContent = (s.acceptance_rate || 0) + '%';
+      document.getElementById('val-avg-quote').textContent = '£' + (s.avg_quote_value || 0);
+      document.getElementById('val-total-value').textContent = '£' + (s.total_quote_value || 0).toLocaleString();
+
+      // Engagement
+      document.getElementById('val-messages').textContent = s.total_messages || 0;
+      document.getElementById('val-cust-msgs').textContent = s.customer_messages || 0;
+      document.getElementById('val-voicemails').textContent = s.voicemails_received || 0;
+      document.getElementById('val-announcements').textContent = s.total_announcements || 0;
+
+      // Jobs by source
+      const sourceEl = document.getElementById('stats-by-source');
+      const sources = s.jobs_by_source || {};
+      sourceEl.innerHTML = Object.entries(sources).sort((a,b)=>b[1]-a[1]).map(([src,count]) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);">
+          <span style="font-size:13px;text-transform:capitalize;">${escHtml(src.replace(/_/g,' '))}</span>
+          <span style="font-size:13px;font-weight:600;">${count}</span>
+        </div>`).join('') || '<div class="loading">No data</div>';
+
+      // Jobs by status
+      const statusEl = document.getElementById('stats-by-status');
+      const statuses = s.jobs_by_status || {};
+      const statusColors = { enquiry:'#63B3ED', quoted:'#F6AD55', booked:'#68D391', complete:'#48BB78', cancelled:'#FC8181' };
+      statusEl.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:0;">' + Object.entries(statuses).sort((a,b)=>b[1]-a[1]).map(([st,count]) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);width:100%;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:10px;height:10px;border-radius:50%;background:${statusColors[st]||'#CBD5E0'};display:inline-block;"></span>
+            <span style="font-size:13px;text-transform:capitalize;">${escHtml(st)}</span>
+          </div>
+          <span style="font-size:13px;font-weight:600;">${count}</span>
+        </div>`).join('') + '</div>' || '<div class="loading">No data</div>';
+
+      // Top cities
+      const citiesEl = document.getElementById('stats-top-cities');
+      const cities = s.top_cities || [];
+      citiesEl.innerHTML = cities.map(c => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);">
+          <span style="font-size:13px;">${escHtml(c.city)}</span>
+          <span style="font-size:13px;font-weight:600;">${c.count}</span>
+        </div>`).join('') || '<div class="loading" style="padding:16px;">No location data yet</div>';
     }
 
-    // Recent signups table
-    const recent = [...usersData].sort((a,b) => b.created_at.localeCompare(a.created_at)).slice(0, 10);
+    // Recent signups
+    const recent = [...usersData].sort((a,b) => b.created_at.localeCompare(a.created_at)).slice(0,10);
     const el = document.getElementById('stats-recent-users');
     el.innerHTML = recent.map(u => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);">
         <div>
-          <div style="font-size:14px;font-weight:500;">${escHtml(u.name || u.email)}</div>
+          <div style="font-size:14px;font-weight:500;">${escHtml(u.name||u.email)}</div>
           <div style="font-size:12px;color:var(--text-muted);">${escHtml(u.email)}</div>
         </div>
         <div style="font-size:12px;color:var(--text-muted);">${timeAgo(u.created_at)}</div>
