@@ -607,7 +607,7 @@ async function openThread(convId, name, email) {
   `;
 
   try {
-    const data = await api(`/api/admin/conversation/${convId}`);
+    const data = await api(`/api/admin/conversation?id=${convId}`);
     renderMessages(data.messages);
     // Mark as read in list
     const conv = conversations.find(c => c.id === convId);
@@ -651,7 +651,7 @@ async function sendReply(convId) {
     });
     input.value = '';
     // Reload thread
-    const data = await api(`/api/admin/conversation/${convId}`);
+    const data = await api(`/api/admin/conversation?id=${convId}`);
     renderMessages(data.messages);
     showToast('Reply sent', 'success');
   } catch (e) {
