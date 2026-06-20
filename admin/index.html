@@ -562,9 +562,15 @@ async function openThread(convId, name, email) {
   `;
 
   try {
-    const data = await api(`/api/admin/conversation/${convId}`);
+    const data = await api(`/api/admin/conversation?id=${convId}`);
+    if (data.user) {
+      const n = data.user.name || data.user.email || 'Tiler';
+      const e = data.user.email || '';
+      panel.querySelector('.thread-name').textContent = n;
+      panel.querySelector('.thread-email').textContent = e;
+      panel.querySelector('.thread-avatar').textContent = n.charAt(0).toUpperCase();
+    }
     renderMessages(data.messages);
-    // Mark as read in list
     const conv = conversations.find(c => c.id === convId);
     if (conv) conv.unread_admin = 0;
     renderConvList();
