@@ -145,14 +145,19 @@ function show(id) {
     const el = document.getElementById(id);
     if (el) {
         el.classList.remove("hidden");
-        el.scrollTop = 0;
-        window.scrollTo(0, 0);
-        document.body.scrollTop = 0;
-        document.documentElement.scrollTop = 0;
-        setTimeout(() => {
+        // Inbox screen uses internal scroll, don't reset overflow
+        if (id === 'screen-inbox') {
+            el.style.overflow = 'hidden';
+        } else {
             el.scrollTop = 0;
             window.scrollTo(0, 0);
-        }, 50);
+            document.body.scrollTop = 0;
+            document.documentElement.scrollTop = 0;
+            setTimeout(() => {
+                el.scrollTop = 0;
+                window.scrollTo(0, 0);
+            }, 50);
+        }
     }
     _updateBottomNav(id);
     logEvent('screen_view', { screen_name: id });
@@ -6972,7 +6977,9 @@ async function checkPendingPushNav() {
         const type  = nav.type || "";
         const token = nav.token || "";
         const jobId = nav.jobId || "";
-        if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
+        if (type === "support_reply" || type === "announcement") {
+            show("screen-inbox"); loadInbox();
+        } else if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
             type === "voicemail_job" || type === "call_job" || type === "missed_call") {
             if (jobId) { currentJobId = jobId; goJob(jobId); }
             else { goDashboard(); renderDashboard(); }
@@ -7088,7 +7095,10 @@ async function initPushNotifications() {
                         try { await loadUserData(); } catch(e) {}
                         navFn();
                     }
-                    if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
+                    if (type === "support_reply" || type === "announcement") {
+                        localStorage.setItem("tileiq-pending-nav", JSON.stringify({ type, ts: Date.now() }));
+                        if (typeof show === "function") { show("screen-inbox"); loadInbox(); }
+                    } else if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
                         type === "voicemail_job" || type === "call_job" || type === "missed_call") {
                         localSyncThenGo(() => { const jid = data?.jobId||data?.job_id||""; if (jid) { currentJobId = jid; goJob(jid); } else { goDashboard(); renderDashboard(); } });
                     } else if (type === "quote_response" || type === "quote_viewed" || type === "schedule_confirmed" || type === "schedule_suggest") {
@@ -7123,7 +7133,10 @@ async function initPushNotifications() {
                 try { await loadUserData(); } catch(e) {}
                 navFn();
             }
-            if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
+            if (type === "support_reply" || type === "announcement") {
+                localStorage.setItem("tileiq-pending-nav", JSON.stringify({ type, ts: Date.now() }));
+                if (typeof show === "function") { show("screen-inbox"); loadInbox(); }
+            } else if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
                 type === "voicemail_job" || type === "call_job" || type === "missed_call") {
                 syncThenGo(() => {
                     const jid = data?.jobId || data?.job_id || "";
@@ -9797,6 +9810,4034 @@ async function provisionTwilioNumber() {
   });
 
   setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+// ============================================================
+// INBOX SYSTEM
+// ============================================================
+let supportConversation = null;
+let supportMessages = [];
+let announcements = [];
+
+async function loadInbox() {
+  await Promise.all([loadSupportThread(), loadAnnouncements()]);
+  updateInboxBadge();
+}
+
+async function loadSupportThread() {
+  try {
+    const token = (await sb.auth.getSession()).data.session?.access_token;
+    if (!token) return;
+    const res = await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/support/conversation', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await res.json();
+    supportConversation = data.conversation;
+    supportMessages = data.messages || [];
+    renderSupportThread();
+    if (supportConversation?.unread_user > 0) {
+      await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/support/read', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_id: supportConversation.id })
+      });
+      supportConversation.unread_user = 0;
+      updateInboxBadge();
+    }
+  } catch(e) {
+    const el = document.getElementById('support-thread');
+    if (el) el.innerHTML = '<div class="support-loading">Could not load messages</div>';
+  }
+}
+
+function renderSupportThread() {
+  const el = document.getElementById('support-thread');
+  if (!el) return;
+  if (!supportMessages.length) {
+    el.innerHTML = '<div class="support-loading"><div style="font-size:32px;margin-bottom:8px">💬</div><div>Send us a message and we\'ll get back to you</div></div>';
+    return;
+  }
+  el.innerHTML = supportMessages.map(m => `
+    <div>
+      <div class="support-msg from-${m.sender}">
+        ${escInbox(m.body)}
+        <div class="support-msg-time">${fmtInboxTime(m.created_at)}</div>
+      </div>
+    </div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendSupportMessage() {
+  const input = document.getElementById('support-input');
+  const body = input?.value.trim();
+  if (!body) return;
+  const btn = document.querySelector('.support-send-btn');
+  if (btn) btn.disabled = true;
+  input.value = '';
+  input.style.height = 'auto';
+  const tempMsg = { sender: 'user', body, created_at: new Date().toISOString() };
+  supportMessages.push(tempMsg);
+  renderSupportThread();
+  try {
+    const token = (await sb.auth.getSession()).data.session?.access_token;
+    const userName = currentUser?.user_metadata?.full_name || currentUser?.email || 'Tiler';
+    await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/support/send', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body, userName })
+    });
+  } catch(e) {
+    supportMessages.pop();
+    renderSupportThread();
+    input.value = body;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function loadAnnouncements() {
+  try {
+    const token = (await sb.auth.getSession()).data.session?.access_token;
+    if (!token) return;
+    const res = await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/announcements', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await res.json();
+    announcements = (data.announcements || []).filter(a => !a.read);
+    renderAnnouncements();
+  } catch(e) {}
+}
+
+function renderAnnouncements() {
+  const el = document.getElementById('announcements-list');
+  if (!el) return;
+  if (!announcements.length) {
+    el.innerHTML = '<div class="support-loading">No updates yet</div>';
+    updateInboxBadge();
+    return;
+  }
+  el.innerHTML = announcements.map(a => `
+    <div style="background:var(--surface,#F7F4EF);border-radius:14px;padding:12px 16px;margin-bottom:10px;width:100%;box-sizing:border-box;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px;color:var(--text,#1B2A3C);">${escInbox(a.title)}</div>
+      <div style="font-size:13px;color:var(--text-muted,#6B7E94);line-height:1.5;">${escInbox(a.body)}</div>
+      <div style="font-size:11px;color:var(--text-muted,#6B7E94);margin-top:8px;">${fmtInboxTime(a.created_at)}</div>
+    </div>`).join('');
+}
+
+async function markAnnouncementRead(id, cardEl) {
+  if (!cardEl.classList.contains('unread')) return;
+  cardEl.classList.remove('unread');
+  const a = announcements.find(x => x.id === id);
+  if (a) a.read = true;
+  updateInboxBadge();
+  try {
+    const token = (await sb.auth.getSession()).data.session?.access_token;
+    await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/announcements/read', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ announcement_id: id })
+    });
+  } catch(e) {}
+}
+
+function switchInboxTab(tab) {
+  document.getElementById('inbox-messages').style.display = tab === 'messages' ? 'flex' : 'none';
+  document.getElementById('inbox-announcements').style.display = tab === 'announcements' ? 'block' : 'none';
+  document.getElementById('tab-messages-btn').classList.toggle('active', tab === 'messages');
+  document.getElementById('tab-announcements-btn').classList.toggle('active', tab === 'announcements');
+}
+
+function updateInboxBadge() {
+  const supportUnread = supportConversation?.unread_user || 0;
+  const announceUnread = (announcements || []).filter(a => !a.read).length;
+  const total = supportUnread + announceUnread;
+  const badge = document.getElementById('inbox-badge');
+  if (badge) { badge.style.display = total > 0 ? 'block' : 'none'; badge.textContent = total > 9 ? '9+' : total; }
+  const sb = document.getElementById('support-unread-badge');
+  if (sb) { sb.style.display = supportUnread > 0 ? 'inline-flex' : 'none'; sb.textContent = supportUnread; }
+  const ab = document.getElementById('announce-unread-badge');
+  if (ab) { ab.style.display = announceUnread > 0 ? 'inline-flex' : 'none'; ab.textContent = announceUnread; }
+}
+
+function autoResizeInbox(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+function fmtInboxTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escInbox(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+async function clearSupportMessages() {
+  const activeTab = document.getElementById('tab-announcements-btn').classList.contains('active') ? 'announcements' : 'messages';
+  if (!confirm(activeTab === 'announcements' ? 'Clear all updates?' : 'Clear all support messages?')) return;
+  try {
+    const token = (await sb.auth.getSession()).data.session?.access_token;
+    if (!token) return;
+    if (activeTab === 'announcements') {
+      // Just clear locally — announcements are read-only from user side
+      await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/announcements/clear', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+      });
+      announcements = [];
+      renderAnnouncements();
+      updateInboxBadge();
+    } else {
+      if (!supportConversation) return;
+      await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/support/clear', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_id: supportConversation.id })
+      });
+      supportMessages = [];
+      renderSupportThread();
+    }
+  } catch(e) {
+    alert('Could not clear. Please try again.');
+  }
+}
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
+
+(function() {
+  var HELP = {
+    'screen-home':         "Your home dashboard - see today's jobs, recent activity, and quick access to everything in TileIQ Pro.",
+    'screen-dashboard':    "Your jobs overview - see all active, upcoming and completed jobs at a glance. Tap any job to open it.",
+    'screen-customers':    "Your customer list - store contacts, view job history and reach out directly from the app.",
+    'screen-add-customer': "Add a new customer to your contacts. Their details will be saved and linked to any jobs you create for them.",
+    'screen-new-job':      "Create a new job - link it to a customer, set the location, add notes and get started with rooms and quotes.",
+    'screen-job':          "Manage this job - add rooms, view material estimates, generate a quote and track progress through to invoice.",
+    'screen-room':         "Calculate tiles for a room - enter the dimensions and TileIQ Pro works out exactly how many tiles you need, including wastage.",
+    'screen-quote':        "Your generated quote - review the breakdown, adjust margins if needed, then send it straight to your customer.",
+    'screen-edit-job':     "Update the job details - change the customer, location, status or any notes attached to this job.",
+    'screen-materials':    "A full materials list for this job - tiles, adhesive, grout and everything else calculated from your room measurements.",
+    'screen-messages':     "Incoming messages from customers via SMS and WhatsApp - reply directly without leaving the app.",
+    'screen-voicemails':   "Voicemails captured by your AI receptionist when you are busy on the tools - listen, review caller details and follow up.",
+    'screen-calendar':     "Your job calendar - all scheduled work laid out by date. Tap any job to open it directly.",
+    'screen-settings':     "Customise TileIQ Pro - update your business details, manage your subscription, connect accounting software and more.",
+    'screen-help':         "Ask TileIQ Pro anything - get instant help and tips for using the app."
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);pointer-events:none;line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 270 > window.innerWidth) left = window.innerWidth - 270;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 4000);
+  }
+
+  function addHelpBtn(screenId, helpText) {
+    var scrn = document.getElementById(screenId);
+    if (!scrn) return;
+    var title = scrn.querySelector('.header-title, .page-title');
+    if (!title) return;
+    if (title.querySelector('.tiq-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'tiq-help-btn';
+    btn.textContent = '?';
+    btn.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;';
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+    };
+    title.style.display = 'inline-flex';
+    title.style.alignItems = 'center';
+    title.appendChild(btn);
+  }
+
+  function initHelp() {
+    Object.keys(HELP).forEach(function(id) { addHelpBtn(id, HELP[id]); });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-help-btn')) { tip.style.display = 'none'; }
+  });
+
+  setTimeout(initHelp, 3000);
+})();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
 })();
 
 (function() {
