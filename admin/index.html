@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TileIQ Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --midnight: #1B2A3C;
+    --slate: #2B3D54;
+    --amber: #E07A2F;
+    --amber-dim: #c96820;
+    --stone: #F7F4EF;
+    --text: #1B2A3C;
+    --text-muted: #6B7E94;
+    --border: #E2E0DC;
+    --white: #ffffff;
+    --unread-bg: #FFF4EC;
+    --sidebar-w: 320px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--stone);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Login Screen ── */
+  #login-screen {
+    position: fixed; inset: 0;
+    background: var(--midnight);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .login-box {
+    background: var(--slate);
+    border-radius: 12px;
+    padding: 40px;
+    width: 100%; max-width: 360px;
+    text-align: center;
+  }
+  .login-logo {
+    display: grid; grid-template-columns: repeat(3,18px); gap: 3px;
+    justify-content: center; margin-bottom: 20px;
+  }
+  .login-logo span {
+    width: 18px; height: 18px; border-radius: 3px;
+    background: var(--text-muted);
+  }
+  .login-logo span:nth-child(5) { background: var(--amber); }
+  .login-box h1 { color: var(--white); font-size: 20px; margin-bottom: 6px; }
+  .login-box p { color: var(--text-muted); font-size: 14px; margin-bottom: 28px; }
+  .login-box input {
+    width: 100%; padding: 12px 16px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px; color: var(--white);
+    font-family: inherit; font-size: 15px; letter-spacing: 2px;
+    margin-bottom: 12px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .login-box input:focus { border-color: var(--amber); }
+  .login-box button {
+    width: 100%; padding: 12px;
+    background: var(--amber); color: var(--white);
+    border: none; border-radius: 8px;
+    font-family: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .login-box button:hover { background: var(--amber-dim); }
+  #login-error { color: #ff6b6b; font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  /* ── Top Bar ── */
+  .topbar {
+    height: 56px; background: var(--midnight);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px; flex-shrink: 0;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .tile-logo { display: grid; grid-template-columns: repeat(3,10px); gap: 2px; }
+  .tile-logo span { width: 10px; height: 10px; border-radius: 2px; background: var(--slate); }
+  .tile-logo span:nth-child(5) { background: var(--amber); }
+  .topbar h1 { color: var(--white); font-size: 16px; font-weight: 600; }
+  .topbar-tabs { display: flex; gap: 4px; }
+  .tab-btn {
+    padding: 6px 16px; border-radius: 6px; border: none;
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer; background: transparent; color: rgba(255,255,255,0.5);
+    transition: all 0.15s;
+  }
+  .tab-btn.active { background: var(--amber); color: var(--white); }
+  .tab-btn:hover:not(.active) { color: var(--white); }
+  .logout-btn {
+    background: transparent; border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.6); border-radius: 6px;
+    padding: 5px 12px; font-family: inherit; font-size: 13px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .logout-btn:hover { border-color: rgba(255,255,255,0.5); color: var(--white); }
+
+  /* ── Main Layout ── */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Support Tab ── */
+  #tab-support { display: flex; flex: 1; overflow: hidden; }
+
+  .conv-list {
+    width: var(--sidebar-w); border-right: 1px solid var(--border);
+    background: var(--white); overflow-y: auto; flex-shrink: 0;
+  }
+  .conv-list-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    font-size: 13px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .refresh-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 16px; line-height: 1;
+    padding: 2px 4px; border-radius: 4px;
+    transition: color 0.15s;
+  }
+  .refresh-btn:hover { color: var(--amber); }
+
+  .conv-item {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background 0.1s;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .conv-item:hover { background: var(--stone); }
+  .conv-item.active { background: #FFF4EC; border-left: 3px solid var(--amber); }
+  .conv-item.unread { background: var(--unread-bg); }
+  .conv-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--slate); color: var(--white);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600; flex-shrink: 0;
+  }
+  .conv-info { flex: 1; min-width: 0; }
+  .conv-name { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+  .conv-preview {
+    font-size: 13px; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .conv-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .conv-time { font-size: 11px; color: var(--text-muted); }
+  .unread-badge {
+    background: var(--amber); color: var(--white);
+    border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 600;
+  }
+  .conv-empty {
+    padding: 40px 20px; text-align: center;
+    color: var(--text-muted); font-size: 14px;
+  }
+
+  /* ── Thread Panel ── */
+  .thread-panel {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--white);
+  }
+  .thread-header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  }
+  .thread-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--midnight); color: var(--white);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 600;
+  }
+  .thread-name { font-size: 15px; font-weight: 600; }
+  .thread-email { font-size: 13px; color: var(--text-muted); }
+
+  .thread-messages {
+    flex: 1; overflow-y: auto; padding: 24px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .msg {
+    max-width: 68%; padding: 10px 14px;
+    border-radius: 12px; font-size: 14px; line-height: 1.5;
+  }
+  .msg.from-user {
+    background: var(--stone); align-self: flex-start;
+    border-bottom-left-radius: 4px;
+  }
+  .msg.from-admin {
+    background: var(--midnight); color: var(--white);
+    align-self: flex-end; border-bottom-right-radius: 4px;
+  }
+  .msg-time {
+    font-size: 11px; color: var(--text-muted);
+    margin-top: 3px;
+  }
+  .msg.from-admin .msg-time { color: rgba(255,255,255,0.5); text-align: right; }
+
+  .thread-input {
+    border-top: 1px solid var(--border); padding: 16px 24px;
+    display: flex; gap: 12px; align-items: flex-end; flex-shrink: 0;
+  }
+  .thread-input textarea {
+    flex: 1; resize: none; border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+    font-family: inherit; font-size: 14px; color: var(--text);
+    outline: none; transition: border-color 0.2s;
+    max-height: 120px; line-height: 1.5;
+  }
+  .thread-input textarea:focus { border-color: var(--amber); }
+  .send-btn {
+    background: var(--amber); color: var(--white);
+    border: none; border-radius: 10px;
+    padding: 10px 20px; font-family: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.2s; white-space: nowrap;
+  }
+  .send-btn:hover { background: var(--amber-dim); }
+  .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .thread-empty {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--text-muted); gap: 8px;
+  }
+  .thread-empty svg { opacity: 0.3; }
+  .thread-empty p { font-size: 15px; }
+
+  /* ── Announce Tab ── */
+  #tab-announce {
+    flex: 1; padding: 32px; overflow-y: auto;
+    display: none;
+  }
+  #tab-announce.visible { display: block; }
+
+  .announce-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px; }
+
+  .card {
+    background: var(--white); border-radius: 12px;
+    border: 1px solid var(--border); padding: 24px;
+  }
+  .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .card p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px; }
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    width: 100%; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-family: inherit; font-size: 14px; color: var(--text);
+    outline: none; transition: border-color 0.2s;
+    background: var(--white);
+  }
+  .form-group input:focus,
+  .form-group textarea:focus,
+  .form-group select:focus { border-color: var(--amber); }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+
+  .btn-primary {
+    background: var(--amber); color: var(--white);
+    border: none; border-radius: 8px;
+    padding: 10px 20px; font-family: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.2s; width: 100%;
+  }
+  .btn-primary:hover { background: var(--amber-dim); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .announce-history { max-width: 900px; margin-top: 24px; }
+  .announce-history h3 { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .announce-item {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px; margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  }
+  .announce-item-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+  .announce-item-body { font-size: 13px; color: var(--text-muted); }
+  .announce-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; text-align: right; }
+  .announce-target {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; margin-top: 4px;
+    background: var(--stone); color: var(--text-muted);
+  }
+  .announce-target.broadcast { background: #e8f4ff; color: #2B6CB0; }
+
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--midnight); color: var(--white);
+    padding: 12px 20px; border-radius: 8px; font-size: 14px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    transform: translateY(20px); opacity: 0;
+    transition: all 0.3s; z-index: 200;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-left: 3px solid #48BB78; }
+  .toast.error { border-left: 3px solid #FC8181; }
+
+  .loading { color: var(--text-muted); font-size: 14px; padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+    </div>
+    <h1>TileIQ Admin</h1>
+    <p>Enter your admin password to continue</p>
+    <input type="password" id="password-input" placeholder="Password" autofocus>
+    <button onclick="doLogin()">Sign In</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="tile-logo">
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+    </div>
+    <h1>TileIQ Admin</h1>
+  </div>
+  <div class="topbar-tabs">
+    <button class="tab-btn active" onclick="switchTab('support')">💬 Support</button>
+    <button class="tab-btn" onclick="switchTab('announce')">📢 Announce</button>
+  </div>
+  <button class="logout-btn" onclick="doLogout()">Sign out</button>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Support Tab -->
+  <div id="tab-support">
+    <!-- Conversation List -->
+    <div class="conv-list">
+      <div class="conv-list-header">
+        Conversations
+        <button class="refresh-btn" onclick="loadConversations()" title="Refresh">↻</button>
+      </div>
+      <div id="conv-list-body"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- Thread Panel -->
+    <div class="thread-panel" id="thread-panel">
+      <div class="thread-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <p>Select a conversation to view</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Announce Tab -->
+  <div id="tab-announce">
+    <div class="announce-grid">
+      <!-- Broadcast -->
+      <div class="card">
+        <h2>Broadcast to all tilers</h2>
+        <p>Send an update, tip, or announcement to every TileIQ Pro user.</p>
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="bc-title" placeholder="e.g. New feature: Tile Visualiser">
+        </div>
+        <div class="form-group">
+          <label>Message</label>
+          <textarea id="bc-body" placeholder="Write your announcement…"></textarea>
+        </div>
+        <button class="btn-primary" onclick="sendAnnouncement(false)">Send to all users</button>
+      </div>
+
+      <!-- Targeted -->
+      <div class="card">
+        <h2>Message a specific tiler</h2>
+        <p>Send a direct notification to one user — useful for onboarding or individual updates.</p>
+        <div class="form-group">
+          <label>User</label>
+          <select id="target-user">
+            <option value="">Loading users…</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="t-title" placeholder="e.g. Your account has been upgraded">
+        </div>
+        <div class="form-group">
+          <label>Message</label>
+          <textarea id="t-body" placeholder="Write your message…"></textarea>
+        </div>
+        <button class="btn-primary" onclick="sendAnnouncement(true)">Send to this user</button>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="announce-history">
+      <h3>Recent announcements</h3>
+      <div id="announce-history-body"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────
+const WORKER_URL = 'https://damp-bread-e0f9.kevin-woodley.workers.dev';
+const ADMIN_SECRET = localStorage.getItem('tileiq_admin_secret') || '';
+
+// ── LOGIN ─────────────────────────────────────────────────────
+async function doLogin() {
+  const pw = document.getElementById('password-input').value.trim();
+  if (!pw) return;
+
+  // Verify by hitting a protected endpoint
+  const res = await fetch(`${WORKER_URL}/api/admin/users`, {
+    headers: { 'x-admin-secret': pw }
+  });
+
+  if (res.ok) {
+    localStorage.setItem('tileiq_admin_secret', pw);
+    location.reload();
+  } else {
+    document.getElementById('login-error').textContent = 'Incorrect password';
+  }
+}
+
+document.getElementById('password-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+function doLogout() {
+  localStorage.removeItem('tileiq_admin_secret');
+  location.reload();
+}
+
+// Check if already logged in
+if (ADMIN_SECRET) {
+  document.getElementById('login-screen').style.display = 'none';
+  init();
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+function init() {
+  loadConversations();
+  loadUsers();
+  // Check for deep link
+  const hash = location.hash;
+  if (hash.startsWith('#conversation-')) {
+    const id = hash.replace('#conversation-', '');
+    setTimeout(() => openThread(id), 500);
+  }
+}
+
+// ── TABS ──────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+
+  document.getElementById('tab-support').style.display = tab === 'support' ? 'flex' : 'none';
+  const announce = document.getElementById('tab-announce');
+  announce.classList.toggle('visible', tab === 'announce');
+
+  if (tab === 'announce') {
+    loadAnnounceHistory();
+  }
+}
+
+// ── API ───────────────────────────────────────────────────────
+async function api(path, options = {}) {
+  const res = await fetch(`${WORKER_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-secret': ADMIN_SECRET,
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+// ── CONVERSATIONS ─────────────────────────────────────────────
+let conversations = [];
+let activeConvId = null;
+
+async function loadConversations() {
+  try {
+    conversations = await api('/api/admin/conversations');
+    renderConvList();
+  } catch (e) {
+    document.getElementById('conv-list-body').innerHTML = '<div class="conv-empty">Failed to load</div>';
+  }
+}
+
+function renderConvList() {
+  const el = document.getElementById('conv-list-body');
+  if (!conversations.length) {
+    el.innerHTML = '<div class="conv-empty">No support messages yet</div>';
+    return;
+  }
+
+  el.innerHTML = conversations.map(c => {
+    const name = c['auth.users']?.raw_user_meta_data?.full_name || c['auth.users']?.email || 'Tiler';
+    const email = c['auth.users']?.email || '';
+    const initial = name.charAt(0).toUpperCase();
+    const preview = c.last_message?.body || 'No messages yet';
+    const time = c.last_message_at ? timeAgo(c.last_message_at) : '';
+    const unread = c.unread_admin || 0;
+    const isActive = c.id === activeConvId;
+
+    return `
+      <div class="conv-item ${unread ? 'unread' : ''} ${isActive ? 'active' : ''}"
+           onclick="openThread('${c.id}', '${name}', '${email}')">
+        <div class="conv-avatar">${initial}</div>
+        <div class="conv-info">
+          <div class="conv-name">${escHtml(name)}</div>
+          <div class="conv-preview">${escHtml(preview.substring(0, 60))}</div>
+        </div>
+        <div class="conv-meta">
+          <div class="conv-time">${time}</div>
+          ${unread ? `<div class="unread-badge">${unread}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── THREAD ────────────────────────────────────────────────────
+async function openThread(convId, name, email) {
+  activeConvId = convId;
+  renderConvList();
+  location.hash = `conversation-${convId}`;
+
+  const panel = document.getElementById('thread-panel');
+  panel.innerHTML = `
+    <div class="thread-header">
+      <div class="thread-avatar">${(name || 'T').charAt(0).toUpperCase()}</div>
+      <div>
+        <div class="thread-name">${escHtml(name || 'Tiler')}</div>
+        <div class="thread-email">${escHtml(email || '')}</div>
+      </div>
+    </div>
+    <div class="thread-messages" id="thread-msgs"><div class="loading">Loading…</div></div>
+    <div class="thread-input">
+      <textarea id="reply-input" placeholder="Type your reply…" rows="2"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendReply('${convId}')}"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendReply('${convId}')">Send</button>
+    </div>
+  `;
+
+  try {
+    const data = await api(`/api/admin/conversation/${convId}`);
+    renderMessages(data.messages);
+    // Mark as read in list
+    const conv = conversations.find(c => c.id === convId);
+    if (conv) conv.unread_admin = 0;
+    renderConvList();
+  } catch (e) {
+    document.getElementById('thread-msgs').innerHTML = '<div class="loading">Failed to load messages</div>';
+  }
+}
+
+function renderMessages(messages) {
+  const el = document.getElementById('thread-msgs');
+  if (!messages.length) {
+    el.innerHTML = '<div class="loading" style="color:#aaa">No messages yet</div>';
+    return;
+  }
+
+  el.innerHTML = messages.map(m => `
+    <div>
+      <div class="msg from-${m.sender === 'admin' ? 'admin' : 'user'}">
+        ${escHtml(m.body)}
+        <div class="msg-time">${formatTime(m.created_at)}</div>
+      </div>
+    </div>
+  `).join('');
+
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendReply(convId) {
+  const input = document.getElementById('reply-input');
+  const btn = document.getElementById('send-btn');
+  const body = input.value.trim();
+  if (!body) return;
+
+  btn.disabled = true;
+  try {
+    await api('/api/admin/reply', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: convId, body })
+    });
+    input.value = '';
+    // Reload thread
+    const data = await api(`/api/admin/conversation/${convId}`);
+    renderMessages(data.messages);
+    showToast('Reply sent', 'success');
+  } catch (e) {
+    showToast('Failed to send reply', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── ANNOUNCEMENTS ─────────────────────────────────────────────
+let users = [];
+
+async function loadUsers() {
+  try {
+    users = await api('/api/admin/users');
+    const sel = document.getElementById('target-user');
+    sel.innerHTML = '<option value="">Select a user…</option>' +
+      users.map(u => `<option value="${u.id}">${escHtml(u.name || u.email)}</option>`).join('');
+  } catch (e) { /* silently fail */ }
+}
+
+async function sendAnnouncement(targeted) {
+  const title = document.getElementById(targeted ? 't-title' : 'bc-title').value.trim();
+  const body = document.getElementById(targeted ? 't-body' : 'bc-body').value.trim();
+  const target_user_id = targeted ? document.getElementById('target-user').value : null;
+
+  if (!title || !body) { showToast('Title and message are required', 'error'); return; }
+  if (targeted && !target_user_id) { showToast('Please select a user', 'error'); return; }
+
+  const btn = event.target;
+  btn.disabled = true;
+  try {
+    await api('/api/admin/announce', {
+      method: 'POST',
+      body: JSON.stringify({ title, body, target_user_id: target_user_id || null })
+    });
+    document.getElementById(targeted ? 't-title' : 'bc-title').value = '';
+    document.getElementById(targeted ? 't-body' : 'bc-body').value = '';
+    showToast(targeted ? 'Message sent!' : 'Broadcast sent to all users!', 'success');
+    loadAnnounceHistory();
+  } catch (e) {
+    showToast('Failed to send', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadAnnounceHistory() {
+  const el = document.getElementById('announce-history-body');
+  try {
+    // Use supabase directly for announcement history (admin view)
+    const res = await fetch(`${WORKER_URL}/api/admin/announcements`, {
+      headers: { 'x-admin-secret': ADMIN_SECRET }
+    });
+    const data = await res.json();
+    if (!data.length) {
+      el.innerHTML = '<div class="loading">No announcements yet</div>';
+      return;
+    }
+    el.innerHTML = data.map(a => {
+      const targetUser = a.target_user_id ? users.find(u => u.id === a.target_user_id) : null;
+      const targetLabel = a.target_user_id
+        ? (targetUser?.name || targetUser?.email || 'Specific user')
+        : 'All users';
+      return `
+        <div class="announce-item">
+          <div>
+            <div class="announce-item-title">${escHtml(a.title)}</div>
+            <div class="announce-item-body">${escHtml(a.body)}</div>
+            <span class="announce-target ${a.target_user_id ? '' : 'broadcast'}">${escHtml(targetLabel)}</span>
+          </div>
+          <div class="announce-meta">${timeAgo(a.created_at)}</div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="loading">Failed to load history</div>';
+  }
+}
+
+// ── UTILS ─────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+function formatTime(ts) {
+  return new Date(ts).toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
