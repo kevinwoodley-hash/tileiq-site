@@ -755,6 +755,21 @@ async function deleteThread(convId) {
     showToast('Failed to delete', 'error');
   }
 }
+async function deleteAnnouncement(id) {
+  if (!confirm('Delete this announcement?')) return;
+  try {
+    await api('/api/admin/announcement/delete', {
+      method: 'POST',
+      body: JSON.stringify({ announcement_id: id })
+    });
+    const el = document.getElementById(`announce-${id}`);
+    if (el) el.remove();
+    showToast('Announcement deleted', 'success');
+  } catch(e) {
+    showToast('Failed to delete', 'error');
+  }
+}
+
 function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
