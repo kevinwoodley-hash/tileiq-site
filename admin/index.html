@@ -606,7 +606,7 @@ function switchTab(tab) {
 
   if (tab === 'announce') loadAnnounceHistory();
   if (tab === 'stats') loadStats();
-  if (tab === 'backups') { document.getElementById('tab-backups').style.display='block'; loadBackups(); }
+  if (tab === 'backups') { document.getElementById('tab-backups').style.display='block'; if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
 }
 
 // ── API ───────────────────────────────────────────────────────
