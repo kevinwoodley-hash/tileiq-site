@@ -368,6 +368,7 @@
     <button class="tab-btn" onclick="switchTab('announce')">📢 Announce</button>
     <button class="tab-btn" onclick="switchTab('stats')">📊 Stats</button>
     <button class="tab-btn" onclick="switchTab('backups')">💾 Backups</button>
+    <button class="tab-btn" onclick="switchTab('users')">👥 Users</button>
   </div>
   <button class="logout-btn" onclick="doLogout()">Sign out</button>
 </div>
@@ -378,6 +379,7 @@
   <button class="mobile-tab" onclick="switchTab('announce')">📢 Announce</button>
   <button class="mobile-tab" onclick="switchTab('stats')">📊 Stats</button>
   <button class="mobile-tab" onclick="switchTab('backups')">💾 Backups</button>
+  <button class="mobile-tab" onclick="switchTab('users')">👥 Users</button>
 </div>
 
 <!-- Main -->
@@ -607,6 +609,7 @@ function switchTab(tab) {
   if (tab === 'announce') loadAnnounceHistory();
   if (tab === 'stats') loadStats();
   if (tab === 'backups') { document.getElementById('tab-backups').style.display='block'; if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
+  if (tab === 'users') { document.getElementById('tab-users').style.display='block'; loadUsersTab(); }
 }
 
 // ── API ───────────────────────────────────────────────────────
@@ -1051,6 +1054,73 @@ async function restoreBackup(date) {
     showToast('Restored ' + data.restored + ' jobs from ' + date + (userId ? ' for ' + target : ' for all users'), 'success');
   } catch(e) {
     showToast('Restore failed', 'error');
+  }
+}
+</script>
+<!-- Users Tab -->
+<div id="tab-users" style="display:none;flex:1;padding:24px;overflow-y:auto;">
+  <div style="max-width:900px;">
+    <h2 style="font-size:18px;font-weight:600;margin-bottom:4px;">Users</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">View and manage user jobs. Use this to check what's in Supabase for a specific user.</p>
+    <div id="users-tab-list" style="background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- User Jobs Modal -->
+<div id="user-jobs-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;overflow-y:auto;padding:24px;">
+  <div style="background:var(--white);border-radius:12px;max-width:700px;margin:0 auto;overflow:hidden;">
+    <div style="background:var(--midnight);padding:20px 24px;display:flex;justify-content:space-between;align-items:center;">
+      <h2 id="user-jobs-title" style="color:#fff;font-size:16px;font-weight:600;">User Jobs</h2>
+      <button onclick="document.getElementById('user-jobs-modal').style.display='none'" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>
+    </div>
+    <div id="user-jobs-list" style="padding:16px;max-height:70vh;overflow-y:auto;">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function loadUsersTab() {
+  if (!users.length) await loadUsers();
+  const el = document.getElementById('users-tab-list');
+  if (!users.length) { el.innerHTML = '<div class="loading">No users found</div>'; return; }
+  el.innerHTML = users.map(u => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-size:14px;font-weight:600;">${escHtml(u.name || u.email)}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${escHtml(u.email)} · joined ${timeAgo(u.created_at)}</div>
+      </div>
+      <button onclick="viewUserJobs('${u.id}', '${escHtml(u.name || u.email)}')" style="background:var(--amber);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">View Jobs</button>
+    </div>`).join('');
+}
+
+async function viewUserJobs(userId, userName) {
+  const modal = document.getElementById('user-jobs-modal');
+  const title = document.getElementById('user-jobs-title');
+  const list = document.getElementById('user-jobs-list');
+  title.textContent = userName + "'s Jobs";
+  list.innerHTML = '<div class="loading">Loading…</div>';
+  modal.style.display = 'block';
+  try {
+    const data = await api('/api/admin/user-jobs?user_id=' + userId);
+    if (!data.length) {
+      list.innerHTML = '<div class="loading">No jobs found in Supabase for this user.</div>';
+      return;
+    }
+    list.innerHTML = data.map(j => {
+      const d = j.data || {};
+      return `<div style="padding:12px 0;border-bottom:1px solid var(--border);">
+        <div style="font-size:14px;font-weight:600;">${escHtml(d.customerName || 'Unknown')}</div>
+        <div style="font-size:12px;color:var(--text-muted);">
+          ${escHtml(d.status || 'enquiry')} · ${escHtml(d.address || d.city || '')} · ${timeAgo(j.updated_at)}
+        </div>
+        ${d.description ? '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">' + escHtml(d.description.substring(0,80)) + '</div>' : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="loading">Failed to load jobs</div>';
   }
 }
 </script>
