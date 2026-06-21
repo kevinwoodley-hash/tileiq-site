@@ -1004,12 +1004,20 @@ async function loadBackups() {
       return;
     }
     el.innerHTML = data.map(b => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);">
-        <div>
-          <div style="font-size:14px;font-weight:600;">${b.date}</div>
-          <div style="font-size:12px;color:var(--text-muted);">${Math.round(b.size/1024)}KB · ${timeAgo(b.uploaded)}</div>
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div>
+            <div style="font-size:14px;font-weight:600;">${b.date}</div>
+            <div style="font-size:12px;color:var(--text-muted);">${Math.round(b.size/1024)}KB · ${timeAgo(b.uploaded)}</div>
+          </div>
         </div>
-        <button onclick="restoreBackup('${b.date}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Restore</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="restore-user-${b.date}" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;min-width:160px;">
+            <option value="">All users</option>
+            ${users.map(u => '<option value="' + u.id + '">' + (u.name || u.email) + '</option>').join('')}
+          </select>
+          <button onclick="restoreBackup('${b.date}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Restore</button>
+        </div>
       </div>`).join('');
   } catch(e) {
     el.innerHTML = '<div class="loading">Failed to load backups</div>';
@@ -1031,10 +1039,16 @@ async function runBackupNow() {
 }
 
 async function restoreBackup(date) {
-  if (!confirm('Restore all jobs from backup ' + date + '? This will merge backup data into Supabase.')) return;
+  const sel = document.getElementById('restore-user-' + date);
+  const userId = sel ? sel.value : '';
+  const target = userId ? (users.find(u => u.id === userId)?.name || 'selected user') : 'ALL users';
+  if (!confirm('WARNING: Restoring from ' + date + ' for ' + target + '. This will overwrite jobs from that backup. Jobs created after the backup will NOT be affected. Only use if data has been lost. Continue?')) return;
   try {
-    const data = await api('/api/admin/backup/restore', { method: 'POST', body: JSON.stringify({ date }) });
-    showToast('Restored ' + data.restored + ' jobs from ' + date, 'success');
+    const data = await api('/api/admin/backup/restore', {
+      method: 'POST',
+      body: JSON.stringify({ date, user_id: userId || null })
+    });
+    showToast('Restored ' + data.restored + ' jobs from ' + date + (userId ? ' for ' + target : ' for all users'), 'success');
   } catch(e) {
     showToast('Restore failed', 'error');
   }
