@@ -606,8 +606,24 @@ function switchTab(tab) {
   const stats = document.getElementById('tab-stats');
   if (stats) stats.style.display = tab === 'stats' ? 'block' : 'none';
 
+  // Hide all extra panels first
+  ['tab-backups', 'tab-users', 'tab-stats'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  // Also fix active tab button highlighting
+  document.querySelectorAll('.tab-btn, .mobile-tab').forEach(b => {
+    const txt = b.textContent.trim();
+    if ((tab === 'support' && txt.includes('Support')) ||
+        (tab === 'announce' && txt.includes('Announce')) ||
+        (tab === 'stats' && txt.includes('Stats')) ||
+        (tab === 'backups' && txt.includes('Backups')) ||
+        (tab === 'users' && txt.includes('Users'))) {
+      b.classList.add('active');
+    }
+  });
   if (tab === 'announce') loadAnnounceHistory();
-  if (tab === 'stats') loadStats();
+  if (tab === 'stats') { document.getElementById('tab-stats').style.display = 'block'; loadStats(); }
   if (tab === 'backups') { document.getElementById('tab-backups').style.display='block'; if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
   if (tab === 'users') { document.getElementById('tab-users').style.display='block'; loadUsersTab(); }
 }
