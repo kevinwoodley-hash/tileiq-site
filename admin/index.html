@@ -367,6 +367,7 @@
     <button class="tab-btn active" onclick="switchTab('support')">💬 Support</button>
     <button class="tab-btn" onclick="switchTab('announce')">📢 Announce</button>
     <button class="tab-btn" onclick="switchTab('stats')">📊 Stats</button>
+    <button class="tab-btn" onclick="switchTab('backups')">💾 Backups</button>
   </div>
   <button class="logout-btn" onclick="doLogout()">Sign out</button>
 </div>
@@ -376,6 +377,7 @@
   <button class="mobile-tab active" onclick="switchTab('support')">💬 Support</button>
   <button class="mobile-tab" onclick="switchTab('announce')">📢 Announce</button>
   <button class="mobile-tab" onclick="switchTab('stats')">📊 Stats</button>
+  <button class="mobile-tab" onclick="switchTab('backups')">💾 Backups</button>
 </div>
 
 <!-- Main -->
@@ -604,6 +606,7 @@ function switchTab(tab) {
 
   if (tab === 'announce') loadAnnounceHistory();
   if (tab === 'stats') loadStats();
+  if (tab === 'backups') { document.getElementById('tab-backups').style.display='block'; loadBackups(); }
 }
 
 // ── API ───────────────────────────────────────────────────────
@@ -973,6 +976,68 @@ function showToast(msg, type = 'success') {
   t.textContent = msg;
   t.className = `toast ${type} show`;
   setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+<!-- Backups Tab -->
+<div id="tab-backups" style="display:none;flex:1;padding:24px;overflow-y:auto;">
+  <div style="max-width:700px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div>
+        <h2 style="font-size:18px;font-weight:600;margin-bottom:4px;">Job Backups</h2>
+        <p style="font-size:13px;color:var(--text-muted);">Daily snapshots saved to Cloudflare R2. Independent of Supabase.</p>
+      </div>
+      <button onclick="runBackupNow()" id="btn-run-backup" style="background:var(--amber);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">▶ Run Backup Now</button>
+    </div>
+    <div id="backups-list" style="background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+      <div class="loading">Loading backups…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function loadBackups() {
+  const el = document.getElementById('backups-list');
+  try {
+    const data = await api('/api/admin/backups');
+    if (!data.length) {
+      el.innerHTML = '<div class="loading">No backups yet — click Run Backup Now to create one.</div>';
+      return;
+    }
+    el.innerHTML = data.map(b => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:14px;font-weight:600;">${b.date}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${Math.round(b.size/1024)}KB · ${timeAgo(b.uploaded)}</div>
+        </div>
+        <button onclick="restoreBackup('${b.date}')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Restore</button>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="loading">Failed to load backups</div>';
+  }
+}
+
+async function runBackupNow() {
+  const btn = document.getElementById('btn-run-backup');
+  btn.disabled = true; btn.textContent = 'Running…';
+  try {
+    await api('/api/admin/backup/run', { method: 'POST', body: JSON.stringify({}) });
+    showToast('Backup complete!', 'success');
+    loadBackups();
+  } catch(e) {
+    showToast('Backup failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ Run Backup Now';
+  }
+}
+
+async function restoreBackup(date) {
+  if (!confirm('Restore all jobs from backup ' + date + '? This will merge backup data into Supabase.')) return;
+  try {
+    const data = await api('/api/admin/backup/restore', { method: 'POST', body: JSON.stringify({ date }) });
+    showToast('Restored ' + data.restored + ' jobs from ' + date, 'success');
+  } catch(e) {
+    showToast('Restore failed', 'error');
+  }
 }
 </script>
 </body>
