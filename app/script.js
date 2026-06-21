@@ -1321,6 +1321,8 @@ async function startDomainVerification() {
 
 async function verifyDomain() { return startDomainVerification(); }
 
+async function verifyDomain() { return startDomainVerification(); }
+
 async function checkDomainVerification() {
     const msgEl = document.getElementById("domain-verify-msg");
     if (msgEl) { msgEl.style.color = "#94a3b8"; msgEl.textContent = "Checking…"; }
