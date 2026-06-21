@@ -412,6 +412,7 @@ body {
     <h1>TileIQ Admin</h1>
     <p>Sign in to manage your platform</p>
     <input type="password" id="password-input" placeholder="Password" autofocus>
+    <input type="text" id="totp-input" placeholder="Authenticator code" inputmode="numeric" maxlength="6" style="display:none;letter-spacing:6px;text-align:center;" autocomplete="one-time-code">
     <button onclick="doLogin()">Sign In</button>
     <div id="login-error"></div>
   </div>
@@ -641,23 +642,63 @@ let ADMIN_SECRET = localStorage.getItem('tileiq_admin_secret') || '';
 let conversations = [], activeConvId = null, users = [];
 
 // ── Login ──────────────────────────────────────────────────────
+let _loginStep = 1;
+let _pendingPassword = "";
+
 async function doLogin() {
-  const pw = document.getElementById('password-input').value.trim();
-  if (!pw) return;
-  const res = await fetch(`${WORKER_URL}/api/admin/users`, { headers: { 'x-admin-secret': pw } });
-  if (res.ok) {
-    ADMIN_SECRET = pw;
-    localStorage.setItem('tileiq_admin_secret', pw);
-    document.getElementById('login-screen').style.display = 'none';
-    init();
-  } else {
-    document.getElementById('login-error').textContent = 'Incorrect password';
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  if (_loginStep === 1) {
+    const pw = document.getElementById('password-input').value.trim();
+    if (!pw) return;
+    const res = await fetch(WORKER_URL + '/api/admin/users', { headers: { 'x-admin-secret': pw } });
+    if (res.ok) {
+      _pendingPassword = pw;
+      _loginStep = 2;
+      document.getElementById('password-input').style.display = 'none';
+      const totpInput = document.getElementById('totp-input');
+      totpInput.style.display = 'block';
+      totpInput.focus();
+      document.querySelector('.login-box p').textContent = 'Enter the 6-digit code from your authenticator app';
+    } else {
+      errEl.textContent = 'Incorrect password';
+    }
+    return;
+  }
+  if (_loginStep === 2) {
+    const token = document.getElementById('totp-input').value.trim();
+    if (token.length !== 6) { errEl.textContent = 'Enter the 6-digit code'; return; }
+    const res = await fetch(WORKER_URL + '/api/admin/verify-totp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-secret': _pendingPassword },
+      body: JSON.stringify({ token })
+    });
+    const data = await res.json();
+    if (data.valid) {
+      ADMIN_SECRET = _pendingPassword;
+      localStorage.setItem('tileiq_admin_secret', _pendingPassword);
+      localStorage.setItem('tileiq_totp_verified', Date.now().toString());
+      document.getElementById('login-screen').style.display = 'none';
+      init();
+    } else {
+      errEl.textContent = 'Invalid code - try again';
+      document.getElementById('totp-input').value = '';
+    }
   }
 }
 document.getElementById('password-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-function doLogout() { localStorage.removeItem('tileiq_admin_secret'); location.reload(); }
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && typeof _loginStep !== 'undefined' && _loginStep === 2) doLogin(); });
+function doLogout() { localStorage.removeItem('tileiq_admin_secret'); localStorage.removeItem('tileiq_totp_verified'); location.reload(); }
 
-if (ADMIN_SECRET) { document.getElementById('login-screen').style.display = 'none'; init(); }
+if (ADMIN_SECRET) {
+  const totpVerified = parseInt(localStorage.getItem('tileiq_totp_verified') || '0');
+  if (Date.now() - totpVerified < 12 * 60 * 60 * 1000) {
+    document.getElementById('login-screen').style.display = 'none';
+    init();
+  } else {
+    localStorage.removeItem('tileiq_totp_verified');
+  }
+}
 
 // ── Init ───────────────────────────────────────────────────────
 function init() {
