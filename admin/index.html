@@ -972,7 +972,7 @@ async function loadUsersPage() {
     <div class="user-item">
       <div>
         <div class="user-name">${escHtml(u.name || u.email)}</div>
-        <div class="user-email">${escHtml(u.email)} · joined ${timeAgo(u.created_at)}</div>
+        <div class="user-email">${escHtml(u.email)} · joined ${timeAgo(u.created_at)}${u.last_sign_in_at ? " · last seen " + timeAgo(u.last_sign_in_at) : ""}</div>
       </div>
       <button class="btn-view" onclick="viewUserJobs('${u.id}', '${escHtml(u.name || u.email)}')">View Jobs</button>
     </div>`).join('');
