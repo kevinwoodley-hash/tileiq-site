@@ -15169,3 +15169,77 @@ async function forceSyncJobs() {
 
   setTimeout(initSectionHelp, 3000);
 })();
+
+(function() {
+  var SECTION_HELP = {
+    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
+    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
+    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
+    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
+    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
+    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
+    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
+    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
+    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
+    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
+    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
+    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
+    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
+    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
+    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
+    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
+    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
+  };
+
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
+  document.body.appendChild(tip);
+  var tipTimeout = null;
+
+  function showTip(text, btn) {
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var left = r.left;
+    var top = r.bottom + 8;
+    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
+    if (left < 8) left = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
+  }
+
+  function initSectionHelp() {
+    var labels = document.querySelectorAll('.form-section-label');
+    labels.forEach(function(label) {
+      var text = label.textContent.trim();
+      // match against known keys
+      var helpText = null;
+      Object.keys(SECTION_HELP).forEach(function(key) {
+        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
+      });
+      if (!helpText) return;
+      if (label.querySelector('.tiq-section-help-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'tiq-section-help-btn';
+      btn.textContent = '?';
+      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
+      };
+      label.style.display = 'inline-flex';
+      label.style.alignItems = 'center';
+      label.appendChild(btn);
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
+      tip.style.display = 'none';
+    }
+  });
+
+  setTimeout(initSectionHelp, 3000);
+})();
