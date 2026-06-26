@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.tileiqpro.android",
+    "sha256_cert_fingerprints": [
+      "25:12:E0:89:47:C4:A9:B3:87:7A:43:4A:D3:DB:61:F0:84:EC:4B:49:38:53:47:84:63:89:07:49:96:0E:6D:25"
+    ]
+  }
+}]
