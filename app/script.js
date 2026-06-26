@@ -6653,7 +6653,7 @@ async function syncAllQuoteStatuses() {
 ═══════════════════════════════════════════════════════════════ */
 const XERO_CLIENT_ID    = "E053784FCD6344099E0A47BCFE20ABED";
 const XERO_REDIRECT_URI = "https://damp-bread-e0f9.kevin-woodley.workers.dev/xero-callback";
-const XERO_SCOPES       = "openid profile email accounting.transactions accounting.contacts offline_access";
+const XERO_SCOPES       = "openid profile email accounting.invoices accounting.contacts offline_access";
 
 async function xeroConnect() {
     const verifier  = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,"0")).join("");
