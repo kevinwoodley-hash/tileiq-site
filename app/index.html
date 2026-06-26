@@ -1345,6 +1345,7 @@
                         <option value="none">None</option>
                         <option value="freeagent">FreeAgent</option>
                         <option value="quickbooks">QuickBooks</option>
+                        <option value="xero">Xero</option>
                     </select>
                 </div>
             </div>
@@ -1577,6 +1578,7 @@
         <div id="accounting-export-section" style="display:none;">
             <div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:0.05em;margin-bottom:8px;">EXPORT QUOTE</div>
             <button id="btn-freeagent" onclick="freeAgentConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;">🔗 FreeAgent</button>
+            <button id="btn-xero" onclick="xeroConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;border-color:#13B5EA;color:#13B5EA;">🔗 Xero</button>
             <button id="btn-qbo" onclick="qboConnect()" class="btn-secondary" style="display:none;width:100%;margin-bottom:6px;border-color:#2CA01C;color:#2CA01C;">🔗 QuickBooks</button>
         </div>
     </div>
@@ -1619,7 +1621,7 @@
             <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">THIRD-PARTY SERVICES</div>
             <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
                 Supabase (database), Resend (email), Cloudflare (hosting), Firebase (push notifications), RevenueCat (subscriptions).
-                Accounting integrations (FreeAgent, QuickBooks) are optional and only activated by you.
+                Accounting integrations (FreeAgent, QuickBooks, Xero) are optional and only activated by you.
             </div>
 
             <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">CONTACT</div>

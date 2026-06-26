@@ -448,11 +448,15 @@ function handleDeepLink(url) {
     }
 
     // QuickBooks callback
+    if (url.startsWith("tileiq://xero-connected")) {
+        handleXeroCallback(url);
+        return;
+    }
     if (url.startsWith("tileiq://qbo-connected")) {
         handleQBOCallback(url.replace("tileiq://qbo-connected", "https://tileiq.app/qbo-cb"));
         return;
     }
-
+}
 
 // Register deep link listeners
 function initDeepLinks() {
@@ -748,6 +752,7 @@ async function authSignOut() {
     localStorage.removeItem(SYNC_PENDING_KEY);
     localStorage.removeItem("fa-tokens");
     localStorage.removeItem("qbo-tokens");
+    localStorage.removeItem("xero-tokens");
     localStorage.removeItem("tileiq-last-user");
     localStorage.removeItem("tileiq-last-sync");
     // Reset in-memory state
@@ -6052,6 +6057,7 @@ function updateAccountingSection() {
     const section = document.getElementById("accounting-export-section");
     const faBtn   = document.getElementById("btn-freeagent");
     const qboBtn  = document.getElementById("btn-qbo");
+    const xeroBtn = document.getElementById("btn-xero");
 
     if (!section) return;
 
@@ -6062,11 +6068,13 @@ function updateAccountingSection() {
 
     section.style.display = "block";
     if (faBtn)   faBtn.style.display   = software === "freeagent"   ? "block" : "none";
+    if (xeroBtn) xeroBtn.style.display  = software === "xero" ? "block" : "none";
     if (qboBtn)  qboBtn.style.display  = software === "quickbooks"  ? "block" : "none";
 
     // Update button labels based on connection status
     if (software === "freeagent")  updateFreeAgentButton();
     if (software === "quickbooks") updateQBOButton();
+    if (software === "xero")       updateXeroButton();
 }
 
 function updateFreeAgentButton() {
@@ -6639,6 +6647,114 @@ async function syncAllQuoteStatuses() {
         }
     }
     if (changed) { saveAll(); renderDashboard(); renderJobQuoteStatusBar(); }
+}
+/* ═══════════════════════════════════════════════════════════════
+   XERO ACCOUNTING OAUTH (PKCE)
+═══════════════════════════════════════════════════════════════ */
+const XERO_CLIENT_ID    = "E053784FCD6344099E0A47BCFE20ABED";
+const XERO_REDIRECT_URI = "https://damp-bread-e0f9.kevin-woodley.workers.dev/xero-callback";
+const XERO_SCOPES       = "openid profile email accounting.transactions accounting.contacts offline_access";
+
+async function xeroConnect() {
+    const verifier  = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,"0")).join("");
+    const digest    = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    const challenge = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/[+]/g,"-").replace(/[/]/g,"_").replace(/=+$/,"");
+    const state     = "xero_" + verifier;
+    localStorage.setItem("xero-verifier", verifier);
+    const params = new URLSearchParams({ response_type:"code", client_id:XERO_CLIENT_ID, redirect_uri:XERO_REDIRECT_URI, scope:XERO_SCOPES, state, code_challenge:challenge, code_challenge_method:"S256" });
+    const url = "https://login.xero.com/identity/connect/authorize?" + params.toString();
+    const { Browser } = window.Capacitor?.Plugins || {};
+    if (Browser?.open) await Browser.open({ url, presentationStyle:"popover" });
+    else window.open(url, "_system");
+}
+
+function handleXeroCallback(url) {
+    try {
+        const u = new URL(url);
+        const tokens = u.searchParams.get("tokens");
+        if (!tokens) return;
+        const data = JSON.parse(atob(decodeURIComponent(tokens)));
+        localStorage.setItem("xero-tokens", JSON.stringify({ access_token:data.access_token, refresh_token:data.refresh_token, tenant_id:data.tenant_id, expires_at:Math.floor(Date.now()/1000)+(data.expires_in||1800) }));
+        alert("\u2705 Xero connected successfully!");
+        updateXeroButton();
+    } catch(e) { console.error("handleXeroCallback:", e); }
+}
+
+function getXeroTokens() {
+    try { return JSON.parse(localStorage.getItem("xero-tokens") || "null"); } catch(e) { return null; }
+}
+
+async function getValidXeroToken() {
+    const tokens = getXeroTokens();
+    if (!tokens) return null;
+    const now = Math.floor(Date.now()/1000);
+    if (tokens.expires_at > now + 60) return tokens;
+    try {
+        const resp = await fetch(AI_PROXY_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"xero_token_refresh", refresh_token:tokens.refresh_token }) });
+        const data = await resp.json();
+        if (data.access_token) {
+            const refreshed = { ...tokens, access_token:data.access_token, refresh_token:data.refresh_token||tokens.refresh_token, expires_at:now+(data.expires_in||1800) };
+            localStorage.setItem("xero-tokens", JSON.stringify(refreshed));
+            return refreshed;
+        }
+    } catch(e) {}
+    return tokens;
+}
+
+function updateXeroButton() {
+    const btn = document.getElementById("btn-xero");
+    if (!btn) return;
+    const tokens = getXeroTokens();
+    if (tokens) {
+        btn.textContent = "📤 Export to Xero";
+        btn.style.color = "#000";
+        btn.style.background = "#13B5EA";
+        btn.style.borderColor = "#13B5EA";
+        btn.onclick = () => exportXero();
+    } else {
+        btn.textContent = "🔗 Xero";
+        btn.style.color = "#13B5EA";
+        btn.style.background = "";
+        btn.style.borderColor = "#13B5EA";
+        btn.onclick = () => xeroConnect();
+    }
+}
+
+async function exportXero() {
+    if (!checkProFeature("accounting")) return;
+    const tokens = await getValidXeroToken();
+    if (!tokens) { xeroConnect(); return; }
+    const j        = getJob();
+    const applyVat = document.getElementById("q-vat")?.value === "true";
+    const btn      = document.getElementById("btn-xero");
+    if (btn) { btn.disabled = true; btn.textContent = "Exporting..."; }
+    try {
+        let totalLabour = 0, totalMaterials = 0;
+        (j.rooms || []).forEach(room => {
+            const ct = room.tileSupply === "customer";
+            const rArea = (room.surfaces || []).reduce((a,s) => a+(s.area||0), 0);
+            let rLabOpts = null;
+            if (room.labourType === "day") rLabOpts = { type:"day", days:room.days||1, dayRate:room.dayRate||settings.dayRate||200, totalArea:rArea };
+            (room.surfaces || []).forEach(s => {
+                s.tileType = s.tileType || room.tileType || "ceramic";
+                calcSurface(s, ct, rLabOpts);
+                totalLabour    += parseFloat(s.labour||0) + parseFloat(s.ufhCost||0) + parseFloat(s.prepCost||0);
+                totalMaterials += parseFloat(s.materialSell||0);
+            });
+        });
+        const items = [];
+        if (totalLabour > 0)    items.push({ description: j.description || "Labour",  quantity:1, price:totalLabour.toFixed(2) });
+        if (totalMaterials > 0) items.push({ description: "Materials", quantity:1, price:totalMaterials.toFixed(2) });
+        const resp = await fetch(AI_PROXY_URL, {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ action:"xero_push", access_token:tokens.access_token, tenant_id:tokens.tenant_id, vat_registered:applyVat, contact:{ name:j.customerName, email:j.email||"" }, invoice:{ reference: currentQuoteRef || ("Q"+Date.now().toString().slice(-6)) }, items })
+        });
+        const data = await resp.json();
+        if (data.error) alert("Xero export failed: " + data.error);
+        else if (data.invoiceUrl && confirm("\u2705 Invoice created in Xero!\n\nOpen in Xero?")) window.open(data.invoiceUrl, "_system");
+        else alert("\u2705 " + (data.message || "Invoice created in Xero"));
+    } catch(e) { alert("Xero export error: " + e.message); }
+    finally { if (btn) { btn.disabled = false; updateXeroButton(); } }
 }
 
 /* ═══════════════════════════════════════════════════════════════
