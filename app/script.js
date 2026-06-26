@@ -453,13 +453,6 @@ function handleDeepLink(url) {
         return;
     }
 
-        return;
-    }
-
-    // Sage callback
-        return;
-    }
-}
 
 // Register deep link listeners
 function initDeepLinks() {
