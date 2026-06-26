@@ -4527,9 +4527,6 @@ function goSettings() {
     document.getElementById("set-sealer-coats").value    = s.sealerCoats         || 2;
     document.getElementById("set-vat").value            = s.applyVat !== false ? "true" : "false";
     document.getElementById("set-company-name").value   = s.companyName    || "";
-    if (document.getElementById("set-voicemail-name")) document.getElementById("set-voicemail-name").value = s.voicemailName || "";
-    if (document.getElementById("set-twilio-number")) document.getElementById("set-twilio-number").value = s.twilioNumber || "";
-    if (document.getElementById("set-mobile-number")) document.getElementById("set-mobile-number").value = s.mobileNumber || "";
     const addrEl = document.getElementById("set-company-address");
     if (addrEl) addrEl.value = s.companyAddress || "";
     document.getElementById("set-company-phone").value  = s.companyPhone || "";
@@ -4602,9 +4599,6 @@ function saveSettings() {
         sealerCoats:         parseInt(document.getElementById("set-sealer-coats").value)       || 2,
         applyVat:      document.getElementById("set-vat").value === "true",
         companyName:    document.getElementById("set-company-name").value.trim(),
-        voicemailName:  (document.getElementById("set-voicemail-name")?.value || "").trim(),
-        twilioNumber:   (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, ""),
-        mobileNumber:   (document.getElementById("set-mobile-number")?.value || "").trim().replace(/\s/g, ""),
         companyAddress: (document.getElementById("set-company-address")?.value || "").trim(),
         companyPhone:  document.getElementById("set-company-phone").value.trim(),
         companyEmail:  document.getElementById("set-company-email").value.trim(),
@@ -4632,24 +4626,6 @@ function saveSettings() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "d1_save_settings", user_id: currentUser.id, settings })
         }).catch(e => console.error("saveSettings D1 error:", e));
-        const vmName = (document.getElementById("set-voicemail-name")?.value || "").trim();
-        const vmNumber = (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, "");
-        const vmMobile = (document.getElementById("set-mobile-number")?.value || "").trim().replace(/\s/g, "");
-        if ((vmName || vmNumber || vmMobile) && currentUser) {
-            const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
-            const hdrs = { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY), "Content-Type": "application/json" };
-            fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id + "&select=data&limit=1", { headers: hdrs })
-            .then(r => r.json())
-            .then(rows => {
-                const existing = (rows && rows[0] && rows[0].data) ? rows[0].data : {};
-                const merged = Object.assign({}, existing, { voicemailName: vmName, twilioNumber: vmNumber, mobileNumber: vmMobile });
-                return fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
-                    method: "PATCH",
-                    headers: Object.assign({}, hdrs, { "Prefer": "return=minimal" }),
-                    body: JSON.stringify({ data: merged })
-                });
-            }).catch(e => console.error("voicemail settings save error:", e));
-        }
     }
     goDashboard();
 }
@@ -7131,86 +7107,21 @@ function checkProFeature(featureName) {
 }
 
 
+// Auto-fill demo credentials when ?demo=1 is in the URL
 (function() {
-  var SECTION_HELP = {
-    'Change Password':         'Update your TileIQ Pro login password. Must be at least 6 characters.',
-    'Company Details':         'Your business info shown on quotes, estimates and your customer enquiry form. Keep this up to date.',
-    'Custom Email Domain':     'Send quotes from your own email address (e.g. kevin@yourcompany.co.uk) instead of a TileIQ address. Requires DNS verification.',
-    'Enquiry Link':            'Your unique customer-facing link. Share it on social media, WhatsApp or your website so customers can request a quote directly.',
-    'Quote Settings':          'Set your payment terms, document type (Quote or Estimate) and how many days after sending before a follow-up reminder is sent.',
-    'Bank Details':            'Your bank details are printed on quotes and invoices so customers know how to pay you.',
-    'Accounting Export':       'Connect TileIQ Pro to your accounting software (Xero, QuickBooks or FreeAgent) to export invoices automatically.',
-    'Tiles & Grout':           'Set your default tile and grout prices. These are used as fallbacks when no specific price is entered on a job.',
-    'Adhesive & Silicone':     'Your standard adhesive and silicone costs per bag or tube. TileIQ Pro calculates quantities automatically from your room sizes.',
-    'Cement Board':            'Cost and labour rates for cement board (e.g. HardieBacker). Applied when cement board is selected as a floor prep option.',
-    'Anti-Crack Membrane':     'Cost and labour for uncoupling membrane (e.g. Schluter DITRA). Applied when membrane is selected as a floor prep option.',
-    'Levelling & Prep':        'Costs for floor levelling compound at different depths, tanking and primer. Applied automatically when selected in the room estimator.',
-    'Trims & Clips':           'Your prices for tile trims and levelling clips/wedges. Added to jobs where trim or clips are specified.',
-    'Natural Stone':           'Additional labour surcharge and sealer costs for natural stone tiles. Applied when stone tile type is selected.',
-    'Labour Rates':            'Your base labour rates used to calculate job costs. Set your standard m2 rate, day rate and any specialist rates.',
-    'Labour Rate Multipliers by Tile Type': 'Multipliers applied to your base labour rate depending on tile type. E.g. 1.4 for herringbone means 40% more than your standard rate.',
-    'Markup & VAT':            'Add a percentage markup on materials to cover your time sourcing them. Optionally apply VAT to quotes by default.'
-  };
-
-  var tip = document.createElement('div');
-  tip.style.cssText = 'display:none;position:fixed;z-index:99999;background:#1B2A3C;color:#F7F4EF;padding:10px 14px;border-radius:10px;font-size:13px;max-width:270px;border:1px solid #E07A2F;box-shadow:0 4px 20px rgba(0,0,0,0.4);line-height:1.5;';
-  document.body.appendChild(tip);
-  var tipTimeout = null;
-
-  function showTip(text, btn) {
-    tip.textContent = text;
-    tip.style.display = 'block';
-    var r = btn.getBoundingClientRect();
-    var left = r.left;
-    var top = r.bottom + 8;
-    if (left + 280 > window.innerWidth) left = window.innerWidth - 280;
-    if (left < 8) left = 8;
-    tip.style.left = left + 'px';
-    tip.style.top = top + 'px';
-    clearTimeout(tipTimeout);
-    tipTimeout = setTimeout(function() { tip.style.display = 'none'; }, 5000);
-  }
-
-  function initSectionHelp() {
-    var labels = document.querySelectorAll('.form-section-label');
-    labels.forEach(function(label) {
-      var text = label.textContent.trim();
-      // match against known keys
-      var helpText = null;
-      Object.keys(SECTION_HELP).forEach(function(key) {
-        if (text.indexOf(key) !== -1) helpText = SECTION_HELP[key];
-      });
-      if (!helpText) return;
-      if (label.querySelector('.tiq-section-help-btn')) return;
-      var btn = document.createElement('button');
-      btn.className = 'tiq-section-help-btn';
-      btn.textContent = '?';
-      btn.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#E07A2F;border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;margin-left:6px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;';
-      btn.onclick = function(e) {
-        e.stopPropagation();
-        if (tip.style.display === 'none') { showTip(helpText, btn); } else { tip.style.display = 'none'; }
-      };
-      label.style.display = 'inline-flex';
-      label.style.alignItems = 'center';
-      label.appendChild(btn);
-    });
-  }
-
-  document.addEventListener('click', function(e) {
-    if (!e.target.classList.contains('tiq-section-help-btn') && !e.target.classList.contains('tiq-help-btn')) {
-      tip.style.display = 'none';
+    if (new URLSearchParams(window.location.search).get("demo") === "1") {
+        window.addEventListener("DOMContentLoaded", function() {
+            const email = document.getElementById("si-email");
+            const pass  = document.getElementById("si-password");
+            if (email) email.value = "demo@tile-iq.com";
+            if (pass)  pass.value  = "Demo1234!";
+        });
+        // Also try after a short delay in case Capacitor renders late
+        setTimeout(function() {
+            const email = document.getElementById("si-email");
+            const pass  = document.getElementById("si-password");
+            if (email && !email.value) email.value = "demo@tile-iq.com";
+            if (pass  && !pass.value)  pass.value  = "Demo1234!";
+        }, 500);
     }
-  });
-
-  setTimeout(initSectionHelp, 3000);
 })();
-
-function setupDivert() {
-    const twilioNum = (settings.twilioNumber || "").replace(/\s/g, "");
-    if (!twilioNum) { alert("Please enter your TileIQ Business Number above and save settings first."); return; }
-    let e164 = twilioNum;
-    if (e164.startsWith("07")) e164 = "+44" + e164.slice(1);
-    else if (e164.startsWith("447")) e164 = "+" + e164;
-    const code = "**61*" + e164 + "*11*20#";
-    if (confirm("This will open your dialler with the divert setup code.\n\nJust press Call.\n\nCode: " + code)) { window.open("tel:" + code); }
-}
