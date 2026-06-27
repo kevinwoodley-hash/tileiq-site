@@ -461,6 +461,9 @@ body {
       <button class="nav-item" onclick="showPage('backups')" id="nav-backups">
         <span class="nav-icon">💾</span> Backups
       </button>
+      <button class="nav-item" onclick="showPage('checklist')" id="nav-checklist">
+        <span class="nav-icon">✅</span> Checklist
+      </button>
     </nav>
 
     <div class="sidebar-footer">
@@ -598,6 +601,25 @@ body {
         <div style="max-width:700px;background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
           <div id="users-list-body"><div class="loading">Loading…</div></div>
         </div>
+      </div>
+    </div>
+
+
+    <!-- Checklist Page -->
+    <div class="page" id="page-checklist">
+      <div class="page-header">
+        <h1>Testing Checklist</h1>
+        <p>Track pre-launch testing progress. Saved in your browser.</p>
+      </div>
+      <div style="padding:0 24px 24px;max-width:700px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+          <div style="flex:1;background:var(--border);border-radius:99px;height:8px;overflow:hidden;">
+            <div id="checklist-progress-bar" style="height:100%;background:var(--amber);border-radius:99px;transition:width 0.3s;width:0%"></div>
+          </div>
+          <div id="checklist-progress-text" style="font-size:13px;font-weight:600;white-space:nowrap;">0 / 0</div>
+          <button onclick="resetChecklist()" style="font-size:12px;color:var(--text-muted);background:none;border:none;cursor:pointer;text-decoration:underline;">Reset</button>
+        </div>
+        <div id="checklist-sections"></div>
       </div>
     </div>
 
@@ -743,6 +765,7 @@ function showPage(name) {
   if (name === 'stats' && !statsLoaded) { loadStats(); statsLoaded = true; }
   if (name === 'users') loadUsersPage();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
+  if (name === 'checklist') loadChecklist();
 }
 
 // ── API helper ─────────────────────────────────────────────────
@@ -1022,6 +1045,69 @@ async function viewUserJobs(userId, userName) {
 }
 
 function closeModal() { document.getElementById('user-jobs-modal').classList.remove('open'); }
+
+
+// ── Checklist ──────────────────────────────────────────────────
+const CHECKLIST = [
+  { section: "1. Auth", items: ["Sign up with new email","Email verification link works","Sign in with existing account","Biometric login works","Forgot password — request code by email","Enter 6-digit code and set new password","Sign out clears local data"] },
+  { section: "2. Home / Dashboard", items: ["Home screen loads jobs","Dashboard shows correct job counts","Bottom nav works (Home, Jobs, Customers, Settings)","Pro badge shows when free limit reached","Paywall appears when limit exceeded"] },
+  { section: "3. Job Pipeline", items: ["Create new job","Job status pipeline works (Enquiry → Complete)","Edit job details","Delete job","Schedule job (date picker)","Calendar invite sent to customer","Customer messages badge shows unread count","View and reply to customer messages"] },
+  { section: "4. Room Estimator — Floor", items: ["Length × width calculates area","Total m² directly overrides L×W","Tile type changes work","Wastage % adjusts","Deductions work","UFH cost option","Cement board / membrane","Levelling screed","Trim lengths","Clips appear for tiles ≥300mm"] },
+  { section: "5. Room Estimator — Wall", items: ["Width × height calculates area","Total m² directly overrides W×H","Deductions work (windows, doors)","Tanking option","Trim lengths"] },
+  { section: "6. Room Estimator — Full Room", items: ["L×W×H calculates walls + floor","Total m² overrides L×W","Include floor checkbox works","Sealant options work","Extra surfaces can be added","Each extra surface has own tile size"] },
+  { section: "7. Room Estimator — General", items: ["Labour type toggle (£/m² vs day rate)","Customer supplying tiles removes material cost","Live total updates as you type","Leica Disto D2 BLE connects and auto-fills","Add room to job","Edit existing room","Delete room"] },
+  { section: "8. Quoting", items: ["Quote generated with correct totals","VAT toggle adds 20%","Quote reference auto-generated","Edit quote description","AI generate description works","Send quote by email (PDF attached)","Send quote by WhatsApp","Customer accepts quote → notification received","Customer declines quote → notification received","Quote viewed notification received","PDF view works","Print / Save as PDF works"] },
+  { section: "9. Customers (CRM)", items: ["Add new customer","Edit customer","Delete customer","Search customers","Auto-fill customer when creating job","Address finder / GPS auto-fill"] },
+  { section: "10. Accounting", items: ["Connect FreeAgent (OAuth)","Export invoice to FreeAgent","Connect QuickBooks (OAuth)","Export invoice to QuickBooks","Connect Xero (PKCE OAuth)","Export invoice to Xero","Invoice appears in Xero drafts"] },
+  { section: "11. Settings", items: ["Company name/phone/email save","Logo upload works","Default labour rate saves and applies","Default day rate saves","Default tile sizes save","VAT toggle and number save","Terms & conditions save and appear on quotes","Accounting software selection shows correct button","Custom email domain setup"] },
+  { section: "12. Push Notifications", items: ["Quote viewed notification","Quote accepted notification","Quote declined notification","Inbound call creates job + notification","Inbound SMS creates job + notification","Inbound WhatsApp creates job + notification","Inbound email creates job + notification"] },
+  { section: "13. Offline / Sync", items: ["App works offline (create job, add room)","Data syncs when back online","Force sync button works","Background sync runs"] },
+  { section: "14. Support / Help", items: ["Help AI chat answers questions","Contact form submits","In-app support messaging works","? tooltip buttons show correct help"] },
+  { section: "15. Deep Links", items: ["FreeAgent OAuth callback opens app","QuickBooks OAuth callback opens app","Xero OAuth callback opens app","Password reset deep link works"] },
+  { section: "16. Web Demo", items: ["Demo credentials auto-fill at ?demo=1","Demo data loads correctly","No console errors"] }
+];
+
+function loadChecklist() {
+  const saved = JSON.parse(localStorage.getItem('tileiq-checklist') || '{}');
+  const container = document.getElementById('checklist-sections');
+  let totalItems = 0, checkedItems = 0;
+  container.innerHTML = CHECKLIST.map(section => {
+    const sectionHtml = section.items.map(item => {
+      const key = section.section + '|' + item;
+      const checked = saved[key] || false;
+      totalItems++;
+      if (checked) checkedItems++;
+      return `<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleChecklistItem('${section.section}','${item.replace(/'/g,"\'")}',this.checked)" style="margin-top:2px;width:16px;height:16px;accent-color:var(--amber);flex-shrink:0;">
+        <span style="font-size:13px;color:${checked ? 'var(--text-muted)' : 'var(--text)'};${checked ? 'text-decoration:line-through;' : ''}">${item}</span>
+      </label>`;
+    }).join('');
+    const sectionChecked = section.items.filter(item => saved[section.section + '|' + item]).length;
+    return `<div style="margin-bottom:20px;">
+      <div style="font-size:13px;font-weight:700;color:var(--amber);padding:10px 0 6px;border-bottom:2px solid var(--border);margin-bottom:4px;display:flex;justify-content:space-between;">
+        <span>${section.section}</span>
+        <span style="color:var(--text-muted);font-weight:400;">${sectionChecked}/${section.items.length}</span>
+      </div>
+      ${sectionHtml}
+    </div>`;
+  }).join('');
+  const pct = totalItems ? Math.round(checkedItems / totalItems * 100) : 0;
+  document.getElementById('checklist-progress-bar').style.width = pct + '%';
+  document.getElementById('checklist-progress-text').textContent = checkedItems + ' / ' + totalItems;
+}
+
+function toggleChecklistItem(section, item, checked) {
+  const saved = JSON.parse(localStorage.getItem('tileiq-checklist') || '{}');
+  saved[section + '|' + item] = checked;
+  localStorage.setItem('tileiq-checklist', JSON.stringify(saved));
+  loadChecklist();
+}
+
+function resetChecklist() {
+  if (!confirm('Reset all checklist items?')) return;
+  localStorage.removeItem('tileiq-checklist');
+  loadChecklist();
+}
 
 // ── Backups ────────────────────────────────────────────────────
 async function loadBackups() {
