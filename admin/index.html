@@ -614,6 +614,17 @@ body {
             <button onclick="runBackupNow()" id="btn-run-backup" style="background:var(--amber);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;">▶ Run Backup Now</button>
           </div>
           <div style="background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <span style="font-size:13px;color:var(--text-muted);">Auto-delete backups older than</span>
+              <select id="purge-days" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;">
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+              </select>
+              <button onclick="purgeBackups()" style="background:#64748b;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;">Purge Old</button>
+            </div>
             <div id="backups-list"><div class="loading">Loading backups…</div></div>
           </div>
         </div>
@@ -1032,11 +1043,29 @@ async function loadBackups() {
             ${users.map(u => `<option value="${u.id}">${escHtml(u.name || u.email)}</option>`).join('')}
           </select>
           <button class="btn-sm" onclick="restoreBackup('${b.date}')">Restore</button>
+          <button class="btn-sm" style="background:#ef4444;color:#fff;border-color:#ef4444;" onclick="deleteBackup('${b.date}')">Delete</button>
         </div>
       </div>`).join('');
   } catch(e) { el.innerHTML = '<div class="loading">Failed to load backups</div>'; }
 }
 
+async function deleteBackup(date) {
+  if (!confirm(`Delete backup from ${date}? This cannot be undone.`)) return;
+  try {
+    await api('/api/admin/backup/delete', { method: 'POST', body: JSON.stringify({ date }) });
+    showToast('Backup deleted', 'success');
+    loadBackups();
+  } catch(e) { showToast('Delete failed', 'error'); }
+}
+async function purgeBackups() {
+  const days = parseInt(document.getElementById('purge-days').value);
+  if (!confirm(`Delete all backups older than ${days} days? This cannot be undone.`)) return;
+  try {
+    const data = await api('/api/admin/backup/purge', { method: 'POST', body: JSON.stringify({ days }) });
+    showToast(data.message || 'Purge complete', 'success');
+    loadBackups();
+  } catch(e) { showToast('Purge failed', 'error'); }
+}
 async function runBackupNow() {
   const btn = document.getElementById('btn-run-backup');
   btn.disabled = true; btn.textContent = 'Running…';
