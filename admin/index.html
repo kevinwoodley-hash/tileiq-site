@@ -464,6 +464,9 @@ body {
       <button class="nav-item" onclick="showPage('checklist')" id="nav-checklist">
         <span class="nav-icon">✅</span> Checklist
       </button>
+      <button class="nav-item" onclick="showPage('autotest')" id="nav-autotest">
+        <span class="nav-icon">🧪</span> Auto Test
+      </button>
     </nav>
 
     <div class="sidebar-footer">
@@ -604,6 +607,28 @@ body {
       </div>
     </div>
 
+
+
+    <!-- Auto Test Page -->
+    <div class="page" id="page-autotest">
+      <div class="page-header">
+        <h1>Auto Test</h1>
+        <p>Automated API tests + manual prompts for device checks.</p>
+      </div>
+      <div style="padding:0 24px 24px;max-width:700px;">
+        <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+          <button onclick="runAllTests()" id="btn-run-tests" style="background:var(--amber);color:#000;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:14px;cursor:pointer;">Run Tests</button>
+          <button onclick="clearTestResults()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">Clear</button>
+        </div>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;background:var(--border);border-radius:99px;height:8px;overflow:hidden;">
+            <div id="autotest-bar" style="height:100%;border-radius:99px;transition:width 0.3s;width:0%;background:var(--amber);"></div>
+          </div>
+          <div id="autotest-summary" style="font-size:13px;font-weight:600;white-space:nowrap;">-</div>
+        </div>
+        <div id="autotest-results"></div>
+      </div>
+    </div>
 
     <!-- Checklist Page -->
     <div class="page" id="page-checklist">
@@ -766,6 +791,7 @@ function showPage(name) {
   if (name === 'users') loadUsersPage();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
   if (name === 'checklist') loadChecklist();
+  if (name === 'autotest') clearTestResults();
 }
 
 // ── API helper ─────────────────────────────────────────────────
@@ -1046,6 +1072,242 @@ async function viewUserJobs(userId, userName) {
 
 function closeModal() { document.getElementById('user-jobs-modal').classList.remove('open'); }
 
+
+// -- Auto Test --
+const WORKER = 'https://damp-bread-e0f9.kevin-woodley.workers.dev';
+const SUPABASE_URL = 'https://lzwmqabxpxuuznhbpewm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_bbLOe7wwtEWJhRxXZEKuuQ_QANTrsyr';
+
+let testResults = [];
+let testPass = 0, testFail = 0, testSkip = 0;
+
+function renderTestResults() {
+  const el = document.getElementById('autotest-results');
+  const total = testPass + testFail;
+  const pct = total ? Math.round((testPass / total) * 100) : 0;
+  document.getElementById('autotest-bar').style.width = pct + '%';
+  document.getElementById('autotest-bar').style.background = testFail > 0 ? '#ef4444' : '#22c55e';
+  document.getElementById('autotest-summary').textContent = testPass + ' passed / ' + testFail + ' failed / ' + testSkip + ' manual';
+  el.innerHTML = testResults.map(function(r) {
+    var icon = r.status === 'pass' ? '✅' : r.status === 'fail' ? '❌' : r.status === 'manual' ? '👤' : '⏳';
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">'
+      + '<span style="font-size:16px;flex-shrink:0;">' + icon + '</span>'
+      + '<div style="flex:1;"><div style="font-size:13px;font-weight:600;color:var(--text);">' + r.name + '</div>'
+      + '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">' + (r.detail || '') + '</div></div></div>';
+  }).join('');
+}
+
+function addResult(name, status, detail) {
+  testResults.push({ name: name, status: status, detail: detail });
+  if (status === 'pass') testPass++;
+  else if (status === 'fail') testFail++;
+  else if (status === 'manual') testSkip++;
+  renderTestResults();
+}
+
+function addPending(name) {
+  testResults.push({ name: name, status: 'pending', detail: 'Running...' });
+  renderTestResults();
+}
+
+function updateLast(status, detail) {
+  var last = testResults[testResults.length - 1];
+  last.status = status; last.detail = detail;
+  if (status === 'pass') testPass++;
+  else if (status === 'fail') testFail++;
+  else if (status === 'manual') testSkip++;
+  renderTestResults();
+}
+
+function clearTestResults() {
+  testResults = []; testPass = 0; testFail = 0; testSkip = 0;
+  var el = document.getElementById('autotest-results');
+  if (el) el.innerHTML = '';
+  var s = document.getElementById('autotest-summary');
+  if (s) s.textContent = '-';
+  var b = document.getElementById('autotest-bar');
+  if (b) b.style.width = '0%';
+}
+
+async function runAllTests() {
+  clearTestResults();
+  var btn = document.getElementById('btn-run-tests');
+  btn.disabled = true; btn.textContent = 'Running...';
+
+  addPending('assetlinks.json - content-type');
+  try {
+    var r = await fetch('https://tile-iq.com/.well-known/assetlinks.json');
+    var ct = r.headers.get('content-type') || '';
+    if (ct.includes('application/json')) updateLast('pass', 'Content-Type: application/json');
+    else updateLast('fail', 'Wrong Content-Type: ' + ct);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('assetlinks.json - package and fingerprint');
+  try {
+    var r2 = await fetch('https://tile-iq.com/.well-known/assetlinks.json');
+    var d2 = await r2.json();
+    var pkg = d2[0] && d2[0].target && d2[0].target.package_name;
+    var fp = d2[0] && d2[0].target && d2[0].target.sha256_cert_fingerprints && d2[0].target.sha256_cert_fingerprints[0];
+    if (pkg === 'com.tileiqpro.android' && fp) updateLast('pass', 'Package: ' + pkg);
+    else updateLast('fail', 'Package: ' + pkg);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Worker - reachable');
+  try {
+    var r3 = await fetch(WORKER, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'help', messages:[{role:'user',content:'ping'}], system:'Reply with only the word pong'}) });
+    if (r3.ok) updateLast('pass', 'Worker responded OK');
+    else updateLast('fail', 'Status: ' + r3.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Admin - stats endpoint');
+  try {
+    var d4 = await api('/api/admin/stats');
+    if (d4 && typeof d4.total_users !== 'undefined') updateLast('pass', d4.total_users + ' users, ' + (d4.total_jobs || 0) + ' jobs');
+    else updateLast('fail', 'Unexpected: ' + JSON.stringify(d4));
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Admin - users endpoint');
+  try {
+    var d5 = await api('/api/admin/users');
+    if (Array.isArray(d5)) updateLast('pass', d5.length + ' users returned');
+    else updateLast('fail', 'Not an array');
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Backups - list endpoint');
+  try {
+    var d6 = await api('/api/admin/backups');
+    if (Array.isArray(d6)) updateLast('pass', d6.length + ' backups found');
+    else updateLast('fail', 'Not an array');
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Supabase - connection');
+  try {
+    var r7 = await fetch(SUPABASE_URL + '/rest/v1/jobs?limit=1', { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+    if (r7.ok) updateLast('pass', 'Supabase responding OK');
+    else updateLast('fail', 'Status: ' + r7.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('FreeAgent - fa-callback reachable');
+  try {
+    var r8 = await fetch('https://tile-iq.com/fa-callback?error=test');
+    if (r8.ok) updateLast('pass', 'fa-callback responds');
+    else updateLast('fail', 'Status: ' + r8.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('QuickBooks - qbo-callback reachable');
+  try {
+    var r9 = await fetch('https://tile-iq.com/qbo-callback?error=test');
+    if (r9.ok) updateLast('pass', 'qbo-callback responds');
+    else updateLast('fail', 'Status: ' + r9.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Xero - xero-callback reachable');
+  try {
+    var r10 = await fetch(WORKER + '/xero-callback?error=test');
+    if (r10.ok) updateLast('pass', 'xero-callback responds');
+    else updateLast('fail', 'Status: ' + r10.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('AI - help endpoint');
+  try {
+    var r11 = await fetch(WORKER, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'help', system:'Reply with only the word ok', messages:[{role:'user',content:'test'}]}) });
+    var d11 = await r11.json();
+    if (d11.text) updateLast('pass', 'AI responded: ' + d11.text.slice(0,30));
+    else updateLast('fail', JSON.stringify(d11));
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Reset password page - reachable');
+  try {
+    var r12 = await fetch('https://tile-iq.com/reset-password');
+    if (r12.ok) updateLast('pass', 'Page loads OK');
+    else updateLast('fail', 'Status: ' + r12.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Privacy policy - reachable');
+  try {
+    var r13 = await fetch('https://tile-iq.com/privacy');
+    if (r13.ok) updateLast('pass', 'Privacy page loads');
+    else updateLast('fail', 'Status: ' + r13.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Web demo - reachable');
+  try {
+    var r14 = await fetch('https://tile-iq.com/app?demo=1');
+    if (r14.ok) updateLast('pass', 'Web demo loads');
+    else updateLast('fail', 'Status: ' + r14.status);
+  } catch(e) { updateLast('fail', e.message); }
+
+  addPending('Email - send test quote to kevin.woodley@gmail.com');
+  try {
+    var testToken = 'autotest-' + Date.now();
+    await fetch(SUPABASE_URL + '/rest/v1/quote_snapshots', {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ token: testToken, snapshot: { customerName: 'Kevin (Test)', companyName: 'TileIQ Pro', grand: '250.00', ref: 'TEST-001', rooms: [], totalMats: '100.00', totalLabour: '150.00', subtotal: '250.00' } })
+    });
+    var r15 = await fetch(WORKER, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'send_quote_email', to: 'kevin.woodley@gmail.com', customerName: 'Kevin (Test)', quoteUrl: 'https://tile-iq.com/quote/' + testToken, companyName: 'TileIQ Pro Auto Test', companyPhone: '' })
+    });
+    var d15 = await r15.json();
+    if (d15.message === 'Email sent') updateLast('pass', 'Email sent to kevin.woodley@gmail.com');
+    else updateLast('fail', JSON.stringify(d15));
+    await fetch(SUPABASE_URL + '/rest/v1/quote_snapshots?token=eq.' + testToken, { method: 'DELETE', headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+  } catch(e) { updateLast('fail', e.message); }
+
+  await manualTests();
+  btn.disabled = false; btn.textContent = 'Run Tests';
+}
+
+async function manualTests() {
+  var manuals = [
+    { name: 'Sign in with email and password', detail: 'Open app, sign in, confirm home screen loads' },
+    { name: 'Biometric login', detail: 'Sign out, tap biometric button, authenticate' },
+    { name: 'Create a new job', detail: 'Tap +, fill in customer name, save, confirm job appears' },
+    { name: 'Floor m2 direct entry', detail: 'Add room, Floor only, enter total m2, confirm calculates without L x W' },
+    { name: 'Wall m2 direct entry', detail: 'Add room, Wall only, enter total m2, confirm calculates' },
+    { name: 'Full room estimator', detail: 'Add room, Full room, enter L x W x H, confirm walls and floor calculate' },
+    { name: 'Leica Disto D2 BLE', detail: 'Open room estimator, tap Disto, connect, confirm measurement auto-fills' },
+    { name: 'Send quote by email', detail: 'Open job, generate quote, send by email, confirm received' },
+    { name: 'Customer accepts quote', detail: 'Open quote link, tap Accept, confirm notification in app' },
+    { name: 'Xero OAuth connect', detail: 'Settings, Accounting, Xero, Connect, complete OAuth, confirm connected' },
+    { name: 'Export invoice to Xero', detail: 'Open job, Export to Xero, confirm invoice in Xero drafts' },
+    { name: 'FreeAgent connect', detail: 'Settings, Accounting, FreeAgent, connect, confirm connected' },
+    { name: 'QuickBooks connect', detail: 'Settings, Accounting, QuickBooks, connect, confirm connected' },
+    { name: 'Sage removed from settings', detail: 'Settings, Accounting dropdown, confirm Sage is NOT listed' },
+    { name: 'Push notification - quote viewed', detail: 'Send quote to yourself, open link, confirm Quote Viewed notification' },
+    { name: 'Offline mode', detail: 'Turn off WiFi, create a job, reconnect, confirm job syncs' },
+    { name: 'Web demo auto-fill', detail: 'Open tile-iq.com/app?demo=1, confirm credentials auto-fill' },
+    { name: 'Paywall - free job limit', detail: 'Create 4 jobs on free account, confirm paywall on 4th' },
+    { name: 'Bottom nav all tabs', detail: 'Tap Home, Jobs, Customers, Settings, all load correctly' },
+    { name: 'PDF quote print/save', detail: 'Open quote PDF link, tap Print, confirm PDF saves' }
+  ];
+  for (var i = 0; i < manuals.length; i++) {
+    var m = manuals[i];
+    var result = await showManualPrompt(m.name, m.detail);
+    addResult(m.name, result === true ? 'pass' : result === false ? 'fail' : 'manual', m.detail);
+  }
+}
+
+function showManualPrompt(name, detail) {
+  return new Promise(function(resolve) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML = '<div style="background:#1e2530;border:1px solid #2a3340;border-radius:14px;padding:28px;max-width:460px;width:100%;">'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#f5a623;margin-bottom:8px;">Manual Test Required</div>'
+      + '<div style="font-size:16px;font-weight:700;color:#f0f4f8;margin-bottom:10px;">' + name + '</div>'
+      + '<div style="font-size:13px;color:#8c97a3;line-height:1.6;margin-bottom:24px;">' + detail + '</div>'
+      + '<div style="display:flex;gap:10px;">'
+      + '<button id="mt-pass" style="flex:1;padding:12px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;">Pass</button>'
+      + '<button id="mt-fail" style="flex:1;padding:12px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;">Fail</button>'
+      + '<button id="mt-skip" style="padding:12px 16px;background:#2a3340;color:#8c97a3;border:1px solid #2a3340;border-radius:8px;font-size:13px;cursor:pointer;">Skip</button>'
+      + '</div></div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('#mt-pass').onclick = function() { document.body.removeChild(overlay); resolve(true); };
+    overlay.querySelector('#mt-fail').onclick = function() { document.body.removeChild(overlay); resolve(false); };
+    overlay.querySelector('#mt-skip').onclick = function() { document.body.removeChild(overlay); resolve(null); };
+  });
+}
 
 // ── Checklist ──────────────────────────────────────────────────
 const CHECKLIST = [
