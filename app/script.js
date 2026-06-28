@@ -4633,7 +4633,7 @@ function buildSurfaces() {
         const fTrayPrice = fTray ? (parseFloat(document.getElementById("rm-f-tray-price")?.value) || parseFloat(settings.wetRoomTrayRate) || 150) : 0;
         const fTrayW     = fTray ? (parseFloat(document.getElementById("rm-f-tray-w")?.value) || 0) : 0;
         const fTrayD     = fTray ? (parseFloat(document.getElementById("rm-f-tray-d")?.value) || 0) : 0;
-        const fTanking   = fWetRoom ? cb("rm-f-tanking") : cb("rm-f-tanking");
+        const fTanking = cb("rm-f-tanking") || (fWetRoom && cb("rm-f-wetroom-tanking"));
         return [{ type:"floor", label: fWetRoom ? "Wet Room Floor" : "Floor", length:L||Math.sqrt(fAreaActual), width:W||Math.sqrt(fAreaActual),
             tileCostOverride: fTileCost,
             wastage: isNaN(fWastage) ? 10 : fWastage,
