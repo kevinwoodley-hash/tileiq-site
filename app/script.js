@@ -6565,7 +6565,7 @@ function _markQuoteSent(j) {
 
 async function buildQuoteUrl(j) {
     getQuoteToken(j);
-    let grand = 0, totalMats = 0, totalLabour = 0, totalPrep = 0;
+    let grand = 0, totalMats = 0, totalLabour = 0, totalPrep = 0, totalWallTiles = 0, totalFloorTiles = 0;
     const applyVat = document.getElementById("q-vat")?.value === "true";
     (j.rooms || []).forEach(room => {
         const surfaces = room.surfaces || [];
@@ -6579,6 +6579,10 @@ async function buildQuoteUrl(j) {
             totalLabour += parseFloat(s.labour || 0) + parseFloat(s.ufhCost || 0);
             totalPrep   += parseFloat(s.prepCost || 0);
             grand       += parseFloat(s.total || 0);
+            const tileUP = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
+            const tileCostSurface = rCt ? 0 : tileUP * s.area * (1 + settings.markup/100);
+            if (s.type === "wall")  totalWallTiles  += tileCostSurface;
+            if (s.type === "floor") totalFloorTiles += tileCostSurface;
         });
     });
     const subtotal = totalMats + totalLabour + totalPrep;
@@ -6590,6 +6594,8 @@ async function buildQuoteUrl(j) {
         description:  j.description || "",
         grand:        grandTotal.toFixed(2),
         totalMats:    totalMats.toFixed(2),
+        totalWallTiles:  totalWallTiles > 0 ? totalWallTiles.toFixed(2) : null,
+        totalFloorTiles: totalFloorTiles > 0 ? totalFloorTiles.toFixed(2) : null,
         totalLabour:  totalLabour.toFixed(2),
         totalPrep:    totalPrep > 0 ? totalPrep.toFixed(2) : null,
         subtotal:     subtotal.toFixed(2),
