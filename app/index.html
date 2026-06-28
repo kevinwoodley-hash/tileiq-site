@@ -1794,7 +1794,7 @@
     <header class="app-header"><div class="header-row">
         <button onclick="goDashboard()" class="btn-back">← Back</button>
         <h2 class="header-title">Help</h2>
-        <button onclick="showContactForm()" class="btn-secondary" style="font-size:12px;padding:6px 10px;">✉️ Contact</button>
+        <button onclick="showContactForm()" class="btn-secondary" style="font-size:12px;padding:6px 10px;border-color:var(--amber);color:var(--amber);">✉️ Contact</button>
     </div></header>
 
     <!-- Suggested questions -->
@@ -3467,5 +3467,38 @@
     </div>
 </div>
 
+
+<!-- CONTACT SUPPORT SCREEN -->
+<div id="screen-contact" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="closeContactForm()" class="btn-back">← Back</button>
+        <h2 class="header-title">Contact Support</h2>
+        <div></div>
+    </div></header>
+    <div class="page-body" style="padding:20px;">
+        <div id="contact-success" style="display:none;text-align:center;padding:40px 20px;">
+            <div style="font-size:48px;margin-bottom:16px;">✅</div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:8px;">Message sent!</div>
+            <div style="color:var(--text-muted);font-size:14px;">We'll get back to you as soon as possible.</div>
+        </div>
+        <div id="contact-form-body">
+            <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">Got a problem or suggestion? Send us a message and we'll get back to you.</p>
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+                <button id="contact-type-problem" onclick="setContactType('problem')" style="flex:1;padding:12px;border-radius:10px;border:2px solid #f59e0b;background:#f59e0b;color:#000;font-weight:700;font-size:14px;cursor:pointer;">🐛 Problem</button>
+                <button id="contact-type-suggestion" onclick="setContactType('suggestion')" style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--border);background:none;color:var(--text-muted);font-weight:700;font-size:14px;cursor:pointer;">💡 Suggestion</button>
+            </div>
+            <div class="field-group">
+                <label>Your Email</label>
+                <input id="contact-email" type="email" placeholder="your@email.com">
+            </div>
+            <div class="field-group">
+                <label>Message</label>
+                <textarea id="contact-message" rows="5" placeholder="Describe your issue or suggestion…" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+            </div>
+            <div id="contact-error" style="display:none;color:#ef4444;font-size:13px;margin-bottom:12px;"></div>
+            <button id="contact-submit-btn" onclick="submitContactForm()" class="btn-primary" style="width:100%;">Send Message</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>
