@@ -3498,6 +3498,8 @@ function buildSurfaces() {
         const rFWastage = parseFloat(document.getElementById("rm-r-fwastage")?.value);
         const wallWastage  = isNaN(rWWastage) ? 12 : rWWastage;
         const floorWastage = isNaN(rFWastage) ? 10 : rFWastage;
+        const rWTileCost = parseFloat(document.getElementById("rm-r-wtilecost")?.value) || 0;
+        const rFTileCost = parseFloat(document.getElementById("rm-r-ftilecost")?.value) || 0;
 
         const surfaces = [
             { label:"Wall A (front)", width:L, height:H },
