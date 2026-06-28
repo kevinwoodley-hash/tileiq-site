@@ -1785,7 +1785,7 @@ function updatePrepPriceBadges() {
     const S = settings;
     document.querySelectorAll(".pc-cb").forEach(el   => el.textContent = S.cementBoard);
     document.querySelectorAll(".pc-mem").forEach(el  => el.textContent = S.membrane);
-    document.querySelectorAll(".pc-tank-r, .pc-tank-w, .pc-tank-f, .pc-tank-sh").forEach(el => el.textContent = (S.tanking || 45) + "/kit");
+    document.querySelectorAll(".pc-tank-r, .pc-tank-w, .pc-tank-f, .pc-tank-sh").forEach(el => el.textContent = (S.tanking || 45));
     document.querySelectorAll(".pc-clips").forEach(el => el.textContent = S.clipPrice || 12);
     document.querySelectorAll(".pc-trim").forEach(el => el.textContent = `£${(S.trimPrice || 3.50).toFixed(2)}`);
     document.querySelectorAll(".pc-primer").forEach(el => el.textContent = S.primerPrice || 3.50);
