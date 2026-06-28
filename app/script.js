@@ -3506,6 +3506,7 @@ function buildSurfaces() {
             { label:"Wall D (right)", width:W, height:H },
         ].map(w => ({
             type:"wall", label:w.label, width:w.width, height:w.height,
+            tileCostOverride: rWTileCost,
             wastage: wallWastage,
             tileW:wallTileW, tileH:wallTileH, tileThick:wallTileThick, grout:wallGrout,
             tanking, primer:wPrimer, stone:wStone, sealer:wSealer,
@@ -3515,6 +3516,7 @@ function buildSurfaces() {
         if (cb("rm-r-inclfloor")) {
             surfaces.push({
                 type:"floor", label:"Floor", length:L, width:W,
+                tileCostOverride: rFTileCost,
                 wastage: floorWastage,
                 tileW:   g("rm-r-ftilew") || 600,
                 tileH:   g("rm-r-ftileh") || 600,
@@ -3537,12 +3539,14 @@ function buildSurfaces() {
 
     if (currentSurfType === "floor") {
         const fTotalM2 = parseFloat(document.getElementById("rm-f-totalm2")?.value) || 0;
+        const fTileCost = parseFloat(document.getElementById("rm-f-tilecost")?.value) || 0;
         let L = g("rm-f-length"), W = g("rm-f-width");
         if (fTotalM2 > 0) { L = Math.sqrt(fTotalM2); W = Math.sqrt(fTotalM2); }
         if (!L || !W || L <= 0 || W <= 0) return null;
         const fDed    = parseFloat(document.getElementById("rm-f-deduct")?.value) || 0;
         const fWastage = parseFloat(document.getElementById("rm-f-wastage")?.value);
         return [{ type:"floor", label:"Floor", length:L, width:W,
+            tileCostOverride: fTileCost,
             wastage: isNaN(fWastage) ? 10 : fWastage,
             tileW:   g("rm-f-tilew") || 600,
             tileH:   g("rm-f-tileh") || 600,
@@ -3564,12 +3568,14 @@ function buildSurfaces() {
 
     if (currentSurfType === "wall") {
         const wTotalM2 = parseFloat(document.getElementById("rm-w-totalm2")?.value) || 0;
+        const wTileCost = parseFloat(document.getElementById("rm-w-tilecost")?.value) || 0;
         let W = g("rm-w-width"), H = g("rm-w-height");
         if (wTotalM2 > 0) { W = Math.sqrt(wTotalM2); H = Math.sqrt(wTotalM2); }
         if (!W || !H || W <= 0 || H <= 0) return null;
         const wDed     = parseFloat(document.getElementById("rm-w-deduct")?.value) || 0;
         const wWastage = parseFloat(document.getElementById("rm-w-wastage")?.value);
         return [{ type:"wall", label:"Wall",
+            tileCostOverride: wTileCost,
             width:W, height:H,
             wastage: isNaN(wWastage) ? 12 : wWastage,
             tileW:   g("rm-w-tilew") || 300,
@@ -3643,7 +3649,8 @@ function calcSurface(s, customerTiles, labourOpts) {
     s.levelClips  = s.tiles * clipsPerTile;
     s.levelWedges = Math.ceil(s.levelClips * 0.25);
 
-const tileCost = customerTiles ? 0 : s.area * S.tilePrice;
+const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : S.tilePrice;
+    const tileCost = customerTiles ? 0 : s.area * tileUnitPrice;
     // Price adhesive/grout pro-rata by kg
     const groutCost = (totalGroutKg / bagSize) * bagPrice;
     const adhCost   = (s.adhKg / 20) * S.adhesivePrice;
