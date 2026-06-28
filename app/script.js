@@ -1384,7 +1384,7 @@ async function submitContactForm() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                action: "contact_support", type: _contactType, message,
+                action: "contact_form", type: _contactType, message,
                 fromEmail: email || currentUser?.email || "unknown",
                 userName: settings.companyName || currentUser?.email || "Unknown user",
                 appVersion: "TileIQ Pro"
