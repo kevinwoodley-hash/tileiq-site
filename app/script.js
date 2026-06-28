@@ -6571,6 +6571,7 @@ function renderMaterials() {
         const seal = calcSealantRoom(room);
         grandSiliconeTubes  += seal.tubes;
         grandSiliconeMetres += seal.metres;
+        grandSiliconeFloor  += (seal.floor || 0);
         const sealLine = seal.tubes > 0 ? `<div style="margin-top:4px;font-size:12px;color:#555;">Sealant: <strong>${seal.tubes}</strong> tube${seal.tubes!==1?"s":""} <span style="color:#6b7280">· ${seal.metres}m</span> <span style="color:#6b7280">· Floor perimeter bead ${seal.floor}m</span></div>` : "";
 
         const trimLengths = room.trimLengths || 0;
