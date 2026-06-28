@@ -2764,8 +2764,17 @@ function renderJobView() {
                 <div class="room-card-total">£${r.total}</div>
             </div>
             <div class="room-cost-breakdown">
-                <span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${mats.toFixed(2)}</span></span>
-                <span class="rcb-sep">|</span>
+                ${(() => {
+                    const wt = surfaces.filter(s => s.type === "wall").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
+                    const ft = surfaces.filter(s => s.type === "floor").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
+                    const om = mats - wt - ft;
+                    let html = "";
+                    if (wt > 0) html += `<span class="rcb-item"><span class="rcb-label">🧱 Wall tiles</span><span class="rcb-value">£${wt.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
+                    if (ft > 0) html += `<span class="rcb-item"><span class="rcb-label">⬜ Floor tiles</span><span class="rcb-value">£${ft.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
+                    if (om > 0.01) html += `<span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${om.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
+                    if (!html && mats > 0) html += `<span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${mats.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
+                    return html;
+                })()}
                 <span class="rcb-item"><span class="rcb-label">Labour</span><span class="rcb-value">£${lab.toFixed(2)}</span></span>
                 ${prep > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep</span><span class="rcb-value">£${prep.toFixed(2)}</span></span>` : ""}
                 ${ufh  > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">UFH</span><span class="rcb-value">£${ufh.toFixed(2)}</span></span>` : ""}
@@ -4135,7 +4144,13 @@ function rmCalc() {
         const icon         = s.type === "wall" ? "🧱" : "⬜";
         if (baseArea > 0) parts.push(`${icon} ${totalArea2}m² tiles (${baseArea.toFixed(2)}m² + ${extraArea}m² ${wastePct}% wastage)`);
     });
-    if (mats > 0) parts.push(`Materials £${mats.toFixed(2)}`);
+    // Split materials into wall tiles, floor tiles, and other (adh/grout)
+    const wallTileCost  = surfaces.filter(s => s.type === "wall").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
+    const floorTileCost = surfaces.filter(s => s.type === "floor").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
+    const otherMats     = mats - wallTileCost - floorTileCost;
+    if (wallTileCost > 0)  parts.push(`🧱 Wall tiles £${wallTileCost.toFixed(2)}`);
+    if (floorTileCost > 0) parts.push(`⬜ Floor tiles £${floorTileCost.toFixed(2)}`);
+    if (otherMats > 0.01)  parts.push(`Materials £${otherMats.toFixed(2)}`);
     if (lab  > 0) {
         const labLabel = currentLabourType === "day"
             ? `Labour £${lab.toFixed(2)} (${document.getElementById("rm-days").value||0} days)`
