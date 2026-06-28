@@ -1001,28 +1001,6 @@
                     <label>Floor Grout Joint (mm)</label>
                     <input id="rm-r-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
                 </div>
-                <div class="rm-section-toggle" onclick="toggleCollapse('ufh-r')" id="collapse-toggle-ufh-r" style="margin-top:8px;">
-                    <div><span class="rm-section-title">Underfloor Heating (UFH)</span><span id="ufh-r-badge" class="rm-section-badge"></span></div>
-                    <span class="rm-section-arrow" id="collapse-arrow-ufh-r">▸</span>
-                </div>
-                <div id="collapse-panel-ufh-r" class="hidden">
-                    <label class="checkbox-label" style="margin-bottom:8px;">
-                        <input type="checkbox" id="rm-r-ufh" onchange="rmCalc()">
-                        Include UFH in this room
-                    </label>
-                    <div class="field-row" style="margin-bottom:8px;">
-                        <div class="field-group"><label>Mat/Cable (£)</label><input id="rm-r-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
-                        <div class="field-group"><label>Thermostat (£)</label><input id="rm-r-ufh-stat" type="number" step="1" placeholder="e.g. 120" oninput="rmCalc()"></div>
-                    </div>
-                    <div class="field-row" style="margin-bottom:8px;">
-                        <div class="field-group"><label>Other (£)</label><input id="rm-r-ufh-other" type="number" step="1" placeholder="e.g. 50" oninput="rmCalc()"></div>
-                        <div class="field-group"><label>Labour (£/m²)</label><input id="rm-r-ufh-labour" type="number" step="0.5" placeholder="e.g. 15" oninput="rmCalc()"></div>
-                    </div>
-                    <div class="field-group" style="margin-bottom:0;">
-                        <label>Other description</label>
-                        <input id="rm-r-ufh-other-desc" type="text" placeholder="e.g. Insulation boards" oninput="rmCalc()">
-                    </div>
-                </div>
                 </div>
                 <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-prep')" id="collapse-toggle-room-floor-prep" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
                     <div><span class="rm-section-title">Floor Preparation</span></div>
@@ -1077,6 +1055,28 @@
                 </div>
                 </div>
             </div><!-- /rm-r-floor-opts -->
+            <div class="rm-section-toggle" onclick="toggleCollapse('ufh-r')" id="collapse-toggle-ufh-r">
+                <div><span class="rm-section-title">Underfloor Heating (UFH)</span><span id="ufh-r-badge" class="rm-section-badge"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-ufh-r">▸</span>
+            </div>
+            <div id="collapse-panel-ufh-r" class="hidden">
+                <label class="checkbox-label" style="margin-bottom:8px;">
+                    <input type="checkbox" id="rm-r-ufh" onchange="rmCalc()">
+                    Include UFH in this room
+                </label>
+                <div class="field-row" style="margin-bottom:8px;">
+                    <div class="field-group"><label>Mat/Cable (£)</label><input id="rm-r-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Thermostat (£)</label><input id="rm-r-ufh-stat" type="number" step="1" placeholder="e.g. 120" oninput="rmCalc()"></div>
+                </div>
+                <div class="field-row" style="margin-bottom:8px;">
+                    <div class="field-group"><label>Other (£)</label><input id="rm-r-ufh-other" type="number" step="1" placeholder="e.g. 50" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Labour (£/m²)</label><input id="rm-r-ufh-labour" type="number" step="0.5" placeholder="e.g. 15" oninput="rmCalc()"></div>
+                </div>
+                <div class="field-group" style="margin-bottom:0;">
+                    <label>Other description</label>
+                    <input id="rm-r-ufh-other-desc" type="text" placeholder="e.g. Insulation boards" oninput="rmCalc()">
+                </div>
+            </div>
             </div><!-- /collapse-panel-room-floor-opts -->
         </div>
 
