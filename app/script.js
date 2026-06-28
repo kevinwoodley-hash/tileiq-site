@@ -3480,7 +3480,7 @@ function buildSurfaces() {
     const sv = id => document.getElementById(id)?.value   || "2";
 
     if (currentSurfType === "room") {
-        const L = g("rm-r-length"), W = g("rm-r-width"), H = g("rm-r-height");
+        let L = g("rm-r-length"), W = g("rm-r-width"), H = g("rm-r-height");
         if (!L || !W || !H || L <= 0 || W <= 0 || H <= 0) return null;
 
         const deduct      = parseFloat(document.getElementById("rm-r-deduct")?.value) || 0;
@@ -3536,7 +3536,9 @@ function buildSurfaces() {
     }
 
     if (currentSurfType === "floor") {
-        const L = g("rm-f-length"), W = g("rm-f-width");
+        const fTotalM2 = parseFloat(document.getElementById("rm-f-totalm2")?.value) || 0;
+        let L = g("rm-f-length"), W = g("rm-f-width");
+        if (fTotalM2 > 0) { L = Math.sqrt(fTotalM2); W = Math.sqrt(fTotalM2); }
         if (!L || !W || L <= 0 || W <= 0) return null;
         const fDed    = parseFloat(document.getElementById("rm-f-deduct")?.value) || 0;
         const fWastage = parseFloat(document.getElementById("rm-f-wastage")?.value);
@@ -3561,7 +3563,9 @@ function buildSurfaces() {
     }
 
     if (currentSurfType === "wall") {
-        const W = g("rm-w-width"), H = g("rm-w-height");
+        const wTotalM2 = parseFloat(document.getElementById("rm-w-totalm2")?.value) || 0;
+        let W = g("rm-w-width"), H = g("rm-w-height");
+        if (wTotalM2 > 0) { W = Math.sqrt(wTotalM2); H = Math.sqrt(wTotalM2); }
         if (!W || !H || W <= 0 || H <= 0) return null;
         const wDed     = parseFloat(document.getElementById("rm-w-deduct")?.value) || 0;
         const wWastage = parseFloat(document.getElementById("rm-w-wastage")?.value);

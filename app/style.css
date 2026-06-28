@@ -298,8 +298,8 @@ textarea { resize: vertical; }
 }
 .running-total strong { font-size: 18px; color: var(--amber); }
 
-.job-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-.job-actions button { width: 100%; }
+.job-actions { display: flex; gap: 10px; margin-bottom: 8px; }
+.job-actions button { flex: 1; }
 
 /* ── ROOM EDITOR ──────────────────────────────────────────── */
 .stype-row {
@@ -611,13 +611,8 @@ textarea { resize: vertical; }
     color: #888;
     margin-left: 8px;
 }
-.mat-room-block {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-}
 .mat-table {
     width: 100%;
-    min-width: 480px;
     border-collapse: collapse;
     font-size: 12px;
 }
@@ -1095,87 +1090,3 @@ textarea { resize: vertical; }
 
 /* Settings tab panels */
 .hidden-panel { display: none !important; }
-
-/* ── Screen help tooltips ── */
-.screen-help-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 50
-/* ── Screen help tooltips ── */
-.screen-help-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: rgba(255,255,255,0.15); border: 1.5px solid rgba(255,255,255,0.3);
-  color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600;
-  cursor: pointer; margin-left: 8px; vertical-align: middle;
-  position: relative; flex-shrink: 0; -webkit-tap-highlight-color: transparent;
-}
-.screen-help-btn:hover { background: rgba(255,255,255,0.25); }
-.screen-help-tooltip {
-  display: none; position: fixed; z-index: 9999;
-  background: #1B2A3C; color: #F7F4EF; font-size: 13px; line-height: 1.5;
-  padding: 10px 14px; border-radius: 10px; max-width: 260px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(224,122,47,0.3);
-  pointer-events: none;
-}
-.screen-help-tooltip.visible { display: block; }
-.screen-help-tooltip::before {
-  content: ""; position: absolute; top: -6px; left: 18px;
-  width: 10px; height: 10px; background: #1B2A3C;
-  border-left: 1px solid rgba(224,122,47,0.3); border-top: 1px solid rgba(224,122,47,0.3);
-  transform: rotate(45deg);
-}
-
-/* ── Inbox Screen ── */
-#screen-inbox {
-  overflow: hidden !important;
-  display: flex !important;
-  flex-direction: column !important;
-}
-#screen-inbox .inbox-tabs {
-  flex-shrink: 0;
-}
-#screen-inbox .app-header {
-  flex-shrink: 0;
-}
-#inbox-messages {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-#inbox-announcements {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-#support-thread {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.support-input-bar {
-  flex-shrink: 0;
-}
-
-/* ── Inbox input bar fix ── */
-#support-input-bar {
-  position: fixed !important;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 999;
-  background: #fff;
-  border-top: 1px solid var(--border, #E2E0DC);
-  padding: 10px 14px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
-}
-#support-thread {
-  padding-bottom: 80px !important;
-}
-
-#screen-inbox { overflow: hidden !important; }

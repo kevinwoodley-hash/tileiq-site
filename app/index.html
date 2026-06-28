@@ -956,6 +956,10 @@
         <!-- FLOOR ONLY -->
         <div id="rm-form-floor" class="measure-form hidden">
             <div class="form-section-label">Floor Measurements</div>
+            <div class="field-group" style="margin-bottom:6px;">
+                <label>Total Area m² <span style="color:var(--text-muted);font-size:11px;">(if known — overrides length × width)</span></label>
+                <input id="rm-f-totalm2" type="number" step="0.01" placeholder="e.g. 7.7" oninput="rmCalc()">
+            </div>
             <div class="field-row">
                 <div class="field-group">
                     <label>Length (m)</label>
@@ -1095,6 +1099,10 @@
         <!-- WALL ONLY -->
         <div id="rm-form-wall" class="measure-form hidden">
             <div class="form-section-label">Wall Measurements</div>
+            <div class="field-group" style="margin-bottom:6px;">
+                <label>Total Area m² <span style="color:var(--text-muted);font-size:11px;">(if known — overrides width × height)</span></label>
+                <input id="rm-w-totalm2" type="number" step="0.01" placeholder="e.g. 12.0" oninput="rmCalc()">
+            </div>
             <div class="field-row">
                 <div class="field-group">
                     <label>Width (m)</label>
@@ -1352,29 +1360,6 @@
             <div class="form-actions" style="margin-top:16px;">
                 <button onclick="goDashboard()" class="btn-secondary">Cancel</button>
                 <button onclick="saveSettings()" class="btn-primary">Save</button>
-            </div>
-            <div class="form-card" style="margin-top:12px;">
-                <div class="form-section-label">📞 Business Phone</div>
-                <div class="field-group">
-                    <label>Voicemail Greeting Name</label>
-                    <input id="set-voicemail-name" placeholder="e.g. Kevin's Tiling or Woodley Tiling Co.">
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Callers will hear: "You've reached [this name]. Sorry I can't get to the phone..."</div>
-                </div>
-                <div class="field-group">
-                    <label>Your TileIQ Business Number</label>
-                    <input id="set-twilio-number" placeholder="e.g. 07428322727" type="tel">
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">The number assigned to you by TileIQ. Set once to enable personalised greetings.</div>
-                </div>
-                <div class="field-group">
-                    <label>Your Mobile Number</label>
-                    <input id="set-mobile-number" placeholder="e.g. 07950105818" type="tel">
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">When someone calls your TileIQ number, we'll ring this number first. If you don't answer, the voicemail menu plays.</div>
-                </div>
-                <div class="field-group">
-                    <label>Network Divert Setup</label>
-                    <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Tap below to set up call divert so missed calls on your personal number go to your TileIQ voicemail.</div>
-                    <button onclick="setupDivert()" class="btn-primary" style="width:100%;">📲 Set Up Call Divert</button>
-                </div>
             </div>
         </div>
 
