@@ -5380,8 +5380,14 @@ function rmCalc() {
     if (stoneInstallCost > 0) parts.push(`🪨 Stone Install £${stoneInstallCost.toFixed(2)}`);
     if (stoneSealerCost  > 0) parts.push(`🪨 Stone Sealer £${stoneSealerCost.toFixed(2)}`);
 
-    const otherPrep = prep - stoneInstallCost - stoneSealerCost;
-    if (otherPrep > 0 && totalCBBoards === 0 && totalLevelBags === 0) parts.push(`Prep £${otherPrep.toFixed(2)}`);
+    const totalTankingKits = surfaces.reduce((a, s) => a + (s.tankingKits || 0), 0);
+    const totalTankingLabour = surfaces.filter(s => s.tanking).reduce((a, s) => a + s.area, 0);
+    const tankKitCost = totalTankingKits * (parseFloat(settings.tanking)||45);
+    const tankLabCost = totalTankingLabour * (parseFloat(settings.tankingLabour)||8);
+    if (totalTankingKits > 0) parts.push(`🪣 Tanking: ${totalTankingKits} kit${totalTankingKits!==1?"s":""} £${tankKitCost.toFixed(2)}`);
+    if (tankLabCost > 0) parts.push(`🪣 Tanking Labour £${tankLabCost.toFixed(2)}`);
+    const otherPrep = prep - stoneInstallCost - stoneSealerCost - tankKitCost - tankLabCost;
+    if (otherPrep > 0.01 && totalCBBoards === 0 && totalLevelBags === 0) parts.push(`Prep £${otherPrep.toFixed(2)}`);
     if (sealTubes  > 0) parts.push(`Sealant: ${sealTubes} tube${sealTubes !== 1 ? "s" : ""} £${sealCost.toFixed(2)}`);
     if (trimCost   > 0) parts.push(`Trim: ${trimLengthsLive} length${trimLengthsLive !== 1 ? "s" : ""} £${trimCost.toFixed(2)}`);
     if (extraCost  > 0) parts.push(`Extra work £${extraCost.toFixed(2)}`);
