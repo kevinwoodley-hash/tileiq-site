@@ -1318,6 +1318,7 @@
                 <label>Grout Joint (mm)</label>
                 <input id="rm-f-grout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
             </div>
+            </div>
             <label class="checkbox-label" style="margin-bottom:4px;">
                 <input type="checkbox" id="rm-f-ufh" onchange="toggleUfhPanel('f');rmCalc()">
                 Underfloor Heating (UFH)
@@ -1335,7 +1336,6 @@
                     <label>Other description</label>
                     <input id="rm-f-ufh-other-desc" type="text" placeholder="e.g. Insulation boards" oninput="rmCalc()">
                 </div>
-            </div>
             </div>
             <div class="rm-section-toggle" onclick="toggleCollapse('floor-prep')" id="collapse-toggle-floor-prep">
                 <div><span class="rm-section-title">Floor Preparation</span></div>
