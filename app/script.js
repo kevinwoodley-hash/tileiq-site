@@ -1384,10 +1384,10 @@ async function submitContactForm() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                action: "contact_form", type: _contactType, message,
-                fromEmail: email || currentUser?.email || "unknown",
-                userName: settings.companyName || currentUser?.email || "Unknown user",
-                appVersion: "TileIQ Pro"
+                action: "contact_form",
+                name: settings.companyName || currentUser?.email || "TileIQ User",
+                email: email || currentUser?.email || "unknown@tile-iq.com",
+                message: `[${_contactType.toUpperCase()}] ${message}`
             })
         });
         if (resp.ok) {
