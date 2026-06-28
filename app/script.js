@@ -5433,11 +5433,15 @@ function saveRoom() {
     const roomLen = parseFloat(document.getElementById("rm-r-length")?.value) || 0;
     const roomWid = parseFloat(document.getElementById("rm-r-width")?.value)  || 0;
     const roomHei = parseFloat(document.getElementById("rm-r-height")?.value) || 0;
+    const floorSurf = surfaces.find(s => s.type === "floor");
+    const sealL = roomLen || (floorSurf ? (floorSurf.length || Math.sqrt(floorSurf.area || 0)) : 0);
+    const sealW = roomWid || (floorSurf ? (floorSurf.width  || Math.sqrt(floorSurf.area || 0)) : 0);
+    const sealH = roomHei || (surfaces.find(s => s.type === "wall")?.height || 2.4);
 
     // Compute sealant cost now so it flows into room.total
-    const sealFormObj = currentSurfType === "room" ? {
+    const sealFormObj = (currentSurfType === "room" || currentSurfType === "floor") ? {
         sealantEnabled, sealantFloorPerim, sealantCorners,
-        length: roomLen, width: roomWid, height: roomHei
+        length: sealL, width: sealW, height: sealH
     } : null;
     const roomSealCost = sealFormObj ? calcSealantCost(sealFormObj) : 0;
 
@@ -5449,9 +5453,9 @@ function saveRoom() {
 
     const room = {
         name,
-        length: roomLen || undefined,
-        width:  roomWid || undefined,
-        height: roomHei || undefined,
+        length: sealL || undefined,
+        width:  sealW  || undefined,
+        height: sealH  || undefined,
         sealantEnabled,
         sealantFloorPerim,
         sealantCorners,
