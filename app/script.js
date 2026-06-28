@@ -4604,6 +4604,11 @@ function buildSurfaces() {
                 tileThick: g("rm-r-ftilethick") || 10,
                 grout:   g("rm-r-fgrout") || 2,
                 ufh:     cb("rm-r-ufh"),
+                ufhMat:    parseFloat(document.getElementById("rm-r-ufh-mat")?.value) || 0,
+                ufhStat:   parseFloat(document.getElementById("rm-r-ufh-stat")?.value) || 0,
+                ufhOther:  parseFloat(document.getElementById("rm-r-ufh-other")?.value) || 0,
+                ufhLabour: parseFloat(document.getElementById("rm-r-ufh-labour")?.value) || 0,
+                ufhOtherDesc: document.getElementById("rm-r-ufh-other-desc")?.value || "",
                 cementBoard: cb("rm-r-cementboard"),
                 membrane:    cb("rm-r-membrane"),
                 levelling:   cb("rm-r-levelling"),
@@ -4642,6 +4647,11 @@ function buildSurfaces() {
             tileThick: g("rm-f-tilethick") || 10,
             grout:   g("rm-f-grout") || 2,
             ufh:     cb("rm-f-ufh"),
+            ufhMat:    parseFloat(document.getElementById("rm-f-ufh-mat")?.value) || 0,
+            ufhStat:   parseFloat(document.getElementById("rm-f-ufh-stat")?.value) || 0,
+            ufhOther:  parseFloat(document.getElementById("rm-f-ufh-other")?.value) || 0,
+            ufhLabour: parseFloat(document.getElementById("rm-f-ufh-labour")?.value) || 0,
+            ufhOtherDesc: document.getElementById("rm-f-ufh-other-desc")?.value || "",
             cementBoard: cb("rm-f-cementboard"),
             membrane:    cb("rm-f-membrane"),
             levelling:   cb("rm-f-levelling"),
@@ -4825,7 +4835,9 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         s.labour = S.labourMarkup ? labRaw * mult : labRaw;
     }
 
-    s.ufhCost = (s.ufh && s.type === "floor") ? s.area * (parseFloat(S.ufhM2Rate) || 52) + (parseFloat(S.ufhFixedCost) || 180) : 0;
+    s.ufhCost = (s.ufh && s.type === "floor") ? (
+        (s.ufhMat || 0) + (s.ufhStat || 0) + (s.ufhOther || 0) + s.area * (s.ufhLabour || parseFloat(S.ufhM2Rate) || 15)
+    ) : 0;
 
     // Wet room tray flat rate (per-job price overrides settings)
     s.trayCost = s.wetRoomTray ? (s.wetRoomTrayPrice || parseFloat(S.wetRoomTrayRate) || 150) : 0;
@@ -5240,6 +5252,12 @@ function applyDirectArea(inputId, clear1, clear2) {
         if (el2) el2.value = "";
     }
     rmCalc();
+}
+
+function toggleUfhPanel(mode) {
+    const cb = document.getElementById(`rm-${mode}-ufh`);
+    const panel = document.getElementById(`ufh-panel-${mode}`);
+    if (panel) panel.classList.toggle("hidden", !cb?.checked);
 }
 
 function rmCalc() {
