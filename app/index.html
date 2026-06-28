@@ -1001,11 +1001,15 @@
                     <label>Floor Grout Joint (mm)</label>
                     <input id="rm-r-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
                 </div>
-                <label class="checkbox-label">
-                    <input type="checkbox" id="rm-r-ufh" onchange="toggleUfhPanel('r');rmCalc()">
-                    Underfloor Heating (UFH)
-                </label>
-                <div id="ufh-panel-r" class="hidden" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+                <div class="rm-section-toggle" onclick="toggleCollapse('ufh-r')" id="collapse-toggle-ufh-r" style="margin-top:8px;">
+                    <div><span class="rm-section-title">Underfloor Heating (UFH)</span><span id="ufh-r-badge" class="rm-section-badge"></span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-ufh-r">▸</span>
+                </div>
+                <div id="collapse-panel-ufh-r" class="hidden">
+                    <label class="checkbox-label" style="margin-bottom:8px;">
+                        <input type="checkbox" id="rm-r-ufh" onchange="rmCalc()">
+                        Include UFH in this room
+                    </label>
                     <div class="field-row" style="margin-bottom:8px;">
                         <div class="field-group"><label>Mat/Cable (£)</label><input id="rm-r-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
                         <div class="field-group"><label>Thermostat (£)</label><input id="rm-r-ufh-stat" type="number" step="1" placeholder="e.g. 120" oninput="rmCalc()"></div>
@@ -1319,10 +1323,15 @@
                 <input id="rm-f-grout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
             </div>
             </div>
-            <label class="checkbox-label" style="margin-bottom:4px;">
-                <input type="checkbox" id="rm-f-ufh" onchange="toggleUfhPanel('f');rmCalc()">
-                Underfloor Heating (UFH)
-            </label>
+            <div class="rm-section-toggle" onclick="toggleCollapse('ufh-f')" id="collapse-toggle-ufh-f">
+                <div><span class="rm-section-title">Underfloor Heating (UFH)</span><span id="ufh-f-badge" class="rm-section-badge"></span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-ufh-f">▸</span>
+            </div>
+            <div id="collapse-panel-ufh-f" class="hidden">
+                <label class="checkbox-label" style="margin-bottom:8px;">
+                    <input type="checkbox" id="rm-f-ufh" onchange="rmCalc()">
+                    Include UFH in this room
+                </label>
             <div id="ufh-panel-f" class="hidden" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
                 <div class="field-row" style="margin-bottom:8px;">
                     <div class="field-group"><label>Mat/Cable (£)</label><input id="rm-f-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
@@ -1336,6 +1345,7 @@
                     <label>Other description</label>
                     <input id="rm-f-ufh-other-desc" type="text" placeholder="e.g. Insulation boards" oninput="rmCalc()">
                 </div>
+            </div>
             </div>
             <div class="rm-section-toggle" onclick="toggleCollapse('floor-prep')" id="collapse-toggle-floor-prep">
                 <div><span class="rm-section-title">Floor Preparation</span></div>
