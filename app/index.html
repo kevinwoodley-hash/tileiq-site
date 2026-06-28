@@ -1541,6 +1541,10 @@
                 <label>Wall Wastage %</label>
                 <input id="rm-sh-wwastage" type="number" min="0" max="50" step="1" value="15" oninput="rmCalc()" style="width:80px;">
             </div>
+            <div class="field-group" style="margin-top:8px;">
+                <label>Wall Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                <input id="rm-sh-wtilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+            </div>
         </div>
         <div class="form-card" style="margin-bottom:8px;">
             <div class="rm-section-toggle" onclick="toggleCollapse('niches-sh')" id="collapse-toggle-niches-sh">
@@ -1610,6 +1614,10 @@
                 <div class="field-group" style="margin-bottom:6px;">
                     <label>Floor Wastage %</label>
                     <input id="rm-sh-fwastage" type="number" min="0" max="50" step="1" value="10" oninput="rmCalc()" style="width:80px;">
+                <div class="field-group" style="margin-top:8px;">
+                    <label>Floor Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                    <input id="rm-sh-ftilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+                </div>
                 </div>
                 <div class="rm-section-toggle" onclick="toggleCollapse('shower-floor-tile')" id="collapse-toggle-shower-floor-tile">
                     <div><span class="rm-section-title">Floor Tiles</span><span id="shower-floor-tile-badge" class="rm-section-badge"></span></div>

@@ -4681,6 +4681,8 @@ function buildSurfaces() {
     }
 
     if (currentSurfType === "shower") {
+        const shWTileCost = parseFloat(document.getElementById("rm-sh-wtilecost")?.value) || 0;
+        const shFTileCost = parseFloat(document.getElementById("rm-sh-ftilecost")?.value) || 0;
         const W  = parseFloat(document.getElementById("rm-sh-width")?.value)  || 0;
         const D  = parseFloat(document.getElementById("rm-sh-depth")?.value)   || 0;
         const H  = parseFloat(document.getElementById("rm-sh-height")?.value)  || 0;
@@ -4703,6 +4705,7 @@ function buildSurfaces() {
 
         const surfaces = wallDefs.map(wd => ({
             type:"wall", label:wd.label,
+            tileCostOverride: shWTileCost,
             width:wd.w, height:wd.h,
             wastage:wWastage,
             tileW:wTileW, tileH:wTileH, tileThick:wTileThick, grout:wGrout,
@@ -4726,6 +4729,7 @@ function buildSurfaces() {
             const fTrayD     = fTray ? (parseFloat(document.getElementById("rm-sh-tray-d")?.value) || 0) : 0;
             surfaces.push({
                 type:"floor", label:"Wet Room Floor",
+                tileCostOverride: shFTileCost,
                 length:W, width:D,
                 wastage:fWastage,
                 tileW:fTileW, tileH:fTileH, tileThick:fTileThick, grout:fGrout,
