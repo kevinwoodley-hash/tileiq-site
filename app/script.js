@@ -3097,9 +3097,11 @@ function restoreRoomInputs(room) {
     if (room.savedType === "floor") {
         set("rm-f-extra-desc", room.extraWorkDesc || "");
         set("rm-f-extra-cost", room.extraWorkCost || "");
+        if (floors.length) set("rm-f-tilecost", floors[0].tileCostOverride || "");
     } else if (room.savedType === "wall") {
         set("rm-w-extra-desc", room.extraWorkDesc || "");
         set("rm-w-extra-cost", room.extraWorkCost || "");
+        if (walls.length) set("rm-w-tilecost", walls[0].tileCostOverride || "");
     }
 
     if (currentSurfType === "room") {
@@ -3121,9 +3123,11 @@ function restoreRoomInputs(room) {
             setCb("rm-r-wsealer", walls[0].sealer);
             if (walls[0].stone) document.getElementById("rm-r-wsealer-row").classList.remove("hidden");
         }
+        if (walls.length) { set("rm-r-wtilecost", walls[0].tileCostOverride || ""); }
         if (floors.length) {
             setCb("rm-r-inclfloor", true);
             set("rm-r-ftilew", floors[0].tileW);
+            set("rm-r-ftilecost", floors[0].tileCostOverride || "");
             set("rm-r-ftileh", floors[0].tileH);
             set("rm-r-ftilethick", floors[0].tileThick || 10);
             set("rm-r-fgrout", floors[0].grout);
