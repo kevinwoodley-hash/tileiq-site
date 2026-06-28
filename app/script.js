@@ -6667,7 +6667,7 @@ function renderQuote() {
 
     const addr = [j.address, j.city, j.postcode].filter(Boolean).join(", ");
 
-    let totalMats = 0, totalLabour = 0, totalPrep = 0, totalExtras = 0;
+    let totalMats = 0, totalLabour = 0, totalPrep = 0, totalExtras = 0, totalWallTilesQ = 0, totalFloorTilesQ = 0;
     let totalAdhKg = 0,
         totalRapidAdhKg = 0,
         totalWallGroutKg = 0,
@@ -6697,6 +6697,12 @@ function renderQuote() {
         totalLabour    += surfaces.reduce((a, s) => a + (s.labour || 0) + (s.ufhCost || 0), 0);
         totalPrep      += surfaces.reduce((a, s) => a + (s.prepCost || 0), 0);
         totalExtras    += parseFloat(room.extraWorkCost || 0);
+        surfaces.forEach(s => {
+            const tup = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
+            const tc = ct ? 0 : tup * s.area * (1 + settings.markup/100);
+            if (s.type === "wall")  totalWallTilesQ  += tc;
+            if (s.type === "floor") totalFloorTilesQ += tc;
+        });
         totalAdhKg        += surfaces.reduce((a, s) => a + (s.adhKg || 0), 0);
         totalRapidAdhKg   += surfaces.reduce((a, s) => a + (s.rapidAdhKg || 0), 0);
         // Split grout totals wall vs floor (kg sums; bags rounded once below)
@@ -6904,6 +6910,8 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
 
         <table class="quote-table">
             <tbody>
+                ${totalWallTilesQ > 0 ? `<tr><td>🧱 Wall Tiles</td><td style="text-align:right">£${totalWallTilesQ.toFixed(2)}</td></tr>` : ""}
+                ${totalFloorTilesQ > 0 ? `<tr><td>⬜ Floor Tiles</td><td style="text-align:right">£${totalFloorTilesQ.toFixed(2)}</td></tr>` : ""}
                 <tr><td>Materials</td><td style="text-align:right">£${(totalMats + totalPrep + jobSilSell).toFixed(2)}</td></tr>
                 <tr><td>Labour</td><td style="text-align:right">£${(totalLabour + totalExtras).toFixed(2)}</td></tr>
             </tbody>
