@@ -2576,7 +2576,7 @@ async function extractCustomerFromText() {
 
 function goNewJob() {
     if (!checkJobLimit()) return;
-    ["nj-name","nj-phone","nj-email","nj-address","nj-city","nj-postcode","nj-desc","nj-area"]
+    ["nj-name","nj-phone","nj-email","nj-address","nj-city","nj-postcode","nj-desc",]
         .forEach(id => document.getElementById(id).value = "");
     document.getElementById("nj-status").value = "enquiry";
     document.getElementById("nj-supply").value = "customer";
@@ -2612,7 +2612,7 @@ function createJob() {
         description:  document.getElementById("nj-desc").value.trim(),
         status:       document.getElementById("nj-status").value,
         tileSupply:   document.getElementById("nj-supply").value,
-        areaMeta:     parseFloat(document.getElementById("nj-area").value) || null,
+        areaMeta:     null,
         workType:     document.getElementById("nj-worktype").value || null,
         rooms:        [],
         createdAt:    new Date().toISOString(),
