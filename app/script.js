@@ -1,3 +1,28 @@
+
+(function() {
+    function registerEarlyPushListener() {
+        try {
+            const FM = window.Capacitor?.Plugins?.FirebaseMessaging;
+            if (!FM) return false;
+            FM.addListener("notificationActionPerformed", function(event) {
+                const data = event.notification?.data;
+                const type = data?.type || "";
+                if (type) localStorage.setItem("tileiq-pending-nav", JSON.stringify({ type: type, token: data.token||"", jobId: data.jobId||data.job_id||"", ts: Date.now() }));
+            });
+            return true;
+        } catch(e) { return false; }
+    }
+    // Try immediately, then retry after Capacitor loads
+    if (!registerEarlyPushListener()) {
+        document.addEventListener("DOMContentLoaded", function() {
+            if (!registerEarlyPushListener()) {
+                setTimeout(registerEarlyPushListener, 500);
+                setTimeout(registerEarlyPushListener, 1500);
+            }
+        });
+    }
+})();
+const AI_PROXY_URL = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
 /* ================================================================
    TileIQ Pro – script.js  (clean rewrite)
    Flow: Dashboard → New Job (customer details) → Job View (rooms)
@@ -17,7 +42,7 @@ if (false && (!window.Capacitor || !window.Capacitor.isNativePlatform())) {
       <img src="assets/icon.png" style="width:80px;margin-bottom:1.5rem;border-radius:16px;" />
       <h1 style="font-size:1.5rem;margin-bottom:0.5rem;">TileIQ Pro</h1>
       <p style="color:#94a3b8;margin-bottom:2rem;">This app is only available on Android.<br>Download it to get started.</p>
-      <a href="https://play.google.com/store/apps/details?id=com.tileiq.pro"
+      <a href="https://play.google.com/store/apps/details?id=com.tileiqpro.android"
          style="background:#f59e0b;color:#0f172a;padding:0.75rem 1.5rem;border-radius:8px;text-decoration:none;font-weight:600;display:block;margin-bottom:1rem;">
         Get it on Google Play
       </a>
@@ -39,8 +64,10 @@ let settings = {
     groutPrice25:  4.50,  // £ per 2.5kg bag
     groutPrice5:   7.50,  // £ per 5kg bag
     groutBagSize:  2.5,   // kg per bag (2.5 or 5)
-    adhesivePrice: 22,
-    rapidAdhPrice: 28,   // £ per 20kg bag of rapid set adhesive (used for anti-crack membrane)
+    adhesivePrice:      22,   // grey standard (£ per 20kg bag)
+    rapidAdhPrice:      28,   // grey rapid set (£ per 20kg bag)
+    adhesivePriceWhite: 24,   // white standard (£ per 20kg bag)
+    rapidAdhPriceWhite: 30,   // white rapid set (£ per 20kg bag)
     siliconePrice: 6.50,
     siliconeCoverage: 6,
     markup:        20,
@@ -51,6 +78,8 @@ let settings = {
     dayRate:       200,
     ufhM2Rate:     52,
     ufhFixedCost:  180,
+    wetRoomTrayRate: 150,  // £ flat rate for tiling a wet room tray
+    nicheLabourRate: 30,   // £ flat rate per niche (confined space surcharge)
     applyVat:      true,
     // tile type labour multipliers
     tileRates: {
@@ -134,8 +163,8 @@ function _updateBottomNav(screenId) {
 
     // Screens where nav should be visible
     const navScreens = ["screen-home","screen-dashboard","screen-job","screen-room",
-                        "screen-quote","screen-customers","screen-settings","screen-help",
-                        "screen-new-job","screen-edit-job","screen-materials","screen-contact"];
+                        "screen-quote","screen-quote-preview","screen-customers","screen-settings","screen-help",
+                        "screen-new-job","screen-edit-job","screen-materials","screen-contact","screen-privacy","screen-terms"];
     // Screens where nav should be hidden (auth, loading)
     const hideScreens = ["screen-loading","screen-signin","screen-signup","screen-verify",
                          "screen-forgot","screen-set-password"];
@@ -150,6 +179,7 @@ function _updateBottomNav(screenId) {
         "bnav-jobs":      ["screen-dashboard","screen-job","screen-room","screen-quote",
                            "screen-new-job","screen-edit-job","screen-materials"],
         "bnav-customers": ["screen-customers"],
+        "bnav-calendar":  ["screen-calendar"],
         "bnav-settings":  ["screen-settings"]
     };
     Object.entries(map).forEach(([btnId, screens]) => {
@@ -161,6 +191,16 @@ function _updateBottomNav(screenId) {
 }
 
 function getJob()  { return jobs.find(j => j.id === currentJobId); }
+
+function getDirections(jobId) {
+    var job = jobId ? jobs.find(function(j){ return j.id === jobId; }) : getJob();
+    if (!job) return;
+    var parts = [job.address, job.city, job.postcode].filter(Boolean);
+    if (!parts.length) { alert("No address saved for this job."); return; }
+    var query = encodeURIComponent(parts.join(", "));
+    window.open("geo:0,0?q=" + query, "_system");
+}
+
 
 function stripPhotosFromJobs() {
     let changed = false;
@@ -224,19 +264,13 @@ async function _syncToCloud() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "d1_save_jobs", user_id: currentUser.id, jobs })
         });
-        if (!resp.ok) throw new Error("D1 save failed: " + resp.status);
-
-        // Mirror to Supabase in background (fire-and-forget) so fallback has fresh data
-        (() => {
-            try {
-                let accessToken = "";
-                try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) accessToken = JSON.parse(s).access_token || ""; } catch(e) {}
-                const sbHeaders = { "apikey": SB_KEY, "Authorization": `Bearer ${accessToken || SB_KEY}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" };
-                // Batch upsert all jobs in one request using Supabase bulk upsert
-                const rows = jobs.map(job => ({ user_id: currentUser.id, job_id: job.id, data: job, updated_at: new Date().toISOString() }));
-                fetch(`${SB_URL}/rest/v1/jobs`, { method: "POST", headers: sbHeaders, body: JSON.stringify(rows) }).catch(() => {});
-            } catch(e) {}
-        })();
+        if (!resp.ok) console.warn("D1 save failed:", resp.status);
+        // Save to Supabase via worker (uses service key, bypasses RLS issues)
+        fetch(AI_PROXY_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "save_jobs", user_id: currentUser.id, jobs })
+        }).catch(e => console.warn("save_jobs failed:", e.message));
 
         localStorage.removeItem(SYNC_PENDING_KEY);
         localStorage.setItem("tileiq-last-sync", Date.now().toString());
@@ -281,11 +315,38 @@ function _updateSyncBadge(hasPending) {
 }
 
 // ── 5. On reconnect — flush any pending changes ───────────────
+// ── Load jobs from Supabase — single source of truth ─────────
+async function loadJobsFromSupabase() {
+    if (!currentUser || !navigator.onLine) return;
+    try {
+        let accessToken = "";
+        try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) accessToken = JSON.parse(s).access_token || ""; } catch(e) {}
+        const resp = await fetch(`${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&select=data&order=updated_at.desc&limit=1000`, {
+            headers: { "apikey": SB_KEY, "Authorization": `Bearer ${accessToken || SB_KEY}` }
+        });
+        if (!resp.ok) return;
+        const rows = await resp.json();
+        if (!Array.isArray(rows)) return;
+        const sbJobs = rows.map(r => r.data).filter(Boolean);
+        // Keep local pending jobs not yet in Supabase
+        const localPending = jobs.filter(j => j._pendingSync && !sbJobs.find(s => s.id === j.id));
+        jobs = [...sbJobs, ...localPending];
+        localStorage.setItem(LOCAL_JOBS_KEY(currentUser?.id), JSON.stringify(jobs));
+        localStorage.setItem("tileiq-last-sync", Date.now().toString());
+        renderDashboard();
+    } catch(e) { console.warn("loadJobsFromSupabase failed:", e.message); }
+}
 window.addEventListener("online", async () => {
-    localStorage.removeItem(SYNC_PENDING_KEY);
     _updateSyncBadge(false);
-    await _syncToCloud();
+    // Push any pending offline jobs to Supabase first
+    const hasPending = jobs.some(j => j._pendingSync);
+    if (hasPending || localStorage.getItem(SYNC_PENDING_KEY)) {
+        await _syncToCloud();
+    }
+    // Then reload fresh from Supabase
+    if (currentUser) await loadJobsFromSupabase();
     if (typeof syncAllQuoteStatuses === "function") syncAllQuoteStatuses();
+    setTimeout(checkPendingPushNav, 3000);
 });
 
 window.addEventListener("offline", () => {
@@ -302,6 +363,24 @@ setTimeout(() => {
 
 
 function esc(s)    { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ── Auto-fill demo credentials if ?demo=1 ────────────────────
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") {
+        document.addEventListener("DOMContentLoaded", () => {
+            const emailEl = document.getElementById("si-email");
+            const passEl  = document.getElementById("si-password");
+            if (emailEl) emailEl.value = "demo@tile-iq.com";
+            if (passEl)  passEl.value  = "Demo1234!";
+            // Show a demo banner
+            const banner = document.createElement("div");
+            banner.style.cssText = "position:fixed;top:0;left:0;right:0;background:#E07A2F;color:#000;text-align:center;padding:8px;font-size:13px;font-weight:600;z-index:9999;";
+            banner.textContent = "🎮 Demo Mode — credentials pre-filled. Tap Sign In to explore.";
+            document.body.prepend(banner);
+        });
+    }
+})();
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 
@@ -396,7 +475,7 @@ const IS_NATIVE = typeof Capacitor !== "undefined" && Capacitor.isNativePlatform
 const sb = supabase.createClient(SB_URL, SB_KEY, {
     auth: {
         redirectTo: IS_NATIVE
-            ? "com.tileiq.pro://"
+            ? "com.tileiqpro.android://"
             : window.location.origin + window.location.pathname,
         detectSessionInUrl: !IS_NATIVE,   // must be false on Capacitor
         persistSession: true,
@@ -448,14 +527,17 @@ function handleDeepLink(url) {
     }
 
     // QuickBooks callback
+    if (url.startsWith("tileiq://qbo-connected")) {
+        handleQBOCallback(url.replace("tileiq://qbo-connected", "https://tile-iq.com/qbo-callback"));
+        return;
+    }
+
+    // Xero callback — carries ?code=&state= directly from Xero
     if (url.startsWith("tileiq://xero-connected")) {
         handleXeroCallback(url);
         return;
     }
-    if (url.startsWith("tileiq://qbo-connected")) {
-        handleQBOCallback(url.replace("tileiq://qbo-connected", "https://tileiq.app/qbo-cb"));
-        return;
-    }
+
 }
 
 // Register deep link listeners
@@ -480,6 +562,7 @@ function initDeepLinks() {
         if (!App) { setTimeout(initDeepLinks, 500); return; }
         App.getLaunchUrl().then(r => { if (r && r.url) handleDeepLink(r.url); }).catch(() => {});
         App.addListener("appUrlOpen", d => { if (d && d.url) handleDeepLink(d.url); });
+        App.addListener("appStateChange", ({ isActive }) => { if (isActive) setTimeout(checkJobReminders, 500); });
     }
 }
 
@@ -668,8 +751,11 @@ async function authSignIn() {
             updatePrepPriceBadges();
             stripPhotosFromJobs();
             setTimeout(syncAllQuoteStatuses, 500);
+            setTimeout(checkPendingPushNav, 3000);
             setTimeout(initPushNotifications, 1000);
+            setTimeout(checkJobReminders, 2000);
             setTimeout(initRevenueCat, 1500);
+            setTimeout(startBackgroundSync, 3000);
         }).catch(e => { isLoadingJobs = false; renderHomeScreen(); console.error(e); });
 
     } catch(e) {
@@ -759,6 +845,7 @@ async function authSignOut() {
     jobs      = [];
     settings  = { ...DEFAULT_SETTINGS, verifiedDomain: null, domainStatus: null, domainId: null, domainDnsRecords: null };
     currentUser   = null;
+    stopBackgroundSync();
     currentJobId  = null;
     helpHistory   = [];
     _proStatus    = null;  // Reset pro status for next user
@@ -828,6 +915,12 @@ async function submitNewPassword() {
 }
 
 async function changePassword() {
+    // Block password change for demo account
+    if (currentUser?.email === "demo@tile-iq.com") {
+        const msgEl = document.getElementById("change-pwd-msg");
+        if (msgEl) { msgEl.classList.remove("hidden"); msgEl.textContent = "Password cannot be changed for the demo account."; }
+        return;
+    }
     const newPwd  = document.getElementById("set-new-password").value;
     const confPwd = document.getElementById("set-confirm-password").value;
     const msgEl   = document.getElementById("change-pwd-msg");
@@ -1313,8 +1406,8 @@ async function submitContactForm() {
 async function loadUserData() {
     // ── 0. Load from localStorage immediately (offline fallback) ─
     try {
-        const localJobs2 = localStorage.getItem(LOCAL_JOBS_KEY(currentUser?.id));
-        if (localJobs2) jobs = JSON.parse(localJobs2);
+        // Jobs loaded from Supabase only when online — see below
+        // if (localJobs2) jobs = JSON.parse(localJobs2);
         const localSet2 = localStorage.getItem(LOCAL_SETTINGS_KEY(currentUser?.id));
         if (localSet2) settings = { ...settings, ...JSON.parse(localSet2) };
     } catch(e) {}
@@ -1323,24 +1416,15 @@ async function loadUserData() {
         console.log("Offline — using local data");
         _updateSyncBadge(true);
         setTimeout(syncAllQuoteStatuses, 0);
+        setTimeout(checkPendingPushNav, 3000);
         return;
     }
-
-    // Add a timeout so we never hang on slow/no network
+    // ── Load jobs — Supabase is single source of truth ──────────
     const fetchWithTimeout = (url, opts, ms = 15000) => {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), ms);
         return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
     };
-
-    // Skip cloud fetch if cache is fresh (under 30 minutes old)
-    const lastSync = parseInt(localStorage.getItem("tileiq-last-sync") || "0");
-    const cacheAge = Date.now() - lastSync;
-    if (cacheAge < 30 * 60 * 1000 && jobs.length > 0) {
-        return; // Use cache
-    }
-
-    // ── Try D1 first, fall back to Supabase ───────────────────
     let loadedFromD1 = false;
     try {
         const d1Resp = await fetchWithTimeout(AI_PROXY_URL, {
@@ -1351,9 +1435,18 @@ async function loadUserData() {
         if (d1Resp.ok) {
             const d1Data = await d1Resp.json();
             if (d1Data.settings) {
-                settings = { ...settings, ...d1Data.settings };
+                const d1s = d1Data.settings;
+                settings = { ...settings, ...Object.fromEntries(Object.entries(d1s).filter(([,v]) => v !== null && v !== undefined)) };
                 localStorage.setItem(LOCAL_SETTINGS_KEY(currentUser?.id), JSON.stringify(settings));
             }
+            // Load settings from Supabase (overrides D1 — more up to date)
+            try {
+                const { data: sbSet } = await sb.from("settings").select("data").eq("user_id", currentUser.id).limit(1).single();
+                if (sbSet?.data) {
+                    settings = { ...settings, ...Object.fromEntries(Object.entries(sbSet.data).filter(([,v]) => v !== null && v !== undefined)) };
+                    localStorage.setItem(LOCAL_SETTINGS_KEY(currentUser?.id), JSON.stringify(settings));
+                }
+            } catch(e) { /* no settings row yet */ }
             // Load customers from Supabase
             if (currentUser) {
                 try {
@@ -1374,26 +1467,63 @@ async function loadUserData() {
                     }
                 } catch(e) { console.warn('Customer load failed:', e.message); }
             }
-            if (d1Data.jobs?.length) {
-                // Merge D1 jobs with localStorage cache — keep newer version of each job
-                const cached = localStorage.getItem(LOCAL_JOBS_KEY(currentUser?.id));
-                const localJobs = cached ? JSON.parse(cached) : [];
-                const merged = [...d1Data.jobs];
-                for (const lj of localJobs) {
-                    const idx = merged.findIndex(j => j.id === lj.id);
-                    if (idx === -1) merged.push(lj); // local-only job, not in D1
-                    else if ((lj.updatedAt || 0) > (merged[idx].updatedAt || 0)) merged[idx] = lj;
-                }
-                jobs = merged;
-                localStorage.setItem(LOCAL_JOBS_KEY(currentUser?.id), JSON.stringify(jobs));
-                localStorage.setItem("tileiq-last-sync", Date.now().toString());
+            if (d1Data.settings || d1Data.jobs !== undefined) {
+                // Jobs always from Supabase — source of truth
+                await loadJobsFromSupabase();
                 loadedFromD1 = true;
-                // If merge added local-only jobs, push them up to D1
-                if (merged.length > d1Data.jobs.length) {
-                    fetch(AI_PROXY_URL, { method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "d1_save_jobs", user_id: currentUser.id, jobs })
-                    }).catch(e => console.warn("D1 merge-push failed:", e.message));
-                }
+                // Push full set to D1 to keep it in sync
+                fetch(AI_PROXY_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "d1_save_jobs", user_id: currentUser.id, jobs })
+                }).catch(e => console.warn("D1 sync-push failed:", e.message));
+                // Always also check Supabase for voicemail/AI jobs written directly (not via D1)
+                try {
+                    let sbToken = "";
+                    try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) sbToken = JSON.parse(s).access_token || ""; } catch(e) {}
+                    const sbResp = await fetch(`${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&select=data,id,source&order=updated_at.desc&limit=1000`, {
+                        headers: { "apikey": SB_KEY, "Authorization": `Bearer ${sbToken || SB_KEY}` }
+                    });
+                    const sbRows = await sbResp.json();
+                    console.log("[sync] Supabase rows:", Array.isArray(sbRows) ? sbRows.length : sbRows);
+                    if (Array.isArray(sbRows) && sbRows.length) {
+                        const sbParsed = sbRows.map(r => {
+                            // data may be object (JSONB) or string
+                            if (!r.data) return null;
+                            if (typeof r.data === "string") {
+                                try { return JSON.parse(r.data); } catch(e) { return null; }
+                            }
+                            return r.data;
+                        }).filter(Boolean);
+                        console.log("[sync] Supabase parsed:", sbParsed.length, "jobs already in app:", jobs.length);
+                        let sbAdded = 0, sbUpdated = 0;
+                        for (const sj of sbParsed) {
+                            if (!sj.id) continue;
+                            const idx = jobs.findIndex(j => j.id === sj.id);
+                            if (idx === -1) { jobs.push(sj); sbAdded++; }
+                            else {
+                                const local = jobs[idx];
+                                const sbHasPhotos = Array.isArray(sj.photos) && sj.photos.length > 0;
+                                const localHasPhotos = Array.isArray(local.photos) && local.photos.length > 0;
+                                // Always merge if Supabase has photos and local doesn't
+                                if (sbHasPhotos && !localHasPhotos) {
+                                    jobs[idx] = { ...local, photos: sj.photos };
+                                    // Save to localStorage immediately so photos survive future saves
+                                    localStorage.setItem(LOCAL_JOBS_KEY(currentUser?.id), JSON.stringify(jobs));
+                                    sbUpdated++;
+                                } else if ((sj.source && !local.source) || (sj.description && !local.description)) {
+                                    jobs[idx] = { ...local, ...sj };
+                                    sbUpdated++;
+                                }
+                            }
+                        }
+                        console.log("[sync] Added from Supabase:", sbAdded, "Updated:", sbUpdated);
+                        if (sbAdded > 0 || sbUpdated > 0) {
+                            localStorage.setItem(LOCAL_JOBS_KEY(currentUser?.id), JSON.stringify(jobs));
+                            fetch(AI_PROXY_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "d1_save_jobs", user_id: currentUser.id, jobs })
+                            }).catch(e => console.warn("D1 voicemail-sync failed:", e.message));
+                        }
+                    }
+                } catch(e) { console.warn("Supabase voicemail job sync failed:", e.message); }
             }
         }
     } catch(e) { console.warn("D1 load failed:", e.message); }
@@ -1411,19 +1541,22 @@ async function loadUserData() {
                 "Authorization": `Bearer ${accessToken || SB_KEY}`
             };
             const [sbJobs, sbSettings] = await Promise.all([
-                fetch(`${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&select=data&order=updated_at.desc`, { headers }).then(r => r.json()),
+                fetch(`${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&select=data&order=updated_at.desc&limit=1000`, { headers }).then(r => r.json()),
                 fetch(`${SB_URL}/rest/v1/settings?user_id=eq.${currentUser.id}&select=data&limit=1`, { headers }).then(r => r.json())
             ]);
-            if (Array.isArray(sbJobs) && sbJobs.length) {
+            if (Array.isArray(sbJobs)) {
                 const sbParsed = sbJobs.map(r => r.data).filter(Boolean);
-                // Merge with localStorage — never discard local jobs
+                // Supabase is source of truth — start with all Supabase jobs
+                const merged = [...sbParsed];
+                // Only add local jobs that are truly new (not in Supabase yet, created within last 24h)
                 const localCached = localStorage.getItem(LOCAL_JOBS_KEY(currentUser?.id));
                 const localParsed = localCached ? JSON.parse(localCached) : [];
-                const merged = [...sbParsed];
                 for (const lj of localParsed) {
-                    const idx = merged.findIndex(j => j.id === lj.id);
-                    if (idx === -1) merged.push(lj);
-                    else if ((lj.updatedAt || 0) > (merged[idx].updatedAt || 0)) merged[idx] = lj;
+                    const inSb = merged.findIndex(j => j.id === lj.id) !== -1;
+                    if (!inSb) {
+                        const localAge = Date.now() - new Date(lj.createdAt || lj.updatedAt || 0).getTime();
+                        if (localAge < 24 * 60 * 60 * 1000) merged.push(lj);
+                    }
                 }
                 jobs = merged;
                 localStorage.setItem(LOCAL_JOBS_KEY(currentUser?.id), JSON.stringify(jobs));
@@ -1437,9 +1570,10 @@ async function loadUserData() {
             if (Array.isArray(sbSettings) && sbSettings[0]?.data) {
                 settings = { ...settings, ...sbSettings[0].data };
                 localStorage.setItem(LOCAL_SETTINGS_KEY(currentUser?.id), JSON.stringify(settings));
+                const _stok1 = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || "";
                 fetch(AI_PROXY_URL, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _stok1 },
                     body: JSON.stringify({ action: "d1_save_settings", user_id: currentUser.id, settings })
                 }).catch(() => {});
             }
@@ -1448,7 +1582,9 @@ async function loadUserData() {
     }
     // Silently sync any pending quote statuses in the background
     setTimeout(syncAllQuoteStatuses, 1500);
+    setTimeout(checkPendingPushNav, 3000);
     setTimeout(initPushNotifications, 2000);
+    setTimeout(checkJobReminders, 3000);
     setTimeout(initRevenueCat, 2500);
 }
 
@@ -1520,6 +1656,7 @@ async function loadUserData() {
                             updatePrepPriceBadges();
                             stripPhotosFromJobs();
                             setTimeout(syncAllQuoteStatuses, 500);
+                            setTimeout(checkPendingPushNav, 3000);
                             setTimeout(initPushNotifications, 1000);
                             setTimeout(initRevenueCat, 1500);
                         } catch(e) {
@@ -1555,12 +1692,89 @@ async function loadUserData() {
             if (App) { const r = await App.getLaunchUrl(); if (r?.url) handleDeepLink(r.url); }
         } catch(e) {}
     }, 300);
+    // ── Leica Disto D2 BLE ───────────────────────────────────────────
+    const DistoD2 = {
+        SERVICE_UUID: '3ab10100-f831-4395-b29d-570977d5bf94',
+        CHAR_UUID:    '3ab10101-f831-4395-b29d-570977d5bf94',
+        _deviceId: null,
+        _activeInput: null,
+        _connected: false,
+        init() {},
+        isConnected() { return this._connected; },
+        setActive(inputEl) { this._activeInput = inputEl; },
+        async connect() {
+            try {
+                const ble = Capacitor.Plugins.BluetoothLe;
+                await ble.initialize();
+                const result = await ble.requestDevice({ services: [this.SERVICE_UUID], optionalServices: [] });
+                this._deviceId = result.deviceId;
+                await ble.connect({ deviceId: this._deviceId });
+                this._connected = true;
+                this._updateBtn();
+                const notifyKey = `notification|${this._deviceId}|${this.SERVICE_UUID}|${this.CHAR_UUID}`;
+                if (this._notifyListener) { await this._notifyListener.remove().catch(() => {}); }
+                this._notifyListener = await ble.addListener(notifyKey, (event) => {
+                    const raw = event?.value;
+                    if (!raw) return;
+                    let dataView;
+                    if (raw instanceof DataView) {
+                        dataView = raw;
+                    } else if (typeof raw === 'string') {
+                        // hex string fallback
+                        const bytes = new Uint8Array(raw.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+                        dataView = new DataView(bytes.buffer);
+                    } else { return; }
+                    const metres = dataView.getFloat32(0, true);
+                    if (isFinite(metres) && metres > 0 && this._activeInput) {
+                        this._activeInput.value = metres.toFixed(3);
+                        this._activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        // Advance to next data-disto input
+                        const all = Array.from(document.querySelectorAll('input[data-disto]'));
+                        const idx = all.indexOf(this._activeInput);
+                        const next = all[idx + 1];
+                        if (next) {
+                            next.focus();
+                            this._activeInput = next;
+                        }
+                    }
+                });
+                await ble.startNotifications({ deviceId: this._deviceId, service: this.SERVICE_UUID, characteristic: this.CHAR_UUID });
+            } catch (err) {
+                console.error('Disto connect error:', err);
+                alert('Could not connect to Disto D2. Make sure Bluetooth is on and the device is nearby.');
+                this._connected = false;
+                this._updateBtn();
+            }
+        },
+        async disconnect() {
+            try {
+                if (this._notifyListener) { await this._notifyListener.remove().catch(() => {}); this._notifyListener = null; }
+                if (this._deviceId) await Capacitor.Plugins.BluetoothLe.disconnect({ deviceId: this._deviceId });
+            } catch (_) {}
+            this._connected = false;
+            this._deviceId = null;
+            this._updateBtn();
+        },
+        _updateBtn() {
+            const btn = document.getElementById('disto-connect-btn');
+            if (btn) btn.textContent = this._connected ? '🔵 Disto Connected' : '⚪ Connect Disto';
+        }
+    };
+    window.Disto = DistoD2;
+    // ────────────────────────────────────────────────────────────────
+
     // Disto D2
     if (window.Disto) {
         window.Disto.init();
         document.getElementById("disto-connect-btn")?.addEventListener("click", async () => {
             if (window.Disto.isConnected()) { await window.Disto.disconnect(); }
             else { await window.Disto.connect(); }
+        });
+        // Set active input on focus for any data-disto field
+        document.addEventListener('focusin', (e) => {
+            if (e.target?.matches('input[data-disto]')) {
+                window.Disto.setActive(e.target);
+            }
         });
     }
 })();
@@ -1571,14 +1785,17 @@ function updatePrepPriceBadges() {
     const S = settings;
     document.querySelectorAll(".pc-cb").forEach(el   => el.textContent = S.cementBoard);
     document.querySelectorAll(".pc-mem").forEach(el  => el.textContent = S.membrane);
-    document.querySelectorAll(".pc-tank-r, .pc-tank-w, .pc-tank-f").forEach(el => el.textContent = S.tanking);
+    document.querySelectorAll(".pc-tank-r, .pc-tank-w, .pc-tank-f, .pc-tank-sh").forEach(el => el.textContent = S.tanking);
     document.querySelectorAll(".pc-clips").forEach(el => el.textContent = S.clipPrice || 12);
     document.querySelectorAll(".pc-trim").forEach(el => el.textContent = `£${(S.trimPrice || 3.50).toFixed(2)}`);
     document.querySelectorAll(".pc-primer").forEach(el => el.textContent = S.primerPrice || 3.50);
     document.querySelectorAll(".pc-stone").forEach(el => el.textContent = S.stoneSurcharge || 8.00);
     document.querySelectorAll(".pc-sealer").forEach(el => el.textContent = S.sealerPrice || 5.00);
+    const trayEl = document.getElementById("pc-wet-tray");
+    if (trayEl) trayEl.textContent = S.wetRoomTrayRate || 150;
     updateLevelBadge("rm-r-leveldepth", ".pc-lev-r");
     updateLevelBadge("rm-f-leveldepth", ".pc-lev-f");
+    updateLevelBadge("rm-sh-leveldepth", ".pc-lev-sh");
 }
 
 function updateLevelBadge(selectId, cls) {
@@ -1782,6 +1999,7 @@ function renderHomeScreen() {
 }
 
 function goDashboard() {
+    if (!document.getElementById("ptr-indicator")) initPullToRefresh();
     show("screen-dashboard");
     renderDashboard();
     // If FreeAgent just connected via URL redirect, show confirmation
@@ -1894,6 +2112,112 @@ function renderReminders() {
         </div>`;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   BACKGROUND AUTO-SYNC
+   Polls for new jobs/customers every 60s — lightweight check only
+═══════════════════════════════════════════════════════════════ */
+let bgSyncInterval = null;
+
+function startBackgroundSync() {
+    stopBackgroundSync();
+    bgSyncInterval = setInterval(backgroundSync, 60000);
+    console.log("Background sync started (60s interval)");
+}
+
+function stopBackgroundSync() {
+    if (bgSyncInterval) { clearInterval(bgSyncInterval); bgSyncInterval = null; }
+}
+
+async function backgroundSync() {
+    if (!currentUser?.id || !navigator.onLine) return;
+    try {
+        const resp = await fetch(AI_PROXY_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "d1_load", user_id: currentUser.id })
+        });
+        if (!resp.ok) return;
+        const d1Data = await resp.json();
+
+        let changed = false;
+
+        // Check jobs
+        if (d1Data.jobs?.length) {
+            const localJobs = JSON.parse(localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id)) || "[]");
+            const localIds = new Set(localJobs.map(j => j.id));
+            const newJobs = d1Data.jobs.filter(j => !localIds.has(j.id));
+            if (newJobs.length) {
+                // Merge new jobs in
+                const merged = [...localJobs];
+                for (const j of d1Data.jobs) {
+                    const idx = merged.findIndex(lj => lj.id === j.id);
+                    if (idx === -1) merged.push(j);
+                    else if (new Date(j.updated_at||0) > new Date(merged[idx].updated_at||0)) merged[idx] = j;
+                }
+                jobs = merged;
+                localStorage.setItem(LOCAL_JOBS_KEY(currentUser.id), JSON.stringify(jobs));
+                changed = true;
+                console.log(`Background sync: ${newJobs.length} new job(s)`);
+            }
+        }
+
+        // Check customers via Supabase
+        try {
+            let custToken = "";
+            try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) custToken = JSON.parse(s).access_token || ""; } catch(e) {}
+            const custResp = await fetch(`${SB_URL}/rest/v1/customers?user_id=eq.${currentUser.id}&select=data&limit=1`, {
+                headers: { "apikey": SB_KEY, "Authorization": `Bearer ${custToken || SB_KEY}` }
+            });
+            const custRows = await custResp.json();
+            if (Array.isArray(custRows) && custRows[0]?.data?.length) {
+                const sbCusts = custRows[0].data;
+                const localCusts = getSavedCustomers();
+                const newCusts = sbCusts.filter(c => !localCusts.find(lc => lc.id === c.id));
+                if (newCusts.length) {
+                    const merged = [...sbCusts];
+                    for (const lc of localCusts) { if (!merged.find(c => c.id === lc.id)) merged.push(lc); }
+                    localStorage.setItem(LOCAL_CUSTOMERS_KEY(currentUser.id), JSON.stringify(merged));
+                    changed = true;
+                    console.log(`Background sync: ${newCusts.length} new customer(s)`);
+                }
+            }
+        } catch(e) {}
+
+        // Also check Supabase for voicemail jobs
+        try {
+            let sbToken = "";
+            try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) sbToken = JSON.parse(s).access_token || ""; } catch(e) {}
+            const sbResp = await fetch(`${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&select=data&order=updated_at.desc&limit=1000`, {
+                headers: { "apikey": SB_KEY, "Authorization": `Bearer ${sbToken || SB_KEY}` }
+            });
+            const sbRows = await sbResp.json();
+            if (Array.isArray(sbRows) && sbRows.length) {
+                const localJobs = JSON.parse(localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id)) || "[]");
+                let sbAdded = 0;
+                for (const row of sbRows) {
+                    const sj = row.data || row;
+                    if (sj?.id && !localJobs.find(j => j.id === sj.id)) { localJobs.push(sj); sbAdded++; }
+                }
+                if (sbAdded > 0) {
+                    jobs = localJobs;
+                    localStorage.setItem(LOCAL_JOBS_KEY(currentUser.id), JSON.stringify(jobs));
+                    changed = true;
+                    console.log(`Background sync: ${sbAdded} new Supabase job(s)`);
+                }
+            }
+        } catch(e) {}
+
+        if (changed) {
+            renderDashboard();
+            const activeScreen = document.querySelector(".screen:not(.hidden)")?.id;
+            if (activeScreen === "screen-dashboard") renderDashboard();
+        }
+    } catch(e) {
+        console.warn("Background sync error:", e.message);
+    }
+}
+
 function renderDashboard() {
     const list  = document.getElementById("jobs-list");
     const empty = document.getElementById("jobs-empty");
@@ -1941,7 +2265,7 @@ function renderDashboard() {
     const sort = document.getElementById("jobs-sort")?.value || "updated";
     const jobTotal = j => (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
     const quoteOrder = { accepted: 0, pending: 1, declined: 2, archived: 3 };
-    if (sort === "updated")         filtered.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    if (sort === "updated")         filtered.sort((a, b) => new Date(b.updatedAt || b.updated_at || b.createdAt || b.created_at || 0) - new Date(a.updatedAt || a.updated_at || a.createdAt || a.created_at || 0));
     else if (sort === "value-desc") filtered.sort((a, b) => jobTotal(b) - jobTotal(a));
     else if (sort === "value-asc")  filtered.sort((a, b) => jobTotal(a) - jobTotal(b));
     else if (sort === "accepted")   filtered.sort((a, b) => (quoteOrder[a.quoteStatus] ?? 3) - (quoteOrder[b.quoteStatus] ?? 3));
@@ -1990,6 +2314,8 @@ function renderDashboard() {
                     <div class="job-card-name">${j.customerName ? j.customerName.replace(/&/g,"&amp;").replace(/</g,"&lt;") : ""}</div>
                     ${addr ? `<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">📍 ${addr.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
                     ${j.phone ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📞 ${j.phone.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
+                    ${(j.source === "voicemail" || j.source === "call" || j.source === "ai_receptionist") && j.areaMeta ? ballparkHtml(j, true) : ""}
+                    ${j.source === "missed_call" ? '<div style="font-size:12px;color:#f87171;margin-top:3px;">📵 Missed Call — no details left</div>' : ""}
                 </div>
                 <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-left:8px;flex-shrink:0;">
                     ${statusBadge(j.status)}
@@ -1998,7 +2324,7 @@ function renderDashboard() {
             </div>
             ${progressHtml}
             <div style="display:flex;gap:8px;" onclick="event.stopPropagation()">
-                <button onclick="currentJobId=\'${j.id}\';goEditJob()" class="btn-secondary btn-sm" style="flex:1;">✏ Edit</button>
+                <button onclick="currentJobId=\'${j.id}\';goEditJob()" class="btn-secondary btn-sm" style="flex:1;">✏ Edit Customer</button>
                 <button onclick="event.stopPropagation();currentJobId=\'${j.id}\';toggleArchiveJob()" class="btn-secondary btn-sm" style="flex:1;color:#94a3b8;border-color:#334155;">${j.jobArchived ? "↩ Unarchive" : "📦 Archive"}</button>
                 <button onclick="currentJobId=\'${j.id}\';deleteJob()" class="btn-secondary btn-sm" style="flex:1;color:#f87171;border-color:#f87171;">🗑 Delete</button>
             </div>
@@ -2192,13 +2518,82 @@ function loadCustomer(id, prefix) {
 }
 
 
+/* ── Paste & Extract customer details ──────────────────────────── */
+function showPasteExtract() {
+    const existing = document.getElementById('paste-extract-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'paste-extract-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:#ffffff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:600px;max-height:80vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;color:#1e293b;">📋 Paste from Message</div>
+          <button onclick="document.getElementById('paste-extract-modal').remove()" style="background:none;border:none;color:var(--muted,#64748b);font-size:22px;cursor:pointer;line-height:1;">×</button>
+        </div>
+        <p style="font-size:13px;color:#64748b;margin-bottom:12px;">Paste a WhatsApp message, email, or any text — AI will extract the customer details.</p>
+        <textarea id="paste-extract-text" placeholder="e.g. Hi, I'm John Smith, 07712 345678, 14 Oak Road, Swindon SN1 2AB..." rows="6" style="width:100%;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;color:#1e293b;padding:12px;font-size:14px;font-family:inherit;resize:none;box-sizing:border-box;"></textarea>
+        <div id="paste-extract-error" style="color:#f87171;font-size:13px;margin-top:8px;display:none;"></div>
+        <button id="paste-extract-btn" onclick="extractCustomerFromText()" style="width:100%;margin-top:12px;padding:14px;background:var(--amber,#E07A2F);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">✨ Extract Details</button>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    setTimeout(() => document.getElementById('paste-extract-text')?.focus(), 100);
+}
+
+async function extractCustomerFromText() {
+    const text = document.getElementById('paste-extract-text')?.value.trim();
+    if (!text) return;
+    const btn = document.getElementById('paste-extract-btn');
+    const errEl = document.getElementById('paste-extract-error');
+    btn.disabled = true;
+    btn.textContent = '⏳ Extracting...';
+    errEl.style.display = 'none';
+    try {
+        const resp = await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'extract_customer', text })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.customer) throw new Error(data.error || 'Extraction failed');
+        const c = data.customer;
+        if (c.name)     document.getElementById('nj-name').value     = c.name;
+        if (c.phone)    document.getElementById('nj-phone').value    = c.phone;
+        if (c.email)    document.getElementById('nj-email').value    = c.email;
+        if (c.address)  document.getElementById('nj-address').value  = c.address;
+        if (c.city)     document.getElementById('nj-city').value     = c.city;
+        if (c.postcode) document.getElementById('nj-postcode').value = c.postcode;
+        if (c.notes)    document.getElementById('nj-desc').value     = c.notes;
+        document.getElementById('paste-extract-modal')?.remove();
+    } catch(e) {
+        errEl.textContent = e.message || 'Something went wrong. Please try again.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '✨ Extract Details';
+    }
+}
+
 function goNewJob() {
     if (!checkJobLimit()) return;
-    ["nj-name","nj-phone","nj-email","nj-address","nj-city","nj-postcode","nj-desc"]
+    ["nj-name","nj-phone","nj-email","nj-address","nj-city","nj-postcode","nj-desc","nj-area"]
         .forEach(id => document.getElementById(id).value = "");
     document.getElementById("nj-status").value = "enquiry";
-    document.getElementById("nj-supply").value = "contractor";
+    document.getElementById("nj-supply").value = "customer";
+    document.getElementById("nj-worktype").value = "";
     show("screen-new-job");
+    // Inject "Paste from message" button if not already present
+    const njName = document.getElementById("nj-name");
+    if (njName && !document.getElementById("paste-from-msg-btn")) {
+        const pasteBtn = document.createElement("button");
+        pasteBtn.id = "paste-from-msg-btn";
+        pasteBtn.type = "button";
+        pasteBtn.textContent = "📋 Paste from message";
+        pasteBtn.style.cssText = "width:100%;padding:11px;margin-bottom:14px;background:transparent;border:1px dashed var(--amber,#E07A2F);color:var(--amber,#E07A2F);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;";
+        pasteBtn.onclick = showPasteExtract;
+        njName.closest(".form-card, .field-group")?.parentElement?.insertBefore(pasteBtn, njName.closest(".form-card, .field-group")) ||
+        njName.parentElement?.insertBefore(pasteBtn, njName);
+    }
     setTimeout(() => document.getElementById("nj-name").focus(), 100);
 }
 
@@ -2217,6 +2612,8 @@ function createJob() {
         description:  document.getElementById("nj-desc").value.trim(),
         status:       document.getElementById("nj-status").value,
         tileSupply:   document.getElementById("nj-supply").value,
+        areaMeta:     parseFloat(document.getElementById("nj-area").value) || null,
+        workType:     document.getElementById("nj-worktype").value || null,
         rooms:        [],
         createdAt:    new Date().toISOString(),
         updatedAt:    new Date().toISOString()
@@ -2304,6 +2701,7 @@ function saveSchedule() {
     j.jobEndDate   = end || start;
     saveAll();
     renderJobQuoteStatusBar();
+    autoAddToDeviceCalendar(j);
 }
 
 async function saveAndSendSchedule() {
@@ -2318,6 +2716,7 @@ async function saveAndSendSchedule() {
     j.jobEndDate   = end || start;
     saveAll();
     renderJobQuoteStatusBar();
+    autoAddToDeviceCalendar(j);
 
     // If no email just close
     if (!j.email) {
@@ -2340,6 +2739,7 @@ async function saveAndSendSchedule() {
                 customerName: j.customerName,
                 companyName:  settings.companyName || "",
                 companyPhone: settings.companyPhone || "",
+                logoUrl:      settings.logoUrl || "",
                 startDate:    j.jobStartDate,
                 endDate:      j.jobEndDate || j.jobStartDate,
                 location:     [j.address, j.city, j.postcode].filter(Boolean).join(", "),
@@ -2476,7 +2876,7 @@ async function goMessages() {
     const list    = document.getElementById("messages-list");
     const empty   = document.getElementById("messages-empty");
     if (loading) loading.style.display = "block";
-    if (list)    list.style.display    = "none";
+    if (list)    { list.innerHTML = ""; list.style.display = "none"; }
     if (empty)   empty.style.display   = "none";
     const j = getJob();
     if (!j || !j.quoteToken) {
@@ -2485,45 +2885,44 @@ async function goMessages() {
         return;
     }
     try {
-        const [msgResp, dateResp, replyResp] = await Promise.all([
+        const [msgResp, dateResp] = await Promise.all([
             fetch(AI_PROXY_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"get_customer_messages",token:j.quoteToken}) }),
-            fetch(AI_PROXY_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"get_date_suggestions",token:j.quoteToken}) }),
-            fetch(AI_PROXY_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"get_tiler_replies",token:j.quoteToken}) })
+            fetch(AI_PROXY_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"get_date_suggestions",token:j.quoteToken}) })
         ]);
         const msgData    = await msgResp.json().catch(()=>({}));
         const dateData   = await dateResp.json().catch(()=>({}));
-        const replyData  = await replyResp.json().catch(()=>({}));
-        const messages   = msgData.messages    || [];
+        const messages   = (msgData.messages || []).filter(m => m.sender !== "tiler");
         const suggestions= dateData.suggestions || [];
-        const tilerReplies = replyData.replies  || [];
+        const allMessages = msgData.messages || [];
+        const tilerReplies = allMessages.filter(m => m.sender === "tiler");
         if (loading) loading.style.display = "none";
-        if (!messages.length && !suggestions.length) {
+        if (!messages.length && !suggestions.length && !tilerReplies.length) {
             if (empty) empty.style.display = "block";
             return;
         }
         const combined = [
             ...messages.map(m=>({...m,_type:"question"})),
+            ...tilerReplies.map(m=>({...m,_type:"tiler_reply"})),
             ...suggestions.map(s=>({...s,_type:"date_suggestion"}))
-        ].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+        ].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
         list.innerHTML = combined.map(item => {
             const date = new Date(item.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
             if (item._type === "question") {
-                const replies = tilerReplies.filter(r=>r.message_id===item.id);
-                const replyHtml = replies.map(r=>`
-                    <div style="background:#1e293b;border-left:3px solid #f59e0b;padding:10px 12px;margin-top:8px;border-radius:0 8px 8px 0;">
-                        <div style="font-size:11px;color:#64748b;">Your reply</div>
-                        <div style="font-size:14px;color:#e2e8f0;">${esc(r.reply)}</div>
-                    </div>`).join("");
                 return `
                     <div class="form-card" style="margin-bottom:12px;">
-                        <div style="font-size:11px;color:#64748b;margin-bottom:6px;">\u{1F4AC} Customer question \u00B7 ${date}</div>
-                        <div style="font-size:15px;color:#e2e8f0;line-height:1.6;margin-bottom:10px;">"${esc(item.message)}"</div>
-                        ${replyHtml}
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">\u{1F4AC} Customer question \u00B7 ${date}</div>
+                        <div style="font-size:15px;color:#1e293b;font-weight:500;line-height:1.6;margin-bottom:10px;">"${esc(item.message)}"</div>
                         <div style="margin-top:10px;">
                             <textarea id="reply-input-${item.id}" rows="2" placeholder="Type your reply\u2026"
                                 style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid var(--border);border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;resize:none;margin-bottom:8px;"></textarea>
                             <button onclick="sendTilerReply('${item.id}','${j.quoteToken}')" class="btn-primary" style="width:100%;padding:11px;">Send Reply</button>
                         </div>
+                    </div>`;
+            } else if (item._type === "tiler_reply") {
+                return `
+                    <div class="form-card" style="margin-bottom:12px;border-left:3px solid #f59e0b;">
+                        <div style="font-size:11px;color:#64748b;margin-bottom:6px;">Your reply · ${date}</div>
+                        <div style="font-size:15px;color:#e2e8f0;line-height:1.6;">${esc(item.message)}</div>
                     </div>`;
             } else {
                 const start = new Date(item.start_date+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"long"});
@@ -2563,7 +2962,7 @@ async function sendTilerReply(messageId, quoteToken) {
     const btn = input.nextElementSibling;
     if (btn) { btn.disabled = true; btn.textContent = "Sending\u2026"; }
     try {
-        const resp = await fetch(AI_PROXY_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"send_tiler_reply",message_id:messageId,token:quoteToken,reply}) });
+        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"send_tiler_reply",message_id:messageId,token:quoteToken,reply}) });
         if (!resp.ok) throw new Error();
         await goMessages();
     } catch(e) { if (btn) { btn.disabled = false; btn.textContent = "Send Reply"; } }
@@ -2673,6 +3072,7 @@ function renderJobView() {
             ${job.phone ? `<span class="cbar-contact">📞 ${esc(job.phone)}</span>` : ""}
             ${job.email ? `<span class="cbar-contact">✉ ${esc(job.email)}</span>` : ""}
             ${job.tileSupply === "customer" ? `<span class="cbar-badge">👤 Customer tiles</span>` : ""}
+            ${parts ? `<button onclick="getDirections('${job.id}')" style="background:#E07A2F;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;margin-top:6px;display:inline-block;">🗺️ Directions</button>` : ""}
         </div>
     `;
     // Attach touch/click listeners via delegation — more reliable in Android WebView
@@ -2687,10 +3087,55 @@ function renderJobView() {
     const roomsEl  = document.getElementById("job-rooms-list");
     const emptyEl  = document.getElementById("job-rooms-empty");
     const totalEl  = document.getElementById("job-running-total");
+    // Ensure transcript container exists
+    if (!document.getElementById("job-voicemail-transcript")) {
+        const tc = document.createElement("div");
+        tc.id = "job-voicemail-transcript";
+        totalEl.parentNode.insertBefore(tc, totalEl.nextSibling);
+    }
+
+    // AI receptionist source label + description banner
+    let srcBannerEl = document.getElementById("job-source-banner");
+    if (!srcBannerEl) {
+        srcBannerEl = document.createElement("div");
+        srcBannerEl.id = "job-source-banner";
+        totalEl.parentNode.insertBefore(srcBannerEl, totalEl.nextSibling);
+    }
+    if ((job.source === "ai_receptionist" || job.source === "web_form") && job.description) {
+        const bannerTitle = job.source === "web_form" ? "🌐 Web Enquiry — Details" : "📞 AI Receptionist — Job Summary";
+        srcBannerEl.style.display = "";
+        const enquiryDetails = job.source === "web_form" ? `
+            <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
+                ${job.jobType    ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">📍 ${esc(job.jobType)}</span>` : ""}
+                ${job.areaSize   ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">📐 ${esc(job.areaSize)}</span>` : ""}
+                ${Array.isArray(job.surfaces) && job.surfaces.length ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">🧱 ${job.surfaces.join(", ")}</span>` : ""}
+                ${job.tileSupply ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">🪣 ${esc(job.tileSupply)}</span>` : ""}
+                ${job.removal    ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">🔨 ${esc(job.removal)}</span>` : ""}
+                ${job.timescale  ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">📅 ${esc(job.timescale)}</span>` : ""}
+            </div>
+            ${Array.isArray(job.photos) && job.photos.length ? `
+            <div style="margin-top:10px;">
+                <div style="font-size:11px;color:#64748b;margin-bottom:6px;">📷 Customer Photos</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    ${job.photos.map(url => `<img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #334155;cursor:pointer;" onclick="window.open('${url}','_blank')">`).join("")}
+                </div>
+            </div>` : ""}
+            <button onclick="goAddRoomFromEnquiry()" style="margin-top:12px;width:100%;background:#e07a2f;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;">+ Add Room & Quote</button>
+        ` : "";
+        srcBannerEl.innerHTML = `<div style="margin:12px 16px 0;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;">
+            <div style="font-size:11px;color:#e07a2f;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">${bannerTitle}</div>
+            <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${esc(job.description)}</div>
+            ${job.startDate ? `<div style="font-size:12px;color:#64748b;margin-top:6px;">🗓 Start: ${esc(job.startDate)}</div>` : ""}
+            ${enquiryDetails}
+        </div>`;
+    } else {
+        srcBannerEl.style.display = "none";
+        srcBannerEl.innerHTML = "";
+    }
     const rooms    = job.rooms || [];
 
     if (!rooms.length) {
-        roomsEl.innerHTML = "";
+        roomsEl.innerHTML = ballparkHtml(job, false) || "";
         emptyEl.style.display = "";
         totalEl.classList.add("hidden");
         return;
@@ -2740,12 +3185,18 @@ function renderJobView() {
         const wedges     = surfaces.reduce((a, s) => a + (s.clips ? (s.levelWedges || 0) : 0), 0);
         const clipCost   = surfaces.reduce((a, s) => a + (s.clipCost      || 0), 0);
 
+        const hasTanking  = surfaces.some(s => s.tanking);
+        const hasPrimer   = surfaces.some(s => s.primer);
+        const tankingCost = surfaces.reduce((a,s) => a + (s.tanking ? (s.area||0) * (parseFloat(settings?.tanking)||15) : 0), 0);
+        const primerCost  = surfaces.reduce((a,s) => a + (s.primer  ? (s.area||0) * (parseFloat(settings?.primerPrice)||3.5) : 0), 0);
         const matSchedule = [
-            adhBags  > 0 ? `Adhesive: ${adhBags} × 20kg`                                       : "",
-            groutBags> 0 ? `Grout: ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""}` : "",
-            cbBoards > 0 ? `Cement Board: ${cbBoards} board${cbBoards !== 1 ? "s" : ""}`       : "",
-            levelBags> 0 ? `Levelling: ${levelBags} × 20kg`                                    : "",
-            clips    > 0 ? `Clips: ${clips}  ·  Wedges: ${wedges}${clipCost > 0 ? `  ·  £${clipCost.toFixed(2)}` : ""}` : "",
+            adhBags   > 0 ? `Adhesive: ${adhBags} × 20kg`                                       : "",
+            groutBags > 0 ? `Grout: ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""}` : "",
+            cbBoards  > 0 ? `Cement Board: ${cbBoards} board${cbBoards !== 1 ? "s" : ""}`       : "",
+            levelBags > 0 ? `Levelling: ${levelBags} × 20kg`                                    : "",
+            hasTanking     ? `Tanking: £${tankingCost.toFixed(2)}`                               : "",
+            hasPrimer      ? `Primer: £${primerCost.toFixed(2)}`                                 : "",
+            clips     > 0 ? `Clips: ${clips}  ·  Wedges: ${wedges}${clipCost > 0 ? `  ·  £${clipCost.toFixed(2)}` : ""}` : "",
         ].filter(Boolean).join("  ·  ");
 
         const seal = calcSealantRoom(r);
@@ -2761,36 +3212,119 @@ function renderJobView() {
                     <div class="room-card-name">${esc(r.name)}</div>
                     <div class="room-card-meta">${areaStr}${r.tileType ? ` · <span style="color:var(--accent);font-weight:600;">${TILE_TYPE_LABELS[r.tileType] || r.tileType}</span>` : ""}</div>
                 </div>
-                <div class="room-card-total">£${r.total}</div>
+                <div class="room-card-total">${r.total ? "£" + r.total : ""}</div>
             </div>
             <div class="room-cost-breakdown">
-                ${(() => {
-                    const wt = surfaces.filter(s => s.type === "wall").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
-                    const ft = surfaces.filter(s => s.type === "floor").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
-                    const om = mats - wt - ft;
-                    let html = "";
-                    if (wt > 0) html += `<span class="rcb-item"><span class="rcb-label">🧱 Wall tiles</span><span class="rcb-value">£${wt.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
-                    if (ft > 0) html += `<span class="rcb-item"><span class="rcb-label">⬜ Floor tiles</span><span class="rcb-value">£${ft.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
-                    if (om > 0.01) html += `<span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${om.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
-                    if (!html && mats > 0) html += `<span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${mats.toFixed(2)}</span></span><span class="rcb-sep">|</span>`;
-                    return html;
-                })()}
+                <span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${mats.toFixed(2)}</span></span>
+                <span class="rcb-sep">|</span>
                 <span class="rcb-item"><span class="rcb-label">Labour</span><span class="rcb-value">£${lab.toFixed(2)}</span></span>
-                ${prep > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep</span><span class="rcb-value">£${prep.toFixed(2)}</span></span>` : ""}
+                ${hasTanking ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Tanking</span><span class="rcb-value">£${tankingCost.toFixed(2)}</span></span>` : ""}
+                ${hasPrimer  ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Primer</span><span class="rcb-value">£${primerCost.toFixed(2)}</span></span>` : ""}
+                ${(prep - tankingCost - primerCost) > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep</span><span class="rcb-value">£${(prep - tankingCost - primerCost).toFixed(2)}</span></span>` : ""}
                 ${ufh  > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">UFH</span><span class="rcb-value">£${ufh.toFixed(2)}</span></span>` : ""}
             </div>
             ${matSchedule ? `<div class="room-mat-schedule">${matSchedule}</div>` : ""}
             ${surfLines ? `<div class="surf-chips">${surfLines}</div>` : ""}
             <div class="room-card-actions">
-                <button onclick="goEditRoom(${i})" class="btn-secondary btn-sm">✏ Edit</button>
+                <button onclick="goEditRoom(${i})" class="btn-secondary btn-sm">✏ Edit Room</button>
                 <button onclick="deleteRoom(${i})" class="btn-secondary btn-sm">🗑 Delete</button>
             </div>
         </div>`;
     }).join("");
 
-    const grandTotal = rooms.reduce((a, r) => a + parseFloat(r.total || 0), 0);
+    const grandTotal = rooms.reduce((a, r) => a + (r.surfaces||[]).reduce((b,s) => b + parseFloat(s.total||0), 0) + parseFloat(r.extraWorkCost||0), 0);
+
+    // Build prep breakdown across all rooms
+    let totalMats = 0, totalLabour = 0, totalTanking = 0, totalPrep = 0;
+    rooms.forEach(r => {
+        const ct = r.tileSupply === "customer";
+        const totalArea = (r.surfaces||[]).reduce((a,s) => a+(s.area||0), 0);
+        const labourOpts = r.labourType === "day" ? {type:"day", days:r.days||1, dayRate:r.dayRate||settings.dayRate||200, totalArea} : null;
+        (r.surfaces||[]).forEach(s => { s.tileType = s.tileType || r.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
+        totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0);
+        totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0);
+        totalTanking += (r.surfaces||[]).reduce((a,s) => a+(s.tanking ? (s.area||0)*(parseFloat(settings?.tanking)||15) : 0), 0);
+        totalPrep    += (r.surfaces||[]).reduce((a,s) => a+(s.prepCost||0), 0);
+    });
+    const otherPrep = totalPrep - totalTanking;
+
+    const prepBreakdown = [
+        totalMats    > 0 ? `Materials £${totalMats.toFixed(2)}`    : "",
+        totalLabour  > 0 ? `Labour £${totalLabour.toFixed(2)}`      : "",
+        totalTanking > 0 ? `Tanking £${totalTanking.toFixed(2)}`    : "",
+        otherPrep    > 0.01 ? `Prep £${otherPrep.toFixed(2)}`       : "",
+    ].filter(Boolean).join(" · ");
+
     totalEl.classList.remove("hidden");
-    totalEl.innerHTML = `<span>Job Total</span><strong>£${grandTotal.toFixed(2)}</strong>`;
+    totalEl.innerHTML = `<span>Job Total</span><strong>£${grandTotal.toFixed(2)}</strong>${prepBreakdown ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;font-weight:400;">${prepBreakdown}</div>` : ""}`;
+
+    // Voicemail transcript below rooms
+    const transcriptEl = document.getElementById("job-voicemail-transcript");
+    if (transcriptEl) {
+        if (job.voicemailTranscript) {
+            transcriptEl.style.display = "";
+            transcriptEl.innerHTML = `
+                <div style="margin:12px 16px 0;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;">
+                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">🎙 Voicemail Transcript</div>
+                    <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${esc(job.voicemailTranscript)}</div>
+                </div>`;
+        } else {
+            transcriptEl.style.display = "none";
+        }
+    }
+
+    // AI Receptionist — extra works checklist + caller notes
+    let aiInfoEl = document.getElementById("job-ai-info");
+    if (!aiInfoEl) {
+        aiInfoEl = document.createElement("div");
+        aiInfoEl.id = "job-ai-info";
+        const tc = document.getElementById("job-voicemail-transcript");
+        if (tc && tc.parentNode) tc.parentNode.insertBefore(aiInfoEl, tc.nextSibling);
+    }
+
+    const hasExtraWorks = Array.isArray(job.extraWorks) && job.extraWorks.length > 0;
+    const hasCallerNotes = job.callerNotes && job.callerNotes.trim().length > 0;
+    const isAIReceptionist = job.source === "ai_receptionist";
+
+    if (isAIReceptionist && (hasExtraWorks || hasCallerNotes)) {
+        let html = `<div style="margin:12px 16px 0;">`;
+
+        if (hasExtraWorks) {
+            html += `<div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;${hasCallerNotes ? "margin-bottom:8px;" : ""}">
+                <div style="font-size:11px;color:#e07a2f;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⚙️ Extra Works Required</div>`;
+            job.extraWorks.forEach((work, i) => {
+                const cbId = `ew-${job.id}-${i}`;
+                html += `<label style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #263448;cursor:pointer;" for="${cbId}">
+                    <input type="checkbox" id="${cbId}" style="width:16px;height:16px;accent-color:#e07a2f;cursor:pointer;" onchange="toggleExtraWork('${job.id}',${i},this.checked)">
+                    <span style="font-size:13px;color:#cbd5e1;">${esc(work)}</span>
+                </label>`;
+            });
+            html += `</div>`;
+        }
+
+        if (hasCallerNotes) {
+            html += `<div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;">
+                <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">💬 Caller Notes</div>
+                <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${esc(job.callerNotes)}</div>
+            </div>`;
+        }
+
+        html += `</div>`;
+        aiInfoEl.style.display = "";
+        aiInfoEl.innerHTML = html;
+
+        // Restore checkbox states
+        if (hasExtraWorks) {
+            const checked = job.extraWorksChecked || {};
+            job.extraWorks.forEach((_, i) => {
+                const cb = document.getElementById(`ew-${job.id}-${i}`);
+                if (cb) cb.checked = !!checked[i];
+            });
+        }
+    } else {
+        aiInfoEl.style.display = "none";
+        aiInfoEl.innerHTML = "";
+    }
 }
 
 function setJobStatus(status) {
@@ -2800,6 +3334,14 @@ function setJobStatus(status) {
     saveAll();
     renderJobView();
     renderDashboard();
+}
+
+function toggleExtraWork(jobId, idx, checked) {
+    const job = jobs.find(j => j.id === jobId);
+    if (!job) return;
+    if (!job.extraWorksChecked) job.extraWorksChecked = {};
+    job.extraWorksChecked[idx] = checked;
+    saveAll();
 }
 
 function advanceStatus() {
@@ -2825,7 +3367,14 @@ function deleteRoom(idx) {
 function deleteJob() {
     const job = getJob();
     if (!job) return;
-    if (!confirm(`Delete job for ${job.customerName}? This cannot be undone.`)) return;
+    // Block deletion if a quote has been sent
+    if (job.quoteToken) {
+        const quoteRef = job.quoteRef ? ` (${job.quoteRef})` : "";
+        const proceed = confirm(`⚠️ A quote${quoteRef} has been sent to ${job.customerName}. Deleting this job will not cancel the quote link.\n\nAre you sure you want to delete? This cannot be undone.`);
+        if (!proceed) return;
+    } else {
+        if (!confirm(`Delete job for ${job.customerName}? This cannot be undone.`)) return;
+    }
     const deletedId = currentJobId;
     jobs = jobs.filter(j => j.id !== deletedId);
     currentJobId = null;
@@ -2836,6 +3385,12 @@ function deleteJob() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "d1_delete_job", user_id: currentUser.id, job_id: deletedId })
         }).catch(e => console.error("deleteJob D1 error:", e));
+        // Also delete from Supabase
+        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+        fetch(SB_URL + "/rest/v1/jobs?id=eq." + deletedId + "&user_id=eq." + currentUser.id, {
+            method: "DELETE",
+            headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY) }
+        }).catch(e => console.error("deleteJob Supabase error:", e));
     }
     goDashboard();
 }
@@ -2861,7 +3416,9 @@ function goEditJob() {
     document.getElementById("ej-postcode").value= j.postcode     || "";
     document.getElementById("ej-desc").value    = j.description  || "";
     document.getElementById("ej-status").value  = j.status       || "enquiry";
-    document.getElementById("ej-supply").value  = j.tileSupply   || "contractor";
+    document.getElementById("ej-supply").value  = j.tileSupply   || "customer";
+    document.getElementById("ej-area").value    = j.areaMeta     || "";
+    document.getElementById("ej-worktype").value= j.workType     || "";
     show("screen-edit-job");
 }
 
@@ -2878,6 +3435,8 @@ function saveEditJob() {
     j.description  = document.getElementById("ej-desc").value.trim();
     j.status       = document.getElementById("ej-status").value;
     j.tileSupply   = document.getElementById("ej-supply").value;
+    j.areaMeta     = parseFloat(document.getElementById("ej-area").value) || null;
+    j.workType     = document.getElementById("ej-worktype").value || null;
     saveAll();
     goJob();
 }
@@ -2967,6 +3526,8 @@ function goAddRoom() {
     document.getElementById("rm-customer-tiles").checked = (job?.tileSupply === "customer");
     document.getElementById("rm-dayrate").value = settings.dayRate || 200;
     document.getElementById("rm-tile-type").value = "ceramic";
+    document.getElementById("rm-adh-colour").value = "grey";
+    document.getElementById("rm-adh-type").value   = "standard";
     updateTileTypeNote();
     document.getElementById("rm-days").value = "";
     clearRoomInputs();
@@ -2976,6 +3537,96 @@ function goAddRoom() {
     setTimeout(() => document.getElementById("rm-name").focus(), 100);
 }
 
+
+function goAddRoomFromEnquiry() {
+    const job = getJob();
+    if (!job) return;
+
+    currentRoomIdx    = null;
+    currentSurfType   = "room";
+    currentLabourType = "m2";
+    document.getElementById("room-screen-title").textContent = "Add Room";
+
+    // Pre-fill name from job type
+    const roomName = job.jobType || "Enquiry Room";
+    document.getElementById("rm-name").value = roomName;
+
+    // Tile supply
+    const customerTiles = job.tileSupply && job.tileSupply.toLowerCase().includes("have");
+    document.getElementById("rm-customer-tiles").checked = customerTiles;
+
+    document.getElementById("rm-dayrate").value = settings.dayRate || 200;
+    document.getElementById("rm-days").value = "";
+
+    // Tile type — porcelain if floor only, ceramic otherwise
+    const surfaces = Array.isArray(job.surfaces) ? job.surfaces : [];
+    const hasFloor = surfaces.some(s => s.toLowerCase().includes("floor"));
+    const hasWalls = surfaces.some(s => s.toLowerCase().includes("wall") || s.toLowerCase().includes("shower") || s.toLowerCase().includes("splash"));
+    const tileType = (hasFloor && !hasWalls) ? "porcelain" : "ceramic";
+    document.getElementById("rm-tile-type").value = tileType;
+    updateTileTypeNote();
+
+    clearRoomInputs();
+    setLabourType("m2");
+
+    // Select surface type
+    const surfType = hasFloor && hasWalls ? "room" : hasFloor ? "floor" : hasWalls ? "wall" : "room";
+    rmSelectType(surfType);
+
+    // Default room height to 2.4m so rmCalc can run without tiler entering it
+    if (surfType === "room") {
+        const hEl = document.getElementById("rm-r-height");
+        if (hEl && !hEl.value) hEl.value = "2.4";
+    }
+
+    // Pre-fill area if we can estimate it from areaSize
+    const areaSize = job.areaSize || "";
+    let estArea = null;
+    if (areaSize.includes("under 5"))       estArea = 4;
+    else if (areaSize.includes("5 to 15"))  estArea = 10;
+    else if (areaSize.includes("15 to 30")) estArea = 22;
+    else if (areaSize.includes("30"))       estArea = 35;
+
+    // Parse actual m² from extraInfo if mentioned (e.g. "Floor is 4.5m²")
+    let floorM2 = null, wallM2 = null;
+    if (job.extraInfo) {
+        const floorMatch = job.extraInfo.match(/floor[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*m/i);
+        const wallMatch  = job.extraInfo.match(/wall[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*m/i);
+        if (floorMatch) floorM2 = parseFloat(floorMatch[1]);
+        if (wallMatch)  wallM2  = parseFloat(wallMatch[1]);
+    }
+
+    if (surfType === "floor") {
+        const area = floorM2 || estArea;
+        if (area) {
+            const el = document.getElementById("rm-f-area-direct");
+            if (el) { el.value = area; applyDirectArea("rm-f-area-direct", "rm-f-length", "rm-f-width"); }
+        }
+    } else if (surfType === "wall") {
+        const area = wallM2 || estArea;
+        if (area) {
+            const el = document.getElementById("rm-w-area-direct");
+            if (el) { el.value = area; applyDirectArea("rm-w-area-direct", "rm-w-width", "rm-w-height"); }
+        }
+    } else {
+        // Room mode — use parsed or estimated areas
+        const fArea = floorM2 || (estArea ? Math.round(estArea * 0.4 * 10) / 10 : null);
+        const wArea = wallM2  || (estArea ? Math.round(estArea * 0.6 * 10) / 10 : null);
+        if (fArea) {
+            const el = document.getElementById("rm-r-area-direct");
+            if (el) { el.value = fArea; applyDirectArea("rm-r-area-direct", "rm-r-length", "rm-r-width"); }
+        }
+        if (wArea) {
+            // Wall area in room mode — set wall direct area if field exists
+            const wel = document.getElementById("rm-r-wall-area-direct") || document.getElementById("rm-w-area-direct");
+            if (wel) { wel.value = wArea; }
+        }
+        rmCalc();
+    }
+
+    show("screen-room");
+    setTimeout(() => document.getElementById("rm-name").focus(), 100);
+}
 function goEditRoom(idx) {
     const room = getJob().rooms[idx];
     currentRoomIdx    = idx;
@@ -2988,9 +3639,17 @@ function goEditRoom(idx) {
     document.getElementById("rm-dayrate").value = room.dayRate || settings.dayRate || 200;
     document.getElementById("rm-days").value    = room.days || "";
     document.getElementById("rm-tile-type").value = room.tileType || "ceramic";
+    document.getElementById("rm-adh-colour").value = room.adhColour || "grey";
+    document.getElementById("rm-adh-type").value   = room.adhType   || "standard";
     updateTileTypeNote();
 
     clearRoomInputs();
+    // Restore niches
+    const nicheZoneEdit = (room.savedType === "shower") ? "sh" : (room.savedType === "wall") ? "w" : (room.savedType === "room") ? "r" : null;
+    if (nicheZoneEdit) {
+        niches[nicheZoneEdit] = JSON.parse(JSON.stringify(room.niches || []));
+        renderNiches(nicheZoneEdit);
+    }
     setLabourType(currentLabourType);
     rmSelectType(currentSurfType);
     restoreRoomInputs(room);
@@ -2998,6 +3657,7 @@ function goEditRoom(idx) {
     wallDeducts  = (room.wallDeducts  || []).slice();
     floorDeducts = (room.floorDeducts || []).slice();
     renderDeducts();
+    rmUpdateOptionsBadge();
     rmCalc();
     show("screen-room");
 }
@@ -3005,16 +3665,80 @@ function goEditRoom(idx) {
 /* Show the right measurement form, highlight the right button */
 function rmSelectType(type) {
     currentSurfType = type;
-    ["room","floor","wall"].forEach(t => {
+    ["room","floor","wall","shower"].forEach(t => {
         document.getElementById("rm-form-" + t).classList.toggle("hidden", t !== type);
         document.getElementById("stype-btn-" + t).classList.toggle("stype-active", t === type);
     });
-    // Wall tiles panel only relevant in full-room mode
-    if (type === "room") { openCollapse("walltiles"); updateWallTilesBadge(); }
-    else closeCollapse("walltiles");
+    // Close all collapsible panels when switching type
+    ["walltiles","sealant","extrawork","trim","room-labour","room-wall-opts","room-wall-prep","room-floor-opts","room-floor-tile","room-floor-prep",
+     "floor-tile","floor-prep","wall-tile","wall-prep",
+     "shower-wall-tile","shower-wall-prep","shower-floor-tile","shower-floor-prep",
+     "niches-sh","extrawork-sh","extrawork-f","trim-f","trim-w","wetroom-f","room-extra-floors","room-extra-walls","room-extra-floors","room-extra-walls","room-extra-floors","room-extra-walls"].forEach(k => closeCollapse(k));
+    // Default to porcelain for floor-only, ceramic for wall/room/shower
+    const tileTypeEl = document.getElementById("rm-tile-type");
+    if (tileTypeEl && (tileTypeEl.value === "ceramic" || tileTypeEl.value === "porcelain")) {
+        tileTypeEl.value = (type === "floor") ? "porcelain" : "ceramic";
+        updateTileTypeNote();
+    }
+    // Auto-open wall and floor options for full room
+    if (type === "room") { openCollapse("room-wall-opts"); openCollapse("room-floor-opts"); }
+    // Pre-tick tanking for shower
+    if (type === "shower") {
+        const st = document.getElementById("rm-sh-tanking"); if (st) st.checked = true;
+        const sf = document.getElementById("rm-sh-ftanking"); if (sf) sf.checked = true;
+    }
     rmCalc();
 }
 
+
+// ── Wet Room Floor — Full Room ───────────────────────────────
+function rmToggleWetRoomR() {
+    const on = document.getElementById("rm-r-wetroom")?.checked;
+    const opts = document.getElementById("rm-r-wetroom-opts");
+    if (opts) opts.classList.toggle("hidden", !on);
+    // Show tray cost in floor prep
+    const tankEl = document.getElementById("rm-r-ftanking");
+    if (tankEl) tankEl.checked = on;
+    // Update wet tray rate display
+    const traySpan = document.getElementById("pc-wet-tray-r");
+    if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
+    const tankSpan = document.getElementById("pc-tank-r");
+    if (tankSpan) tankSpan.textContent = settings?.tanking || settings?.tankingRate || 15;
+    rmCalc();
+}
+function rmRTrayToggle() {
+    const on = document.getElementById("rm-r-tray")?.checked;
+    const row = document.getElementById("rm-r-tray-size-row");
+    if (row) row.classList.toggle("hidden", !on);
+    if (on) {
+        const inp = document.getElementById("rm-r-tray-price");
+        if (inp && !inp.value) inp.value = settings.wetRoomTrayRate || 150;
+    }
+    rmCalc();
+}
+// ── Wet Room Floor — Floor Only ──────────────────────────────
+function rmToggleWetRoomF() {
+    const on = document.getElementById("rm-f-wetroom")?.checked;
+    const opts = document.getElementById("rm-f-wetroom-opts");
+    if (opts) opts.classList.toggle("hidden", !on);
+    const tankEl = document.getElementById("rm-f-tanking");
+    if (tankEl) tankEl.checked = on;
+    const traySpan = document.getElementById("pc-wet-tray-f");
+    if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
+    const tankSpan = document.getElementById("pc-tank-f");
+    if (tankSpan) tankSpan.textContent = settings?.tanking || settings?.tankingRate || 15;
+    rmCalc();
+}
+function rmFTrayToggle() {
+    const on = document.getElementById("rm-f-tray")?.checked;
+    const row = document.getElementById("rm-f-tray-size-row");
+    if (row) row.classList.toggle("hidden", !on);
+    if (on) {
+        const inp = document.getElementById("rm-f-tray-price");
+        if (inp && !inp.value) inp.value = settings.wetRoomTrayRate || 150;
+    }
+    rmCalc();
+}
 function rmToggleFloor() {
     const show = document.getElementById("rm-r-inclfloor").checked;
     document.getElementById("rm-r-floor-opts").style.display = show ? "" : "none";
@@ -3026,11 +3750,25 @@ function clearRoomInputs() {
     clearDeducts();
     const ids = [
         "rm-r-length","rm-r-width","rm-r-height","rm-r-deduct",
-        "rm-f-length","rm-f-width",
-        "rm-w-width","rm-w-height"
+        "rm-f-length","rm-f-width","rm-f-area-direct",
+        "rm-w-width","rm-w-height","rm-w-area-direct",
+        "rm-sh-width","rm-sh-depth","rm-sh-height","rm-sh-extra-desc","rm-sh-extra-cost","rm-sh-tray-price"
     ];
     ids.forEach(id => document.getElementById(id).value = "");
     document.getElementById("rm-r-inclfloor").checked = true;
+    const wrR = document.getElementById("rm-r-wetroom"); if (wrR) wrR.checked = false;
+    const wrRopts = document.getElementById("rm-r-wetroom-opts"); if (wrRopts) wrRopts.classList.add("hidden");
+    const wrF = document.getElementById("rm-f-wetroom"); if (wrF) wrF.checked = false;
+    const wrFopts = document.getElementById("rm-f-wetroom-opts"); if (wrFopts) wrFopts.classList.add("hidden");
+    const rTray = document.getElementById("rm-r-tray"); if (rTray) rTray.checked = false;
+    const fTray = document.getElementById("rm-f-tray"); if (fTray) fTray.checked = false;
+    const rTrayRow = document.getElementById("rm-r-tray-price-row"); if (rTrayRow) rTrayRow.classList.add("hidden");
+    const fTrayRow = document.getElementById("rm-f-tray-price-row"); if (fTrayRow) fTrayRow.classList.add("hidden");
+    const rTrayPrice = document.getElementById("rm-r-tray-price"); if (rTrayPrice) rTrayPrice.value = "";
+    const fTrayPrice = document.getElementById("rm-f-tray-price"); if (fTrayPrice) fTrayPrice.value = "";
+    ["rm-r-tray-w","rm-r-tray-d","rm-f-tray-w","rm-f-tray-d","rm-sh-tray-w","rm-sh-tray-d"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    const rSizeRow = document.getElementById("rm-r-tray-size-row"); if (rSizeRow) rSizeRow.classList.add("hidden");
+    const fSizeRow = document.getElementById("rm-f-tray-size-row"); if (fSizeRow) fSizeRow.classList.add("hidden");
     document.getElementById("rm-r-ufh").checked       = false;
     const se = document.getElementById("rm-sealant-enabled"); if (se) se.value = "true";
     const sf = document.getElementById("rm-sealant-floorperim"); if (sf) sf.checked = true;
@@ -3048,15 +3786,17 @@ function clearRoomInputs() {
     document.getElementById("rm-r-floor-opts").style.display = "";
     // reset prep checkboxes
     ["rm-r-cementboard","rm-r-membrane","rm-r-levelling","rm-r-tanking","rm-r-clips",
-     "rm-r-primer","rm-r-stone","rm-r-sealer","rm-r-wprimer","rm-r-wstone","rm-r-wsealer",
+     "rm-r-primer","rm-r-stone","rm-r-sealer","rm-r-wprimer","rm-r-wstone","rm-r-wsealer","rm-r-wtanking","rm-r-wtanking-a","rm-r-wtanking-b","rm-r-wtanking-c","rm-r-wtanking-d",
      "rm-f-cementboard","rm-f-membrane","rm-f-levelling","rm-f-clips","rm-f-tanking",
      "rm-f-primer","rm-f-stone","rm-f-sealer",
-     "rm-w-tanking","rm-w-primer","rm-w-stone","rm-w-sealer"].forEach(id => {
+     "rm-w-tanking","rm-w-primer","rm-w-stone","rm-w-sealer",
+     "rm-sh-wprimer","rm-sh-wstone","rm-sh-wsealer","rm-sh-levelling","rm-sh-primer","rm-sh-inclfloor","rm-sh-tray"].forEach(id => {
         const el = document.getElementById(id); if (el) el.checked = false;
     });
-    ["rm-r-sealer-row","rm-r-wsealer-row","rm-f-sealer-row","rm-w-sealer-row"].forEach(id => {
+    ["rm-r-sealer-row","rm-r-wsealer-row","rm-f-sealer-row","rm-w-sealer-row","rm-sh-wsealer-row","rm-sh-floor-opts","rm-sh-tray-price-row"].forEach(id => {
         document.getElementById(id)?.classList.add("hidden");
     });
+    clearNiches();
     document.getElementById("rm-r-level-depth").classList.add("hidden");
     document.getElementById("rm-f-level-depth").classList.add("hidden");
     // reset tile defaults
@@ -3083,7 +3823,7 @@ function clearRoomInputs() {
     extraSurfaces = [];
     renderExtraSurfaces();
     // Close all collapsible panels
-    ["sealant","extrawork","walltiles","extrawork-f","extrawork-w","trim","trim-f","trim-w"].forEach(closeCollapse);
+    ["sealant","extrawork","walltiles","extrawork-f","trim","trim-f"].forEach(closeCollapse);
 }
 
 /* Restore fields when editing an existing room */
@@ -3091,7 +3831,7 @@ function restoreRoomInputs(room) {
     const surfaces = room.surfaces || [];
     const walls    = surfaces.filter(s => s.type === "wall");
     const floors   = surfaces.filter(s => s.type === "floor");
-    const set   = (id, v) => { if (v !== undefined && v !== null) document.getElementById(id).value = v; };
+    const set   = (id, v) => { const _e = document.getElementById(id); if (_e && v !== undefined && v !== null) _e.value = v; };
     const setCb = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
 
     // Sealant fields
@@ -3106,18 +3846,19 @@ function restoreRoomInputs(room) {
     if (room.savedType === "floor") {
         set("rm-f-extra-desc", room.extraWorkDesc || "");
         set("rm-f-extra-cost", room.extraWorkCost || "");
-        if (floors.length) set("rm-f-tilecost", floors[0].tileCostOverride || "");
     } else if (room.savedType === "wall") {
         set("rm-w-extra-desc", room.extraWorkDesc || "");
         set("rm-w-extra-cost", room.extraWorkCost || "");
-        if (walls.length) set("rm-w-tilecost", walls[0].tileCostOverride || "");
     }
 
     if (currentSurfType === "room") {
-        if ((room.length||0) > 0 && (room.width||0) > 0 && (room.height||0) > 0) {
+        const rRealDims = (room.length||0) > 0 && (room.width||0) > 0 && Math.abs((room.length||0)-(room.width||0)) > 0.01;
+        if (rRealDims && (room.height||0) > 0) {
             set("rm-r-length", room.length);
             set("rm-r-width",  room.width);
             set("rm-r-height", room.height);
+        } else if ((room.area||0) > 0) {
+            set("rm-r-area-direct", room.area);
         } else if (walls.length >= 4) {
             set("rm-r-length", walls[0].width);
             set("rm-r-width",  walls[2].width);
@@ -3127,16 +3868,18 @@ function restoreRoomInputs(room) {
             set("rm-r-wtilethick", walls[0].tileThick || 8);
             set("rm-r-wgrout", walls[0].grout);
             setCb("rm-r-tanking", walls[0].tanking);
+            setCb("rm-r-wtanking-a", walls[0]?.tanking || false);
+            setCb("rm-r-wtanking-b", walls[1]?.tanking || false);
+            setCb("rm-r-wtanking-c", walls[2]?.tanking || false);
+            setCb("rm-r-wtanking-d", walls[3]?.tanking || false);
             setCb("rm-r-wprimer", walls[0].primer);
             setCb("rm-r-wstone",  walls[0].stone);
             setCb("rm-r-wsealer", walls[0].sealer);
             if (walls[0].stone) document.getElementById("rm-r-wsealer-row").classList.remove("hidden");
         }
-        if (walls.length) { set("rm-r-wtilecost", walls[0].tileCostOverride || ""); }
         if (floors.length) {
             setCb("rm-r-inclfloor", true);
             set("rm-r-ftilew", floors[0].tileW);
-            set("rm-r-ftilecost", floors[0].tileCostOverride || "");
             set("rm-r-ftileh", floors[0].tileH);
             set("rm-r-ftilethick", floors[0].tileThick || 10);
             set("rm-r-fgrout", floors[0].grout);
@@ -3159,8 +3902,13 @@ function restoreRoomInputs(room) {
             document.getElementById("rm-r-floor-opts").style.display = "none";
         }
     } else if (currentSurfType === "floor" && floors.length) {
-        set("rm-f-length", floors[0].length);
-        set("rm-f-width",  floors[0].width);
+        const fRealDims = (floors[0].length||0) > 0 && Math.abs((floors[0].length||0)-(floors[0].width||0)) > 0.01;
+        if (fRealDims) {
+            set("rm-f-length", floors[0].length);
+            set("rm-f-width",  floors[0].width);
+        } else if ((floors[0].area||0) > 0) {
+            set("rm-f-area-direct", floors[0].area);
+        }
         if (floors[0].wastage !== undefined) set("rm-f-wastage", floors[0].wastage);
         set("rm-f-tilew",  floors[0].tileW);
         set("rm-f-tileh",  floors[0].tileH);
@@ -3181,13 +3929,19 @@ function restoreRoomInputs(room) {
             document.getElementById("rm-f-level-depth").classList.remove("hidden");
         }
     } else if (currentSurfType === "wall" && walls.length) {
-        set("rm-w-width",  walls[0].width);
-        set("rm-w-height", walls[0].height);
+        const wRealDims = (walls[0].width||0) > 0 && Math.abs((walls[0].width||0)-(walls[0].height||0)) > 0.01;
+        if (wRealDims) {
+            set("rm-w-width",  walls[0].width);
+            set("rm-w-height", walls[0].height);
+        } else if ((walls[0].area||0) > 0) {
+            set("rm-w-area-direct", walls[0].area);
+        }
         set("rm-w-tilew",  walls[0].tileW);
         set("rm-w-tileh",  walls[0].tileH);
         set("rm-w-tilethick", walls[0].tileThick || 8);
         set("rm-w-grout",  walls[0].grout);
         setCb("rm-w-tanking", walls[0].tanking);
+        setCb("rm-r-wtanking", walls[0].tanking);
         setCb("rm-w-primer",  walls[0].primer);
         setCb("rm-w-stone",   walls[0].stone);
         setCb("rm-w-sealer",  walls[0].sealer);
@@ -3231,13 +3985,139 @@ function restoreRoomInputs(room) {
             openCollapse(trimPanelKey);
             updateTrimBadge(currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : "r");
         }
-        if (currentSurfType === "room") { openCollapse("walltiles"); updateWallTilesBadge(); }
+        if (currentSurfType === "room") { updateWallTilesBadge(); }
     }, 50);
 }
 
 /* ─── EXTRA SURFACES (additional floors / walls) ─── */
 let extraSurfaces = [];   // [{type, label, ...fields}, ...]
 
+
+function addExtraSurfaceRoom(type) {
+    addExtraSurface(type);
+    // Re-render into room-specific containers
+    renderExtraSurfacesRoom();
+}
+
+function renderExtraSurfacesRoom() {
+    const floorContainer = document.getElementById("extra-floors-list-room");
+    const wallContainer  = document.getElementById("extra-walls-list-room");
+    // Only render if we're in room mode
+    if (!floorContainer && !wallContainer) return;
+    if (floorContainer) floorContainer.innerHTML = "";
+    if (wallContainer)  wallContainer.innerHTML  = "";
+    extraSurfaces.forEach((s, i) => {
+        const isFloor = s.type === "floor";
+        const container = isFloor ? floorContainer : wallContainer;
+        if (!container) return;
+        // Clone the same card HTML from renderExtraSurfaces by triggering it
+        // then moving the node across
+    });
+    // Easiest: just call renderExtraSurfaces and move nodes
+    renderExtraSurfaces();
+    // Move floor nodes to room floor container
+    if (floorContainer) {
+        const mainFloorList = document.getElementById("extra-floors-list");
+        if (mainFloorList) {
+            while (mainFloorList.firstChild) {
+                floorContainer.appendChild(mainFloorList.firstChild);
+            }
+        }
+    }
+    // Move wall nodes to room wall container
+    if (wallContainer) {
+        const mainWallList = document.getElementById("extra-walls-list");
+        if (mainWallList) {
+            while (mainWallList.firstChild) {
+                wallContainer.appendChild(mainWallList.firstChild);
+            }
+        }
+    }
+}
+
+function addExtraSurfaceRoom(type) {
+    addExtraSurface(type);
+    // Re-render into room-specific containers
+    renderExtraSurfacesRoom();
+}
+
+function renderExtraSurfacesRoom() {
+    const floorContainer = document.getElementById("extra-floors-list-room");
+    const wallContainer  = document.getElementById("extra-walls-list-room");
+    // Only render if we're in room mode
+    if (!floorContainer && !wallContainer) return;
+    if (floorContainer) floorContainer.innerHTML = "";
+    if (wallContainer)  wallContainer.innerHTML  = "";
+    extraSurfaces.forEach((s, i) => {
+        const isFloor = s.type === "floor";
+        const container = isFloor ? floorContainer : wallContainer;
+        if (!container) return;
+        // Clone the same card HTML from renderExtraSurfaces by triggering it
+        // then moving the node across
+    });
+    // Easiest: just call renderExtraSurfaces and move nodes
+    renderExtraSurfaces();
+    // Move floor nodes to room floor container
+    if (floorContainer) {
+        const mainFloorList = document.getElementById("extra-floors-list");
+        if (mainFloorList) {
+            while (mainFloorList.firstChild) {
+                floorContainer.appendChild(mainFloorList.firstChild);
+            }
+        }
+    }
+    // Move wall nodes to room wall container
+    if (wallContainer) {
+        const mainWallList = document.getElementById("extra-walls-list");
+        if (mainWallList) {
+            while (mainWallList.firstChild) {
+                wallContainer.appendChild(mainWallList.firstChild);
+            }
+        }
+    }
+}
+
+function addExtraSurfaceRoom(type) {
+    addExtraSurface(type);
+    // Re-render into room-specific containers
+    renderExtraSurfacesRoom();
+}
+
+function renderExtraSurfacesRoom() {
+    const floorContainer = document.getElementById("extra-floors-list-room");
+    const wallContainer  = document.getElementById("extra-walls-list-room");
+    // Only render if we're in room mode
+    if (!floorContainer && !wallContainer) return;
+    if (floorContainer) floorContainer.innerHTML = "";
+    if (wallContainer)  wallContainer.innerHTML  = "";
+    extraSurfaces.forEach((s, i) => {
+        const isFloor = s.type === "floor";
+        const container = isFloor ? floorContainer : wallContainer;
+        if (!container) return;
+        // Clone the same card HTML from renderExtraSurfaces by triggering it
+        // then moving the node across
+    });
+    // Easiest: just call renderExtraSurfaces and move nodes
+    renderExtraSurfaces();
+    // Move floor nodes to room floor container
+    if (floorContainer) {
+        const mainFloorList = document.getElementById("extra-floors-list");
+        if (mainFloorList) {
+            while (mainFloorList.firstChild) {
+                floorContainer.appendChild(mainFloorList.firstChild);
+            }
+        }
+    }
+    // Move wall nodes to room wall container
+    if (wallContainer) {
+        const mainWallList = document.getElementById("extra-walls-list");
+        if (mainWallList) {
+            while (mainWallList.firstChild) {
+                wallContainer.appendChild(mainWallList.firstChild);
+            }
+        }
+    }
+}
 function addExtraSurface(type) {
     const i = extraSurfaces.length;
     const isFloor = type === "floor";
@@ -3414,6 +4294,33 @@ function renderExtraSurfaces() {
 </div>`;
         container.insertAdjacentHTML("beforeend", html);
     });
+    // If in full room mode, move cards to room containers
+    if (currentSurfType === "room") {
+        const rFloor = document.getElementById("extra-floors-list-room");
+        const rWall  = document.getElementById("extra-walls-list-room");
+        const mFloor = document.getElementById("extra-floors-list");
+        const mWall  = document.getElementById("extra-walls-list");
+        if (rFloor && mFloor) { while (mFloor.firstChild) rFloor.appendChild(mFloor.firstChild); }
+        if (rWall  && mWall)  { while (mWall.firstChild)  rWall.appendChild(mWall.firstChild); }
+    }
+    // If in full room mode, move cards to room containers
+    if (currentSurfType === "room") {
+        const rFloor = document.getElementById("extra-floors-list-room");
+        const rWall  = document.getElementById("extra-walls-list-room");
+        const mFloor = document.getElementById("extra-floors-list");
+        const mWall  = document.getElementById("extra-walls-list");
+        if (rFloor && mFloor) { while (mFloor.firstChild) rFloor.appendChild(mFloor.firstChild); }
+        if (rWall  && mWall)  { while (mWall.firstChild)  rWall.appendChild(mWall.firstChild); }
+    }
+    // If in full room mode, move cards to room containers
+    if (currentSurfType === "room") {
+        const rFloor = document.getElementById("extra-floors-list-room");
+        const rWall  = document.getElementById("extra-walls-list-room");
+        const mFloor = document.getElementById("extra-floors-list");
+        const mWall  = document.getElementById("extra-walls-list");
+        if (rFloor && mFloor) { while (mFloor.firstChild) rFloor.appendChild(mFloor.firstChild); }
+        if (rWall  && mWall)  { while (mWall.firstChild)  rWall.appendChild(mWall.firstChild); }
+    }
     // Auto-focus first empty data-disto input in last added card
     setTimeout(() => {
         const cards = document.querySelectorAll(".extra-surface-card");
@@ -3487,14 +4394,154 @@ function buildExtraSurfaces() {
 }
 
 /* ─── BUILD SURFACES from current form fields ─── */
+function rmToggleShowerFloor() {
+    const show = document.getElementById("rm-sh-inclfloor")?.checked;
+    const el = document.getElementById("rm-sh-floor-opts");
+    if (el) el.classList.toggle("hidden", !show);
+    rmCalc();
+}
+function rmShTrayToggle() {
+    const checked = document.getElementById("rm-sh-tray")?.checked;
+    const row = document.getElementById("rm-sh-tray-price-row");
+    if (row) row.classList.toggle("hidden", !checked);
+    if (checked) {
+        const inp = document.getElementById("rm-sh-tray-price");
+        if (inp && !inp.value) inp.value = settings.wetRoomTrayRate || 150;
+    }
+    rmCalc();
+}
+function rmToggleLevelSh() {
+    const checked = document.getElementById("rm-sh-levelling")?.checked;
+    const el = document.getElementById("rm-sh-level-depth");
+    if (el) el.classList.toggle("hidden", !checked);
+    rmCalc();
+}
+function rmToggleWStoneShower() {
+    const checked = document.getElementById("rm-sh-wstone")?.checked;
+    const el = document.getElementById("rm-sh-wsealer-row");
+    if (el) el.classList.toggle("hidden", !checked);
+    rmCalc();
+}
+
+/* ─── NICHES ─────────────────────────────────────────────────────── */
+let niches = { sh: [], w: [], r: [] };
+
+function addNiche(zone) {
+    const id = Date.now();
+    const rate = settings.nicheLabourRate || 30;
+    niches[zone].push({ id, width: "", height: "", depth: "", labourCost: rate });
+    renderNiches(zone);
+    openCollapse(`niches-${zone}`);
+    rmCalc();
+}
+
+function removeNiche(zone, id) {
+    niches[zone] = niches[zone].filter(n => n.id !== id);
+    renderNiches(zone);
+    rmCalc();
+}
+
+function renderNiches(zone) {
+    const container = document.getElementById(`niche-list-${zone}`);
+    if (!container) return;
+    container.innerHTML = niches[zone].map((n, i) => `
+        <div class="form-card" style="margin-bottom:8px;padding:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="font-weight:600;font-size:13px;">Niche ${i + 1}</span>
+                <button type="button" onclick="removeNiche('${zone}',${n.id})" style="background:none;border:none;color:#c00;font-size:18px;cursor:pointer;padding:0;">×</button>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label>Width (m)</label>
+                    <input type="number" step="0.01" placeholder="e.g. 0.3" value="${n.width}"
+                        oninput="updateNiche('${zone}',${n.id},'width',this.value)">
+                </div>
+                <div class="field-group">
+                    <label>Height (m)</label>
+                    <input type="number" step="0.01" placeholder="e.g. 0.6" value="${n.height}"
+                        oninput="updateNiche('${zone}',${n.id},'height',this.value)">
+                </div>
+                <div class="field-group">
+                    <label>Depth (m)</label>
+                    <input type="number" step="0.01" placeholder="e.g. 0.1" value="${n.depth}"
+                        oninput="updateNiche('${zone}',${n.id},'depth',this.value)">
+                </div>
+            </div>
+            <div class="field-group" style="max-width:160px;">
+                <label>Labour Cost (£)</label>
+                <input type="number" step="1" value="${n.labourCost}"
+                    oninput="updateNiche('${zone}',${n.id},'labourCost',this.value)">
+            </div>
+        </div>
+    `).join("");
+    // update badge
+    const badge = document.getElementById(`niches-${zone}-badge`);
+    if (badge) badge.textContent = niches[zone].length ? `${niches[zone].length} added` : "";
+}
+
+function updateNiche(zone, id, field, value) {
+    const n = niches[zone].find(n => n.id === id);
+    if (n) n[field] = field === "labourCost" ? parseFloat(value) || 0 : value;
+    rmCalc();
+}
+
+function getNicheSurfaces(zone) {
+    const S = settings;
+    const mult = 1 + (S.markup || 0) / 100;
+    return niches[zone].map((n, i) => {
+        const W = parseFloat(n.width)  || 0;
+        const H = parseFloat(n.height) || 0;
+        const D = parseFloat(n.depth)  || 0;
+        if (!W || !H || !D) return null;
+        // back + 2 sides + top + bottom = 5 faces
+        const area = (W * H) + 2 * (D * H) + 2 * (W * D);
+        const labourCost = parseFloat(n.labourCost) || (S.nicheLabourRate || 30);
+        return { isNiche: true, label: `Niche ${i + 1}`, area, labourCost, mult };
+    }).filter(Boolean);
+}
+
+function calcNicheCost(zone) {
+    return getNicheSurfaces(zone).reduce((a, n) => a + n.labourCost, 0);
+}
+
+function clearNiches() {
+    niches = { sh: [], w: [], r: [] };
+    renderNiches("sh");
+    renderNiches("w");
+    renderNiches("r");
+}
+
+function rmUpdateTileBadge(key, wId, hId, gId) {
+    const w = document.getElementById(wId)?.value;
+    const h = document.getElementById(hId)?.value;
+    const g = document.getElementById(gId)?.value;
+    const badge = document.getElementById(key + '-badge');
+    if (badge && w && h) badge.textContent = `${w}×${h}mm · ${g||2}mm joint`;
+}
+
+function rmUpdateOptionsBadge() {
+    const tileType = document.getElementById("rm-tile-type")?.value || "ceramic";
+    const colour   = document.getElementById("rm-adh-colour")?.value || "grey";
+    const type     = document.getElementById("rm-adh-type")?.value   || "standard";
+    const labels   = {ceramic:"Ceramic",porcelain:"Porcelain",natural_stone:"Natural Stone",modular:"Modular",herringbone:"Herringbone",mosaic:"Mosaic"};
+    const badge    = document.getElementById("room-options-badge");
+    if (badge) badge.textContent = `${labels[tileType]||tileType} · ${colour} ${type}`;
+}
+
 function buildSurfaces() {
     const g  = id => { const el = document.getElementById(id); return el ? parseFloat(el.value) : NaN; };
     const cb = id => document.getElementById(id)?.checked || false;
     const sv = id => document.getElementById(id)?.value   || "2";
 
     if (currentSurfType === "room") {
-        let L = g("rm-r-length"), W = g("rm-r-width"), H = g("rm-r-height");
-        if (!L || !W || !H || L <= 0 || W <= 0 || H <= 0) return null;
+        const L = g("rm-r-length"), W = g("rm-r-width"), H = g("rm-r-height");
+        const directAreaR = parseFloat(document.getElementById("rm-r-area-direct")?.value) || 0;
+        // For full room, still need H; L/W can be derived from direct area if needed
+        const rAreaActual = (L > 0 && W > 0) ? L * W : directAreaR;
+        if ((!L || !W || L <= 0 || W <= 0) && directAreaR <= 0) return null;
+        if (!H || H <= 0) return null;
+        const rL = L > 0 ? L : Math.sqrt(directAreaR);
+        const rW = W > 0 ? W : Math.sqrt(directAreaR);
 
         const deduct      = parseFloat(document.getElementById("rm-r-deduct")?.value) || 0;
         const floorDeduct = parseFloat(document.getElementById("rm-r-fdeduct")?.value) || 0;
@@ -3502,8 +4549,21 @@ function buildSurfaces() {
         const wallTileH     = g("rm-r-wtileh")     || 600;
         const wallTileThick = g("rm-r-wtilethick") || 8;
         const wallGrout     = g("rm-r-wgrout")     || 2;
-        const totalWallArea = 2 * (L + W) * H;
-        const tanking = cb("rm-r-tanking");
+        const totalWallArea = 2 * (rL + rW) * H;
+        // Update wall labels with dimensions
+        const _L = parseFloat(document.getElementById("rm-r-length")?.value) || 0;
+        const _W = parseFloat(document.getElementById("rm-r-width")?.value) || 0;
+        const _H = parseFloat(document.getElementById("rm-r-height")?.value) || 0;
+        if (_L && _W && _H) {
+            const la = document.getElementById("rm-r-wtank-label-a"); if (la) la.textContent = `${_L.toFixed(1)}m × ${_H.toFixed(1)}m`;
+            const lb = document.getElementById("rm-r-wtank-label-b"); if (lb) lb.textContent = `${_L.toFixed(1)}m × ${_H.toFixed(1)}m`;
+            const lc = document.getElementById("rm-r-wtank-label-c"); if (lc) lc.textContent = `${_W.toFixed(1)}m × ${_H.toFixed(1)}m`;
+            const ld = document.getElementById("rm-r-wtank-label-d"); if (ld) ld.textContent = `${_W.toFixed(1)}m × ${_H.toFixed(1)}m`;
+        }
+        const tankingA = cb("rm-r-wtanking-a") || cb("rm-r-wtanking");
+        const tankingB = cb("rm-r-wtanking-b") || cb("rm-r-wtanking");
+        const tankingC = cb("rm-r-wtanking-c") || cb("rm-r-wtanking");
+        const tankingD = cb("rm-r-wtanking-d") || cb("rm-r-wtanking");
         const wPrimer = cb("rm-r-wprimer");
         const wStone  = cb("rm-r-wstone");
         const wSealer = cb("rm-r-wsealer");
@@ -3515,22 +4575,28 @@ function buildSurfaces() {
         const rFTileCost = parseFloat(document.getElementById("rm-r-ftilecost")?.value) || 0;
 
         const surfaces = [
-            { label:"Wall A (front)", width:L, height:H },
-            { label:"Wall B (back)",  width:L, height:H },
-            { label:"Wall C (left)",  width:W, height:H },
-            { label:"Wall D (right)", width:W, height:H },
-        ].map(w => ({
+            { label:"Wall A (front)", width:rL, height:H },
+            { label:"Wall B (back)",  width:rL, height:H },
+            { label:"Wall C (left)",  width:rW, height:H },
+            { label:"Wall D (right)", width:rW, height:H },
+        ].map((w, wi) => ({
             type:"wall", label:w.label, width:w.width, height:w.height,
             tileCostOverride: rWTileCost,
             wastage: wallWastage,
             tileW:wallTileW, tileH:wallTileH, tileThick:wallTileThick, grout:wallGrout,
-            tanking, primer:wPrimer, stone:wStone, sealer:wSealer,
+            tanking: [tankingA, tankingB, tankingC, tankingD][wi] || false, primer:wPrimer, stone:wStone, sealer:wSealer,
             area: Math.max(0, w.width * w.height - deduct * (w.width * w.height / totalWallArea))
         }));
 
         if (cb("rm-r-inclfloor")) {
+            const rWetRoom   = cb("rm-r-wetroom");
+            const rTray      = rWetRoom && cb("rm-r-tray");
+            const rTrayPrice = rTray ? (parseFloat(document.getElementById("rm-r-tray-price")?.value) || parseFloat(settings.wetRoomTrayRate) || 150) : 0;
+            const rTrayW     = rTray ? (parseFloat(document.getElementById("rm-r-tray-w")?.value) || 0) : 0;
+            const rTrayD     = rTray ? (parseFloat(document.getElementById("rm-r-tray-d")?.value) || 0) : 0;
+            const rFTanking  = rWetRoom && cb("rm-r-ftanking");
             surfaces.push({
-                type:"floor", label:"Floor", length:L, width:W,
+                type:"floor", label: rWetRoom ? "Wet Room Floor" : "Floor", length:rL, width:rW,
                 tileCostOverride: rFTileCost,
                 wastage: floorWastage,
                 tileW:   g("rm-r-ftilew") || 600,
@@ -3543,24 +4609,32 @@ function buildSurfaces() {
                 levelling:   cb("rm-r-levelling"),
                 levelDepth:  parseInt(sv("rm-r-leveldepth")) || 2,
                 clips:       cb("rm-r-clips"),
+                tanking:     rFTanking,
                 primer:      cb("rm-r-primer"),
                 stone:       cb("rm-r-stone"),
                 sealer:      cb("rm-r-sealer"),
-                area: Math.max(0, L * W - floorDeduct)
+                wetRoomTray: rTray, wetRoomTrayPrice: rTrayPrice,
+                area: Math.max(0, rAreaActual - floorDeduct)
             });
         }
         return [...surfaces, ...buildExtraSurfaces()];
     }
 
     if (currentSurfType === "floor") {
-        const fTotalM2 = parseFloat(document.getElementById("rm-f-totalm2")?.value) || 0;
+        const L = g("rm-f-length"), W = g("rm-f-width");
         const fTileCost = parseFloat(document.getElementById("rm-f-tilecost")?.value) || 0;
-        let L = g("rm-f-length"), W = g("rm-f-width");
-        if (fTotalM2 > 0) { L = Math.sqrt(fTotalM2); W = Math.sqrt(fTotalM2); }
-        if (!L || !W || L <= 0 || W <= 0) return null;
+        const directAreaF = parseFloat(document.getElementById("rm-f-area-direct")?.value) || 0;
+        if ((!L || !W || L <= 0 || W <= 0) && directAreaF <= 0) return null;
+        const fAreaActual = (L > 0 && W > 0) ? L * W : directAreaF;
         const fDed    = parseFloat(document.getElementById("rm-f-deduct")?.value) || 0;
         const fWastage = parseFloat(document.getElementById("rm-f-wastage")?.value);
-        return [{ type:"floor", label:"Floor", length:L, width:W,
+        const fWetRoom   = cb("rm-f-wetroom");
+        const fTray      = fWetRoom && cb("rm-f-tray");
+        const fTrayPrice = fTray ? (parseFloat(document.getElementById("rm-f-tray-price")?.value) || parseFloat(settings.wetRoomTrayRate) || 150) : 0;
+        const fTrayW     = fTray ? (parseFloat(document.getElementById("rm-f-tray-w")?.value) || 0) : 0;
+        const fTrayD     = fTray ? (parseFloat(document.getElementById("rm-f-tray-d")?.value) || 0) : 0;
+        const fTanking   = fWetRoom ? cb("rm-f-tanking") : cb("rm-f-tanking");
+        return [{ type:"floor", label: fWetRoom ? "Wet Room Floor" : "Floor", length:L||Math.sqrt(fAreaActual), width:W||Math.sqrt(fAreaActual),
             tileCostOverride: fTileCost,
             wastage: isNaN(fWastage) ? 10 : fWastage,
             tileW:   g("rm-f-tilew") || 600,
@@ -3573,25 +4647,26 @@ function buildSurfaces() {
             levelling:   cb("rm-f-levelling"),
             levelDepth:  parseInt(sv("rm-f-leveldepth")) || 2,
             clips:       cb("rm-f-clips"),
-            tanking:     cb("rm-f-tanking"),
+            tanking:     fTanking,
             primer:      cb("rm-f-primer"),
             stone:       cb("rm-f-stone"),
             sealer:      cb("rm-f-sealer"),
-            area: Math.max(0, L * W - fDed)
+            wetRoomTray: fTray, wetRoomTrayPrice: fTrayPrice, wetRoomTrayW: fTrayW, wetRoomTrayD: fTrayD,
+            area: Math.max(0, fAreaActual - fDed)
         }, ...buildExtraSurfaces()];
     }
 
     if (currentSurfType === "wall") {
-        const wTotalM2 = parseFloat(document.getElementById("rm-w-totalm2")?.value) || 0;
+        const W = g("rm-w-width"), H = g("rm-w-height");
         const wTileCost = parseFloat(document.getElementById("rm-w-tilecost")?.value) || 0;
-        let W = g("rm-w-width"), H = g("rm-w-height");
-        if (wTotalM2 > 0) { W = Math.sqrt(wTotalM2); H = Math.sqrt(wTotalM2); }
-        if (!W || !H || W <= 0 || H <= 0) return null;
+        const directAreaW = parseFloat(document.getElementById("rm-w-area-direct")?.value) || 0;
+        if ((!W || !H || W <= 0 || H <= 0) && directAreaW <= 0) return null;
+        const wAreaActual = (W > 0 && H > 0) ? W * H : directAreaW;
         const wDed     = parseFloat(document.getElementById("rm-w-deduct")?.value) || 0;
         const wWastage = parseFloat(document.getElementById("rm-w-wastage")?.value);
         return [{ type:"wall", label:"Wall",
             tileCostOverride: wTileCost,
-            width:W, height:H,
+            width:W||Math.sqrt(wAreaActual), height:H||Math.sqrt(wAreaActual),
             wastage: isNaN(wWastage) ? 12 : wWastage,
             tileW:   g("rm-w-tilew") || 300,
             tileH:   g("rm-w-tileh") || 600,
@@ -3601,8 +4676,65 @@ function buildSurfaces() {
             primer:  cb("rm-w-primer"),
             stone:   cb("rm-w-stone"),
             sealer:  cb("rm-w-sealer"),
-            area:    Math.max(0, W * H - wDed)
+            area:    Math.max(0, wAreaActual - wDed)
         }, ...buildExtraSurfaces()];
+    }
+
+    if (currentSurfType === "shower") {
+        const W  = parseFloat(document.getElementById("rm-sh-width")?.value)  || 0;
+        const D  = parseFloat(document.getElementById("rm-sh-depth")?.value)   || 0;
+        const H  = parseFloat(document.getElementById("rm-sh-height")?.value)  || 0;
+        if (!W || !D || !H || W <= 0 || D <= 0 || H <= 0) return null;
+        const numWalls   = parseInt(document.getElementById("rm-sh-walls")?.value) || 2;
+        const wWastage   = parseFloat(document.getElementById("rm-sh-wwastage")?.value) || 15;
+        const wTileW     = parseFloat(document.getElementById("rm-sh-wtilew")?.value)   || 300;
+        const wTileH     = parseFloat(document.getElementById("rm-sh-wtileh")?.value)   || 600;
+        const wTileThick = parseFloat(document.getElementById("rm-sh-wtilethick")?.value) || 8;
+        const wGrout     = parseFloat(document.getElementById("rm-sh-wgrout")?.value)   || 2;
+        const tanking    = document.getElementById("rm-sh-tanking")?.checked   || false;
+        const wPrimer    = document.getElementById("rm-sh-wprimer")?.checked   || false;
+        const wStone     = document.getElementById("rm-sh-wstone")?.checked    || false;
+        const wSealer    = document.getElementById("rm-sh-wsealer")?.checked   || false;
+
+        // 2 walls = back + one side; 3 walls = back + both sides (alcove)
+        const wallDefs = numWalls === 3
+            ? [ {label:"Back Wall", w:W, h:H}, {label:"Left Wall", w:D, h:H}, {label:"Right Wall", w:D, h:H} ]
+            : [ {label:"Back Wall", w:W, h:H}, {label:"Side Wall", w:D, h:H} ];
+
+        const surfaces = wallDefs.map(wd => ({
+            type:"wall", label:wd.label,
+            width:wd.w, height:wd.h,
+            wastage:wWastage,
+            tileW:wTileW, tileH:wTileH, tileThick:wTileThick, grout:wGrout,
+            tanking, primer:wPrimer, stone:wStone, sealer:wSealer,
+            area: wd.w * wd.h
+        }));
+
+        if (document.getElementById("rm-sh-inclfloor")?.checked) {
+            const fWastage   = parseFloat(document.getElementById("rm-sh-fwastage")?.value)   || 10;
+            const fTileW     = parseFloat(document.getElementById("rm-sh-ftilew")?.value)      || 600;
+            const fTileH     = parseFloat(document.getElementById("rm-sh-ftileh")?.value)      || 600;
+            const fTileThick = parseFloat(document.getElementById("rm-sh-ftilethick")?.value)  || 10;
+            const fGrout     = parseFloat(document.getElementById("rm-sh-fgrout")?.value)      || 2;
+            const fTanking   = document.getElementById("rm-sh-ftanking")?.checked  || false;
+            const fLevel     = document.getElementById("rm-sh-levelling")?.checked || false;
+            const fLevelD    = parseInt(document.getElementById("rm-sh-leveldepth")?.value)    || 2;
+            const fPrimer    = document.getElementById("rm-sh-primer")?.checked    || false;
+            const fTray      = document.getElementById("rm-sh-tray")?.checked      || false;
+            const fTrayPrice = parseFloat(document.getElementById("rm-sh-tray-price")?.value) || parseFloat(settings.wetRoomTrayRate) || 150;
+            const fTrayW     = fTray ? (parseFloat(document.getElementById("rm-sh-tray-w")?.value) || 0) : 0;
+            const fTrayD     = fTray ? (parseFloat(document.getElementById("rm-sh-tray-d")?.value) || 0) : 0;
+            surfaces.push({
+                type:"floor", label:"Wet Room Floor",
+                length:W, width:D,
+                wastage:fWastage,
+                tileW:fTileW, tileH:fTileH, tileThick:fTileThick, grout:fGrout,
+                tanking:fTanking, levelling:fLevel, levelDepth:fLevelD, primer:fPrimer,
+                wetRoomTray: fTray, wetRoomTrayPrice: fTray ? fTrayPrice : 0, wetRoomTrayW: fTrayW, wetRoomTrayD: fTrayD,
+                area: W * D
+            });
+        }
+        return surfaces;
     }
 
     return null;
@@ -3668,7 +4800,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     const tileCost = customerTiles ? 0 : s.area * tileUnitPrice;
     // Price adhesive/grout pro-rata by kg
     const groutCost = (totalGroutKg / bagSize) * bagPrice;
-    const adhCost   = (s.adhKg / 20) * S.adhesivePrice;
+    const adhCost   = (s.adhKg / 20) * (S._adhUnitPrice || S.adhesivePrice);
     const matRaw    = tileCost + groutCost + adhCost;
     const mult     = 1 + S.markup / 100;
     s.materialSell = matRaw * mult;
@@ -3690,6 +4822,9 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     }
 
     s.ufhCost = (s.ufh && s.type === "floor") ? s.area * (parseFloat(S.ufhM2Rate) || 52) + (parseFloat(S.ufhFixedCost) || 180) : 0;
+
+    // Wet room tray flat rate (per-job price overrides settings)
+    s.trayCost = s.wetRoomTray ? (s.wetRoomTrayPrice || parseFloat(S.wetRoomTrayRate) || 150) : 0;
 
     // Prep costs — all rates are £/m², multiplied by surface area
     s.prepCost = 0;
@@ -3742,7 +4877,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             s.prepLines.push(`Levelling Compound ${depth}mm: ${bags} bag${bags !== 1 ? "s" : ""} (£${bagPrice.toFixed(2)}/bag) + labour = £${totalCost.toFixed(2)}`);
         }
     }
-    if (s.type === "wall" && s.tanking) {
+    if (s.tanking) {
         const rate = parseFloat(S.tanking) || 15;
         const c    = s.area * rate;
         s.prepCost += c; s.prepLines.push(`Tanking: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
@@ -3780,7 +4915,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         s.prepLines.push(`Levelling Clips: ${s.levelClips} (${clipBags} × 200 bag${clipBags!==1?"s":""}) + Wedges: ${s.levelWedges} (${wedgeBags} × 200 bag${wedgeBags!==1?"s":""}) = £${s.clipCost.toFixed(2)}`);
     }
 
-    s.total = (s.materialSell + s.labour + s.ufhCost + s.prepCost).toFixed(2);
+    s.total = (s.materialSell + s.labour + s.ufhCost + s.prepCost + (s.trayCost || 0)).toFixed(2);
 
     // Fold standard prep adhesive (cement board bond) into the surface adhKg total
     if (s.prepAdhKg > 0) {
@@ -3948,12 +5083,38 @@ function clearDeducts() {
     });
 }
 
+// Sections grouped by form — opening one closes others in the same group
+const COLLAPSE_GROUPS = {
+    roomMain:   ["room-labour","room-wall-opts","room-floor-opts"],
+    roomWall:   ["walltiles","room-wall-prep"],
+    roomFloor:  ["room-floor-tile","room-floor-prep"],
+    floor:      ["floor-tile","floor-prep"],
+    wallTile:   ["wall-tile","wall-prep"],
+    shower:     ["shower-wall-tile","shower-wall-prep","shower-floor-tile","shower-floor-prep"],
+};
+
 function toggleCollapse(key) {
-    const panel = document.getElementById("collapse-panel-" + key);
-    const arrow = document.getElementById("collapse-arrow-" + key);
+    const panel  = document.getElementById("collapse-panel-" + key);
+    const arrow  = document.getElementById("collapse-arrow-" + key);
+    const toggle = document.getElementById("collapse-toggle-" + key);
     if (!panel) return;
-    const open = panel.classList.toggle("hidden") === false;
-    if (arrow) arrow.textContent = open ? "▾" : "▸";
+    const isHidden = panel.classList.contains("hidden");
+    if (isHidden) {
+        // Opening — close siblings in the same group first
+        for (const group of Object.values(COLLAPSE_GROUPS)) {
+            if (group.includes(key)) {
+                group.forEach(k => { if (k !== key) closeCollapse(k); });
+                break;
+            }
+        }
+        panel.classList.remove("hidden");
+        if (arrow) arrow.textContent = "▾";
+        if (toggle) toggle.classList.add("active");
+    } else {
+        panel.classList.add("hidden");
+        if (arrow) arrow.textContent = "▸";
+        if (toggle) toggle.classList.remove("active");
+    }
 }
 
 function openCollapse(key) {
@@ -3965,11 +5126,13 @@ function openCollapse(key) {
 }
 
 function closeCollapse(key) {
-    const panel = document.getElementById("collapse-panel-" + key);
-    const arrow = document.getElementById("collapse-arrow-" + key);
+    const panel  = document.getElementById("collapse-panel-" + key);
+    const arrow  = document.getElementById("collapse-arrow-" + key);
+    const toggle = document.getElementById("collapse-toggle-" + key);
     if (!panel) return;
     panel.classList.add("hidden");
     if (arrow) arrow.textContent = "▸";
+    if (toggle) toggle.classList.remove("active");
 }
 
 function updateTrimBadge(key) {
@@ -4002,9 +5165,25 @@ function toggleDeductPanel(key) {
     const panel  = document.getElementById("deduct-panel-" + key);
     const toggle = document.getElementById("deduct-toggle-" + key);
     if (!panel) return;
-    const open = panel.classList.toggle("hidden") === false;
-    const arrow = toggle?.querySelector(".deduct-toggle-arrow");
-    if (arrow) arrow.textContent = open ? "▾" : "▸";
+    const isHidden = panel.classList.contains("hidden");
+    if (isHidden) {
+        const collapseKey = "deduct-" + key;
+        for (const group of Object.values(COLLAPSE_GROUPS)) {
+            if (group.includes(collapseKey)) {
+                group.forEach(k => { if (k !== collapseKey) closeCollapse(k); });
+                break;
+            }
+        }
+        panel.classList.remove("hidden");
+        const arrow = toggle?.querySelector(".deduct-toggle-arrow, .rm-section-arrow");
+        if (arrow) arrow.textContent = "▾";
+        if (toggle) toggle.classList.add("active");
+    } else {
+        panel.classList.add("hidden");
+        const arrow = toggle?.querySelector(".deduct-toggle-arrow, .rm-section-arrow");
+        if (arrow) arrow.textContent = "▸";
+        if (toggle) toggle.classList.remove("active");
+    }
 }
 
 function openDeductPanel(key) {
@@ -4038,6 +5217,19 @@ function readSealantFromForm() {
 }
 
 /* ─── LIVE CALCULATION ─── */
+
+function applyDirectArea(inputId, clear1, clear2) {
+    const val = parseFloat(document.getElementById(inputId)?.value);
+    if (val > 0) {
+        // Clear length/width so buildSurfaces uses direct area
+        const el1 = document.getElementById(clear1);
+        const el2 = document.getElementById(clear2);
+        if (el1) el1.value = "";
+        if (el2) el2.value = "";
+    }
+    rmCalc();
+}
+
 function rmCalc() {
     updatePrepPriceBadges();
     const surfaces = buildSurfaces();
@@ -4086,11 +5278,19 @@ function rmCalc() {
         labourOpts = { type:"day", days, dayRate, totalArea };
     }
 
-    const tileTypeVal = document.getElementById("rm-tile-type")?.value || "ceramic";
+    const tileTypeVal  = document.getElementById("rm-tile-type")?.value  || "ceramic";
+    const adhColourVal = document.getElementById("rm-adh-colour")?.value || "grey";
+    const adhTypeVal   = document.getElementById("rm-adh-type")?.value   || "standard";
+    const isRapid = adhTypeVal === "rapid";
+    const isWhite = adhColourVal === "white";
+    settings._adhUnitPrice = isRapid
+        ? (isWhite ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
+        : (isWhite ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
     surfaces.forEach(s => { s.tileType = tileTypeVal; calcSurface(s, ct, labourOpts); });
 
-    const extraCostId = currentSurfType === "floor" ? "rm-f-extra-cost"
-                      : currentSurfType === "wall"  ? "rm-w-extra-cost"
+    const extraCostId = currentSurfType === "floor"  ? "rm-f-extra-cost"
+                      : currentSurfType === "wall"   ? "rm-w-extra-cost"
+                      : currentSurfType === "shower" ? "rm-sh-extra-cost"
                       :                               "rm-extra-cost";
     const extraCost  = parseFloat(document.getElementById(extraCostId)?.value) || 0;
     const trimKey    = currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : "r";
@@ -4100,7 +5300,9 @@ function rmCalc() {
     const sealForm   = readSealantFromForm();
     const sealCost   = sealForm ? calcSealantCost(sealForm) : 0;
     const sealTubes  = sealForm ? calcSealantRoom(sealForm).tubes : 0;
-    const total = surfaces.reduce((a, s) => a + parseFloat(s.total), 0) + extraCost + trimCost + sealCost;
+    const nicheZone = currentSurfType === "shower" ? "sh" : currentSurfType === "wall" ? "w" : currentSurfType === "room" ? "r" : null;
+    const nicheCost = nicheZone ? calcNicheCost(nicheZone) : 0;
+    const total = surfaces.reduce((a, s) => a + parseFloat(s.total), 0) + extraCost + trimCost + sealCost + nicheCost;
     const mats  = surfaces.reduce((a, s) => a + (s.materialSell || 0), 0);
     const lab   = surfaces.reduce((a, s) => a + (s.labour || 0), 0);
     const ufh   = surfaces.reduce((a, s) => a + (s.ufhCost || 0), 0);
@@ -4144,13 +5346,7 @@ function rmCalc() {
         const icon         = s.type === "wall" ? "🧱" : "⬜";
         if (baseArea > 0) parts.push(`${icon} ${totalArea2}m² tiles (${baseArea.toFixed(2)}m² + ${extraArea}m² ${wastePct}% wastage)`);
     });
-    // Split materials into wall tiles, floor tiles, and other (adh/grout)
-    const wallTileCost  = surfaces.filter(s => s.type === "wall").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
-    const floorTileCost = surfaces.filter(s => s.type === "floor").reduce((a, s) => a + ((s.tileCostOverride || settings.tilePrice) * s.area * (1 + settings.markup/100)), 0);
-    const otherMats     = mats - wallTileCost - floorTileCost;
-    if (wallTileCost > 0)  parts.push(`🧱 Wall tiles £${wallTileCost.toFixed(2)}`);
-    if (floorTileCost > 0) parts.push(`⬜ Floor tiles £${floorTileCost.toFixed(2)}`);
-    if (otherMats > 0.01)  parts.push(`Materials £${otherMats.toFixed(2)}`);
+    if (mats > 0) parts.push(`Materials £${mats.toFixed(2)}`);
     if (lab  > 0) {
         const labLabel = currentLabourType === "day"
             ? `Labour £${lab.toFixed(2)} (${document.getElementById("rm-days").value||0} days)`
@@ -4158,6 +5354,7 @@ function rmCalc() {
         parts.push(labLabel);
     }
     if (ufh  > 0) parts.push(`UFH £${ufh.toFixed(2)}`);
+    if (nicheCost > 0) parts.push(`Niches £${nicheCost.toFixed(2)} (${niches[nicheZone]?.length || 0} niche${(niches[nicheZone]?.length || 0) !== 1 ? "s" : ""})`);
     if (totalAdhBags   > 0) parts.push(`Adhesive: ${totalAdhBags} × 20kg bag${totalAdhBags !== 1 ? "s" : ""}`);
     if (totalRapidBags > 0) parts.push(`Rapid Set: ${totalRapidBags} × 20kg bag${totalRapidBags !== 1 ? "s" : ""}`);
     if (totalGroutBags > 0) parts.push(`Grout: ${totalGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg bag${totalGroutBags !== 1 ? "s" : ""}`);
@@ -4199,14 +5396,23 @@ function saveRoom() {
         labourOpts = { type:"day", days, dayRate, totalArea };
     }
 
-    const tileType = document.getElementById("rm-tile-type").value || "ceramic";
+    const tileType    = document.getElementById("rm-tile-type").value   || "ceramic";
+    const adhColourSR = document.getElementById("rm-adh-colour")?.value || "grey";
+    const adhTypeSR   = document.getElementById("rm-adh-type")?.value   || "standard";
+    const isRapidSR = adhTypeSR === "rapid";
+    const isWhiteSR = adhColourSR === "white";
+    settings._adhUnitPrice = isRapidSR
+        ? (isWhiteSR ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
+        : (isWhiteSR ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
     surfaces.forEach(s => { s.tileType = tileType; calcSurface(s, ct, labourOpts); });
 
     const extraDescId = currentSurfType === "floor" ? "rm-f-extra-desc"
-                      : currentSurfType === "wall"  ? "rm-w-extra-desc"
+                      : currentSurfType === "wall"   ? "rm-w-extra-desc"
+                      : currentSurfType === "shower" ? "rm-sh-extra-desc"
                       :                               "rm-extra-desc";
     const extraCostId2 = currentSurfType === "floor" ? "rm-f-extra-cost"
-                       : currentSurfType === "wall"  ? "rm-w-extra-cost"
+                       : currentSurfType === "wall"   ? "rm-w-extra-cost"
+                       : currentSurfType === "shower" ? "rm-sh-extra-cost"
                        :                               "rm-extra-cost";
     const extraWorkDesc = (document.getElementById(extraDescId)?.value || "").trim();
     const extraWorkCost = parseFloat(document.getElementById(extraCostId2)?.value) || 0;
@@ -4256,11 +5462,14 @@ function saveRoom() {
         days:        currentLabourType === "day" ? days : undefined,
         dayRate:     currentLabourType === "day" ? dayRate : undefined,
         tileType:    document.getElementById("rm-tile-type").value || "ceramic",
+        adhColour:   document.getElementById("rm-adh-colour")?.value || "grey",
+        adhType:     document.getElementById("rm-adh-type")?.value   || "standard",
         type,
         tileSupply:  ct ? "customer" : "contractor",
         surfaces,
         area,
-        total:       total.toFixed(2),
+        niches:      JSON.parse(JSON.stringify(niches[currentSurfType === "shower" ? "sh" : currentSurfType === "wall" ? "w" : "r"] || [])),
+        total:       (parseFloat(total) + (currentSurfType === "shower" || currentSurfType === "wall" ? calcNicheCost(currentSurfType === "shower" ? "sh" : "w") : 0)).toFixed(2),
         ufh:         surfaces.some(s => s.ufh),
         tiles:       surfaces.reduce((a, s) => a + (s.tiles || 0), 0),
         adhBags:     Math.ceil(surfaces.reduce((a, s) => a + (s.adhKg || 0), 0) / 20),
@@ -4409,29 +5618,101 @@ async function exportAllData() {
 /* ═══════════════════════════════════════════════════════════════
    HELP / AI ASSISTANT
 ═══════════════════════════════════════════════════════════════ */
-const HELP_SYSTEM_PROMPT = `You are TileIQ Pro's in-app assistant. TileIQ Pro is a native Android app for professional tilers in the UK. You help users understand how to use the app.
+const HELP_SYSTEM_PROMPT = `You are TileIQ Pro's in-app assistant. TileIQ Pro is a native Android app for professional UK tiling contractors. You help users understand how to use the app.
 
-Key features of TileIQ Pro:
-- Jobs: Create and manage tiling jobs with customer details (name, address, phone, email)
-- Rooms: Add rooms/areas to each job. Supports Full Room, Floor Only, or Wall Only modes
-- Calculations: Calculates tiles, adhesive, grout, cement board, membranes, levelling, silicone, clips/wedges, trims
-- Wastage: Configurable wastage % per surface (default 10% floor, 12% wall)
-- Tile Types: Ceramic, Porcelain, Natural Stone, Modular, Herringbone, Mosaic — each with a labour rate multiplier
-- Labour: Price by m² rate or day rate
-- Materials: Cost breakdown including prep work (cement board, membrane, levelling, tanking, primer, stone sealer)
-- Quotes: Professional PDF quotes with company branding. Send by email (with PDF attached) or share sheet
-- Quote acceptance: Customers get a link to accept/decline quotes online. Status syncs back to the app
-- FreeAgent: Export accepted quotes as invoices to FreeAgent accounting
-- Calendar: Schedule jobs and email calendar invites to customers (.ics files)
-- Photos: Capture before/after job photos
-- Settings: Three tabs — Profile (company details, VAT number, terms), Materials (costs), Pricing (labour rates, markup, tile type multipliers)
-- Offline: Works offline, syncs when back online. Offline badge shows in header
-- Password reset: Uses 6-digit code sent by email (no magic links)
-- Address finder: Type address for suggestions, or tap GPS button 📍 to auto-fill from location
+CORE FEATURES:
+- Jobs: Create and manage tiling jobs with customer details (name, address, phone, email). Track status from Enquiry to Complete.
+- Rooms: Add rooms to each job. Types: Full Room (walls + floor), Floor Only, Wall Only, Shower enclosure.
+- Full Room: Enter length, width, wall height. Calculates all 4 walls + floor. Supports Additional Floors and Additional Walls for complex rooms.
+- Floor Only: Length x width or direct m² entry. Includes Wetroom Tray option with tanking.
+- Wall Only: Width x height or direct m² entry.
+- Shower: Tiled walls with optional wet room floor, niche tiles and splash-back areas.
+- Wetroom Tray: Available in Full Room, Floor Only and Shower. Tick Wetroom Tray to add tray size (W x D), price and tanking.
+- Extra surfaces: In Floor Only and Wall Only, tap + Add Another Floor/Wall to add multiple surfaces with individual tile sizes.
+- Shape selector: Choose room shape (Rectangle, L-shape, T-shape, U-shape, Cross, Draw & Measure) for irregular rooms.
 
-Answer questions clearly and concisely. If asked how to do something, give step-by-step instructions. Keep answers brief — this is a mobile app assistant. Use bullet points where helpful. Don't mention features that don't exist.`;
+CALCULATIONS:
+- Tiles: Surface area + wastage %. Default 10% floor, 12% wall. Configurable per surface.
+- Tile types: Ceramic, Porcelain, Natural Stone, Modular, Herringbone, Mosaic — each with labour multiplier.
+- Adhesive: By m² and tile thickness. Grey or white.
+- Grout: By m², tile size and joint width.
+- Prep: Cement board, membrane, levelling compound, tanking, primer, stone sealer, UFH, clips & wedges.
+- Labour: m² rate or day rate, configurable per room.
+- Tile trim: Lengths of trim (2.5m) with custom price.
+- Sealant: By perimeter or corner count.
+- Extra work: Custom line items with cost.
+- Deductions: Bath, WC, vanity or custom m² areas.
+
+QUOTES & INVOICES:
+- PDF quotes: Branded with logo, scope, materials, labour, VAT, terms and guarantee.
+- Send via: Email (PDF attached), WhatsApp, or share sheet.
+- Quote acceptance: Customer link to accept/decline online. Push notification on acceptance.
+- Convert to invoice: Turn accepted quote into invoice with bank details.
+- VAT: Toggle VAT registered in Settings. VAT number appears on PDF footer and Xero exports.
+
+ACCOUNTING INTEGRATIONS:
+- Xero: OAuth PKCE connection. Export quotes/invoices as draft invoices. VAT aware.
+- QuickBooks: OAuth connection. Export invoices to QuickBooks Online.
+- FreeAgent: OAuth connection. Export invoices to FreeAgent.
+- Select in Settings -> Accounting Software.
+
+CALENDAR & SCHEDULING:
+- Schedule jobs with start/end dates. Calendar view with status colour dots.
+- Send .ics calendar invites to customers. Auto-add to device calendar.
+
+LEICA DISTO:
+- Connect Leica Disto D2 laser measure via Bluetooth.
+- Tap Disto button in room screen. Measurements auto-fill length/width/height fields.
+
+SETTINGS:
+- Profile: Company name, address, phone, email, logo, VAT number, payment terms, guarantee.
+- Materials: All material costs and rates.
+- Pricing: Labour rates, day rate, markup %, tile type multipliers, wet room tray rate.
+
+GENERAL:
+- Works offline, syncs when back online.
+- Password reset by 6-digit email code.
+- Address finder with GPS auto-fill.
+- Pro subscription: £9.99/month or £79.99/year via Google Play.
+- Access codes available on paywall screen.
+
+Answer clearly and concisely. Give step-by-step instructions when asked how to do something. Keep answers brief — mobile assistant. Use bullet points. Never mention features that do not exist.`;
 
 let helpHistory = [];
+
+function goPrivacy(from) {
+    window._legalFrom = from || "settings";
+    show("screen-privacy");
+}
+
+function openPrivacyWeb() {
+    const url = "https://tileiq.com/privacy";
+    try { window.open(url, "_system"); } catch(e) { window.location.href = url; }
+}
+
+function goTerms(from) {
+    window._legalFrom = from || "settings";
+    show("screen-privacy");
+    setTimeout(() => {
+        const el = document.getElementById("screen-privacy");
+        const terms = el ? el.querySelector(".terms-anchor") : null;
+        if (terms) terms.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+}
+
+function openTermsWeb() {
+    const url = "https://tileiq.com/terms";
+    try { window.open(url, "_system"); } catch(e) { window.location.href = url; }
+}
+
+function goBack() {
+    const from = window._legalFrom || "settings";
+    if (from === "signup") {
+        show("screen-signup");
+    } else {
+        goSettings();
+    }
+}
 
 function goHelp() {
     show("screen-help");
@@ -4511,6 +5792,249 @@ function helpAddMsg(text, role) {
 }
 
 
+
+/* ─── DEVICE CALENDAR AUTO-ADD ────────────────────────────────── */
+function autoAddToDeviceCalendar(j) {
+    if (!j?.jobStartDate) return;
+    try {
+        const ics = buildICS(j);
+        const b64 = safeBase64(ics);
+        const { Filesystem, FileOpener } = window.Capacitor?.Plugins || {};
+        if (!Filesystem) return;
+        const fname = "tileiq-job-" + (j.id || Date.now()) + ".ics";
+        Filesystem.writeFile({
+            path: fname,
+            data: b64,
+            directory: "CACHE"
+        }).then(res => {
+            if (FileOpener) {
+                FileOpener.open({ filePath: res.uri, contentType: "text/calendar" }).catch(() => {});
+            }
+        }).catch(() => {});
+    } catch(e) { console.warn("autoAddToDeviceCalendar:", e.message); }
+}
+/* ─── END DEVICE CALENDAR AUTO-ADD ────────────────────────────── */
+
+/* ─── JOB REMINDER BANNERS ─────────────────────────────────────── */
+const REMINDER_KEY = "tileiq-reminders-shown";
+
+function checkJobReminders() {
+    try {
+        const todayStr    = toDateStr(new Date());
+        const tomorrowStr = toDateStr(new Date(Date.now() + 86400000));
+        const shownRaw    = localStorage.getItem(REMINDER_KEY);
+        const shown       = shownRaw ? JSON.parse(shownRaw) : {};
+
+        // Clean up entries older than 2 days
+        Object.keys(shown).forEach(k => { if (k < todayStr) delete shown[k]; });
+
+        const reminders = [];
+
+        jobs.forEach(j => {
+            if (!j.jobStartDate || j.jobArchived) return;
+            const start = j.jobStartDate.split("T")[0];
+            const name  = j.customerName || "Job";
+            const type  = j.jobType ? ` – ${j.jobType}` : "";
+
+            if (start === tomorrowStr && !shown[`tomorrow-${j.id}`]) {
+                reminders.push({ key: `tomorrow-${j.id}`, title: "📅 Tomorrow", body: `${name}${type}`, jobId: j.id, delay: 0 });
+                shown[`tomorrow-${j.id}`] = todayStr;
+            }
+            if (start === todayStr && !shown[`today-${j.id}`]) {
+                reminders.push({ key: `today-${j.id}`, title: "🔨 Starting today", body: `${name}${type}`, jobId: j.id, delay: 500 });
+                shown[`today-${j.id}`] = todayStr;
+            }
+        });
+
+        localStorage.setItem(REMINDER_KEY, JSON.stringify(shown));
+
+        reminders.forEach((r, i) => {
+            setTimeout(() => showPushBanner(r.title, r.body, { jobId: r.jobId }), r.delay + i * 3500);
+        });
+    } catch(e) { console.warn("checkJobReminders:", e.message); }
+}
+/* ─── END JOB REMINDER BANNERS ─────────────────────────────────── */
+
+/* ─── CALENDAR ─────────────────────────────────────────────────── */
+let calYear  = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-indexed
+let calSelectedDate = null; // "YYYY-MM-DD"
+
+function goCalendar() {
+    show("screen-calendar");
+    renderCalendar();
+}
+
+function calToday() {
+    const now = new Date();
+    calYear  = now.getFullYear();
+    calMonth = now.getMonth();
+    calSelectedDate = toDateStr(now);
+    renderCalendar();
+}
+
+function calPrevMonth() {
+    calMonth--;
+    if (calMonth < 0) { calMonth = 11; calYear--; }
+    calSelectedDate = null;
+    renderCalendar();
+}
+
+function calNextMonth() {
+    calMonth++;
+    if (calMonth > 11) { calMonth = 0; calYear++; }
+    calSelectedDate = null;
+    renderCalendar();
+}
+
+function toDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+}
+
+function getJobsForDate(dateStr) {
+    return jobs.filter(j => {
+        if (!j.jobStartDate) return false;
+        const start = j.jobStartDate.split("T")[0];
+        const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
+        return dateStr >= start && dateStr <= end;
+    });
+}
+
+function renderCalendar() {
+    const MONTHS = ["January","February","March","April","May","June",
+                    "July","August","September","October","November","December"];
+    document.getElementById("cal-month-label").textContent = `${MONTHS[calMonth]} ${calYear}`;
+
+    const grid = document.getElementById("cal-grid");
+    grid.innerHTML = "";
+
+    // First day of month — Monday=0 offset
+    const firstDay = new Date(calYear, calMonth, 1);
+    let offset = firstDay.getDay(); // 0=Sun
+    offset = offset === 0 ? 6 : offset - 1; // convert to Mon=0
+
+    const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+    const todayStr = toDateStr(new Date());
+
+    // Blanks
+    for (let i = 0; i < offset; i++) {
+        grid.insertAdjacentHTML("beforeend", `<div></div>`);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        const dayJobs = getJobsForDate(dateStr);
+        const isToday    = dateStr === todayStr;
+        const isSelected = dateStr === calSelectedDate;
+        const hasJobs    = dayJobs.length > 0;
+
+        // Day-of-week for weekend colouring (Mon=0, Sat=5, Sun=6)
+        const dow = (offset + d - 1) % 7;
+        const isWeekend = dow >= 5;
+
+        const bg      = isSelected ? "#f59e0b" : isToday ? "#1e3a5f" : "transparent";
+        const color   = isSelected ? "#0f172a" : isWeekend ? "#94a3b8" : "var(--text-primary)";
+        const border  = isToday && !isSelected ? "1px solid #f59e0b" : "1px solid transparent";
+        const radius  = "8px";
+
+        // Dot colours for first 3 jobs
+        const dots = dayJobs.slice(0,3).map(j => {
+            const cfg = {
+                enquiry:"#93c5fd",surveyed:"#a5b4fc",quoted:"#7dd3fc",
+                accepted:"#6ee7b7",scheduled:"#fcd34d",in_progress:"#fde68a",complete:"#86efac"
+            };
+            return `<span style="width:5px;height:5px;border-radius:50%;background:${cfg[j.status]||"#64748b"};display:inline-block;"></span>`;
+        }).join("");
+
+        grid.insertAdjacentHTML("beforeend", `
+            <div onclick="calSelectDay('${dateStr}')" style="
+                background:${bg};border:${border};border-radius:${radius};
+                padding:4px 2px;min-height:48px;cursor:pointer;text-align:center;
+                display:flex;flex-direction:column;align-items:center;gap:2px;
+            ">
+                <span style="font-size:13px;font-weight:${isToday||isSelected?700:500};color:${color};line-height:1.4;">${d}</span>
+                <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;">${dots}</div>
+            </div>
+        `);
+    }
+
+    // Show jobs for selected date or empty state
+    if (calSelectedDate) {
+        renderCalDayPanel(calSelectedDate);
+    } else {
+        document.getElementById("cal-day-label").textContent = "Tap a day to see jobs";
+        document.getElementById("cal-day-jobs").innerHTML = "";
+    }
+}
+
+function calSelectDay(dateStr) {
+    calSelectedDate = dateStr;
+    renderCalendar();
+}
+
+function renderCalDayPanel(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    const DAYS  = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const label = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    document.getElementById("cal-day-label").textContent = label;
+
+    const dayJobs = getJobsForDate(dateStr);
+    const container = document.getElementById("cal-day-jobs");
+
+    if (!dayJobs.length) {
+        container.innerHTML = `<p style="color:#64748b;font-size:14px;text-align:center;margin-top:20px;">No jobs scheduled</p>`;
+        return;
+    }
+
+    container.innerHTML = dayJobs.map(j => {
+        const name      = j.customerName || "No customer";
+        const type      = j.jobType || "";
+        const start     = j.jobStartDate ? j.jobStartDate.split("T")[0] : "";
+        const end       = j.jobEndDate   ? j.jobEndDate.split("T")[0]   : start;
+        const dateRange = start === end ? start : `${start} → ${end}`;
+        const addr      = [j.address, j.city, j.postcode].filter(Boolean).join(", ");
+        const phone     = j.phone  || "";
+        const email     = j.email  || "";
+        const notes     = j.notes  || "";
+
+        // Count working days
+        let dayCount = "";
+        if (start && end) {
+            let s = new Date(start), e = new Date(end), days = 0;
+            while (s <= e) { const dow = s.getDay(); if (dow !== 0 && dow !== 6) days++; s.setDate(s.getDate()+1); }
+            dayCount = days > 0 ? `${days} working day${days !== 1 ? "s" : ""}` : "";
+        }
+
+        return `
+        <div onclick="openJobFromCal('${j.id}')" style="
+            background:#1e293b;border-radius:12px;padding:14px 16px;margin-bottom:10px;
+            cursor:pointer;border-left:3px solid #f59e0b;
+        ">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;">
+                <div style="font-weight:700;font-size:16px;color:var(--text-primary);">${name}</div>
+                ${statusBadge(j.status)}
+            </div>
+            ${type ? `<div style="font-size:13px;color:#94a3b8;margin-bottom:6px;">🪣 ${type}</div>` : ""}
+            ${addr ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📍 ${addr}</div>` : ""}
+            ${phone ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📞 ${phone}</div>` : ""}
+            ${email ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">✉️ ${email}</div>` : ""}
+            ${dateRange ? `<div style="font-size:12px;color:#64748b;margin-bottom:2px;">📅 ${dateRange}${dayCount ? ` · ${dayCount}` : ""}</div>` : ""}
+            ${notes ? `<div style="font-size:12px;color:#64748b;margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-style:italic;">${notes}</div>` : ""}
+            <div style="text-align:right;margin-top:8px;font-size:11px;color:#f59e0b;font-weight:600;">Tap to open job →</div>
+        </div>`;
+    }).join("");
+}
+
+function openJobFromCal(jobId) {
+    goJob(jobId);
+}
+/* ─── END CALENDAR ─────────────────────────────────────────────── */
+
+
 function goSettings() {
     settingsTab("profile"); // always open on profile tab
     const s = settings;
@@ -4518,8 +6042,10 @@ function goSettings() {
     document.getElementById("set-grout-price-25").value  = s.groutPrice25 || 4.50;
     document.getElementById("set-grout-price-5").value   = s.groutPrice5  || 7.50;
     document.getElementById("set-grout-bag-size").value  = s.groutBagSize || 2.5;
-    document.getElementById("set-adhesive-price").value = s.adhesivePrice;
-    document.getElementById("set-rapid-adh-price").value = s.rapidAdhPrice || 28;
+    document.getElementById("set-adhesive-price").value        = s.adhesivePrice      || 22;
+    document.getElementById("set-rapid-adh-price").value       = s.rapidAdhPrice      || 28;
+    document.getElementById("set-adhesive-price-white").value  = s.adhesivePriceWhite || 24;
+    document.getElementById("set-rapid-adh-price-white").value = s.rapidAdhPriceWhite || 30;
     document.getElementById("set-silicone-price").value = s.siliconePrice || 6.50;
     document.getElementById("set-silicone-coverage").value = s.siliconeCoverage || 6;
     document.getElementById("set-markup").value         = s.markup;
@@ -4536,6 +6062,8 @@ function goSettings() {
     document.getElementById("set-rate-mosaic").value        = tr.mosaic        || 1.6;
     document.getElementById("set-ufh-m2").value         = s.ufhM2Rate   || 52;
     document.getElementById("set-ufh-fixed").value      = s.ufhFixedCost || 180;
+    document.getElementById("set-wet-room-tray").value  = s.wetRoomTrayRate || 150;
+    document.getElementById("set-niche-labour").value   = s.nicheLabourRate  || 30;
     document.getElementById("set-cementboard").value    = s.cementBoard  || 18;
     document.getElementById("set-cb-labour").value      = s.cbLabour     || 6;
     document.getElementById("set-cb-adh").value         = s.cbAdhKgM2    || 4;
@@ -4559,6 +6087,56 @@ function goSettings() {
     document.getElementById("set-sealer-coats").value    = s.sealerCoats         || 2;
     document.getElementById("set-vat").value            = s.applyVat !== false ? "true" : "false";
     document.getElementById("set-company-name").value   = s.companyName    || "";
+    if (document.getElementById("set-enquiry-slug")) {
+        document.getElementById("set-enquiry-slug").value = s.slug || "";
+        updateEnquiryLinkPreview();
+    }
+    // Logo preview
+    const logoPreview = document.getElementById("set-logo-preview");
+    const logoPlaceholder = document.getElementById("logo-placeholder");
+    const removeBtn = document.getElementById("btn-remove-logo");
+    if (logoPreview && s.logoUrl) {
+        logoPreview.src = s.logoUrl;
+        logoPreview.style.display = "block";
+        if (logoPlaceholder) logoPlaceholder.style.display = "none";
+        if (removeBtn) removeBtn.style.display = "block";
+    } else if (logoPreview) {
+        logoPreview.style.display = "none";
+        if (logoPlaceholder) logoPlaceholder.style.display = "block";
+        if (removeBtn) removeBtn.style.display = "none";
+    }
+    if (document.getElementById("set-voicemail-name")) document.getElementById("set-voicemail-name").value = s.voicemailName || "";
+    if (document.getElementById("set-twilio-number")) document.getElementById("set-twilio-number").value = s.twilioNumber || "";
+    // Inject greeting buttons next to voicemail name field if not already present
+    const vmNameEl = document.getElementById("set-voicemail-name");
+    const existingWrapper = document.getElementById("btn-generate-greeting")?.closest("div");
+    if (existingWrapper) existingWrapper.remove();
+    const existingMsg = document.getElementById("greeting-gen-msg");
+    if (existingMsg) existingMsg.remove();
+    if (vmNameEl) {
+        const wrapper = document.createElement("div");
+        wrapper.style.cssText = "margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
+        wrapper.innerHTML = `
+            <select id="greeting-voice" style="flex:1;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:10px;padding:11px 14px;font-size:14px;cursor:pointer;">
+                <option value="en-GB-Neural2-A" ${(s.greetingVoice||'en-GB-Neural2-A')==='en-GB-Neural2-A'?'selected':''}>🎙 Female 1</option>
+                <option value="en-GB-Neural2-C" ${(s.greetingVoice||'')==='en-GB-Neural2-C'?'selected':''}>🎙 Female 2</option>
+                <option value="en-GB-Neural2-B" ${(s.greetingVoice||'')==='en-GB-Neural2-B'?'selected':''}>🎙 Male 1</option>
+                <option value="en-GB-Neural2-D" ${(s.greetingVoice||'')==='en-GB-Neural2-D'?'selected':''}>🎙 Male 2</option>
+            </select>
+            <button id="btn-generate-greeting" onclick="generateGreeting()" style="flex:1;background:#e07a2f;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">🎙 Generate</button>
+            <button id="btn-preview-greeting" onclick="previewGreeting()" style="${s.greetingUrl ? "" : "display:none;"}flex:1;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">▶ Preview</button>
+        `;
+        const msgDiv = document.createElement("div");
+        msgDiv.id = "greeting-gen-msg";
+        msgDiv.style.cssText = "font-size:12px;color:#94a3b8;margin-top:4px;width:100%;";
+        if (s.greetingUrl) msgDiv.textContent = "✅ Greeting active — regenerate any time.";
+        vmNameEl.parentNode.insertBefore(wrapper, vmNameEl.nextSibling);
+        vmNameEl.parentNode.insertBefore(msgDiv, wrapper.nextSibling);
+    } else if (document.getElementById("greeting-gen-msg") && s.greetingUrl) {
+        document.getElementById("greeting-gen-msg").textContent = "✅ Greeting active — regenerate any time.";
+        const previewBtn = document.getElementById("btn-preview-greeting");
+        if (previewBtn) previewBtn.style.display = "inline-block";
+    }
     const addrEl = document.getElementById("set-company-address");
     if (addrEl) addrEl.value = s.companyAddress || "";
     document.getElementById("set-company-phone").value  = s.companyPhone || "";
@@ -4582,14 +6160,173 @@ function goSettings() {
     setTimeout(initDomainVerifyUI, 3000);
 }
 
+
+function generateSlugFromCompany() {
+    const company = document.getElementById("set-company-name")?.value || "";
+    const slug = company.trim().toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    const el = document.getElementById("set-enquiry-slug");
+    if (el) { el.value = slug; updateEnquiryLinkPreview(); }
+}
+
+function updateEnquiryLinkPreview() {
+    const slug = document.getElementById("set-enquiry-slug")?.value || "";
+    const preview = document.getElementById("enquiry-link-preview");
+    if (!preview) return;
+    if (slug) {
+        preview.textContent = "tile-iq.com/enquire/?t=" + slug;
+        preview.style.color = "#e07a2f";
+    } else {
+        preview.textContent = "Set a slug to generate your link";
+        preview.style.color = "#64748b";
+    }
+}
+
+
+async function uploadLogo() {
+    const btn = document.getElementById("btn-upload-logo");
+    const msg = document.getElementById("logo-upload-msg");
+    if (!currentUser) { alert("Please log in first."); return; }
+    if (btn) { btn.disabled = true; btn.textContent = "Uploading…"; }
+    if (msg) msg.textContent = "";
+
+    try {
+        const { Camera } = Capacitor.Plugins;
+        const photo = await Camera.getPhoto({
+            quality: 80,
+            allowEditing: false,
+            resultType: "base64",
+            source: "PHOTOS"
+        });
+
+        // Convert base64 to blob
+        const base64 = photo.base64String;
+        const byteChars = atob(base64);
+        const byteArr = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([byteArr], { type: "image/jpeg" });
+
+        const fileName = currentUser.id + "/logo.jpg";
+        const SB_SVC = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6d21xYWJ4cHh1dXpuaGJwZXdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjk2NDIsImV4cCI6MjA4ODQwNTY0Mn0.N1K9ERPwAV5tcvmLcSrYp7aDKTazDXxFT9sf6GzcXKU";
+        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || SB_SVC;
+
+        // Upload to Supabase Storage
+        const uploadResp = await fetch(
+            `${SB_URL}/storage/v1/object/logos/${fileName}`,
+            {
+                method: "POST",
+                headers: {
+                    "apikey": tok,
+                    "Authorization": "Bearer " + tok,
+                    "Content-Type": "image/jpeg",
+                    "x-upsert": "true"
+                },
+                body: blob
+            }
+        );
+
+        if (!uploadResp.ok) throw new Error("Upload failed: " + uploadResp.status);
+
+        const logoUrl = `${SB_URL}/storage/v1/object/public/logos/${fileName}?t=${Date.now()}`;
+        settings.logoUrl = logoUrl;
+        saveSettingsLocal();
+
+        // Save to Supabase settings
+        const settTok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+        await fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
+            method: "PATCH",
+            headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (settTok || SB_KEY), "Content-Type": "application/json", "Prefer": "return=minimal" },
+            body: JSON.stringify({ data: settings })
+        });
+
+        // Update preview
+        const preview = document.getElementById("set-logo-preview");
+        const placeholder = document.getElementById("logo-placeholder");
+        const removeBtn = document.getElementById("btn-remove-logo");
+        if (preview) { preview.src = logoUrl; preview.style.display = "block"; }
+        if (placeholder) placeholder.style.display = "none";
+        if (removeBtn) removeBtn.style.display = "block";
+        if (msg) { msg.textContent = "✅ Logo uploaded!"; msg.style.color = "#10b981"; }
+
+    } catch(e) {
+        console.error("Logo upload error:", e);
+        if (msg) { msg.textContent = "Upload failed — please try again."; msg.style.color = "#ef4444"; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📷 Upload Logo"; }
+    }
+}
+
+async function removeLogo() {
+    if (!currentUser) return;
+    settings.logoUrl = "";
+    saveSettingsLocal();
+    const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+    await fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
+        method: "PATCH",
+        headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY), "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ data: settings })
+    }).catch(e => console.warn("removeLogo sync failed:", e));
+    const preview = document.getElementById("set-logo-preview");
+    const placeholder = document.getElementById("logo-placeholder");
+    const removeBtn = document.getElementById("btn-remove-logo");
+    if (preview) { preview.src = ""; preview.style.display = "none"; }
+    if (placeholder) placeholder.style.display = "block";
+    if (removeBtn) removeBtn.style.display = "none";
+    const msg = document.getElementById("logo-upload-msg");
+    if (msg) { msg.textContent = "Logo removed."; msg.style.color = "#94a3b8"; }
+}
+
+function saveSlug() {
+    const slug = (document.getElementById("set-enquiry-slug")?.value || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    if (!slug) { alert("Please enter a link name first."); return; }
+    if (!currentUser) { alert("Please log in first."); return; }
+
+    const btn = document.getElementById("btn-save-slug");
+    const msg = document.getElementById("slug-save-msg");
+    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+
+    // Update settings object
+    settings.slug = slug;
+    saveSettingsLocal();
+
+    // Sync to Supabase settings column
+    const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+    fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
+        method: "PATCH",
+        headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY), "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ slug })
+    }).then(r => {
+        if (btn) { btn.disabled = false; btn.textContent = "💾 Save"; }
+        if (msg) { msg.style.display = "block"; setTimeout(() => { if (msg) msg.style.display = "none"; }, 3000); }
+        updateEnquiryLinkPreview();
+    }).catch(e => {
+        if (btn) { btn.disabled = false; btn.textContent = "💾 Save"; }
+        alert("Failed to save — please try again.");
+    });
+}
+
+function copyEnquiryLink() {
+    const slug = document.getElementById("set-enquiry-slug")?.value || "";
+    if (!slug) { alert("Please set your enquiry link slug first."); return; }
+    const url = "https://tile-iq.com/enquire/?t=" + slug;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById("btn-copy-enquiry-link");
+        if (btn) { btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = "📋 Copy Link", 2000); }
+    });
+}
 function saveSettings() {
     settings = {
         tilePrice:     parseFloat(document.getElementById("set-tile-price").value)     || 25.00,
         groutPrice25:  parseFloat(document.getElementById("set-grout-price-25").value)  || 4.50,
         groutPrice5:   parseFloat(document.getElementById("set-grout-price-5").value)   || 7.50,
         groutBagSize:  parseFloat(document.getElementById("set-grout-bag-size").value)  || 2.5,
-        adhesivePrice: parseFloat(document.getElementById("set-adhesive-price").value) || 22,
-        rapidAdhPrice: parseFloat(document.getElementById("set-rapid-adh-price").value) || 28,
+        adhesivePrice:      parseFloat(document.getElementById("set-adhesive-price").value)        || 22,
+        rapidAdhPrice:      parseFloat(document.getElementById("set-rapid-adh-price").value)       || 28,
+        adhesivePriceWhite: parseFloat(document.getElementById("set-adhesive-price-white").value)  || 24,
+        rapidAdhPriceWhite: parseFloat(document.getElementById("set-rapid-adh-price-white").value) || 30,
         siliconePrice: parseFloat(document.getElementById("set-silicone-price").value) || 6.50,
         siliconeCoverage: parseFloat(document.getElementById("set-silicone-coverage").value) || 6,
         markup:        parseFloat(document.getElementById("set-markup").value)         || 20,
@@ -4608,6 +6345,8 @@ function saveSettings() {
         },
         ufhM2Rate:     parseFloat(document.getElementById("set-ufh-m2").value)         || 52,
         ufhFixedCost:  parseFloat(document.getElementById("set-ufh-fixed").value)      || 180,
+        wetRoomTrayRate: parseFloat(document.getElementById("set-wet-room-tray").value) || 150,
+        nicheLabourRate: parseFloat(document.getElementById("set-niche-labour").value)   || 30,
         cementBoard:   parseFloat(document.getElementById("set-cementboard").value)    || 18,
         cbLabour:      parseFloat(document.getElementById("set-cb-labour").value)      || 6,
         cbAdhKgM2:     parseFloat(document.getElementById("set-cb-adh").value)         || 4,
@@ -4631,6 +6370,11 @@ function saveSettings() {
         sealerCoats:         parseInt(document.getElementById("set-sealer-coats").value)       || 2,
         applyVat:      document.getElementById("set-vat").value === "true",
         companyName:    document.getElementById("set-company-name").value.trim(),
+        voicemailName:  (document.getElementById("set-voicemail-name")?.value || "").trim(),
+        twilioNumber:   (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, ""),
+        mobileNumber:   (document.getElementById("set-mobile-number")?.value || "").trim().replace(/\s/g, ""),
+        slug:           (document.getElementById("set-enquiry-slug")?.value || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, ""),
+        logoUrl:        settings.logoUrl || "",
         companyAddress: (document.getElementById("set-company-address")?.value || "").trim(),
         companyPhone:  document.getElementById("set-company-phone").value.trim(),
         companyEmail:  document.getElementById("set-company-email").value.trim(),
@@ -4652,12 +6396,40 @@ function saveSettings() {
     if (currentUser) {
         // Save locally immediately
         saveSettingsLocal();
-        // Sync to D1
-        fetch(AI_PROXY_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "d1_save_settings", user_id: currentUser.id, settings })
-        }).catch(e => console.error("saveSettings D1 error:", e));
+        // Save to Supabase using authenticated client
+        sb.from("settings").upsert(
+            { user_id: currentUser.id, data: settings, updated_at: new Date().toISOString() },
+            { onConflict: "user_id" }
+        ).then(({ error }) => {
+            if (error) console.error("saveSettings Supabase error:", error.message);
+        });
+        // Sync slug to Supabase settings column
+        const newSlug = (document.getElementById("set-enquiry-slug")?.value || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+        if (newSlug && currentUser) {
+            const tok2 = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+            fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
+                method: "PATCH",
+                headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (tok2 || SB_KEY), "Content-Type": "application/json", "Prefer": "return=minimal" },
+                body: JSON.stringify({ slug: newSlug })
+            }).catch(e => console.warn("slug sync failed:", e.message));
+        }
+        const vmName = (document.getElementById("set-voicemail-name")?.value || "").trim();
+        const vmNumber = (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, "");
+        if ((vmName || vmNumber) && currentUser) {
+            const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+            const hdrs = { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY), "Content-Type": "application/json" };
+            fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id + "&select=data&limit=1", { headers: hdrs })
+            .then(r => r.json())
+            .then(rows => {
+                const existing = (rows && rows[0] && rows[0].data) ? rows[0].data : {};
+                const merged = Object.assign({}, existing, { voicemailName: vmName, twilioNumber: vmNumber });
+                return fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
+                    method: "PATCH",
+                    headers: Object.assign({}, hdrs, { "Prefer": "return=minimal" }),
+                    body: JSON.stringify({ data: merged })
+                });
+            }).catch(e => console.error("voicemail settings save error:", e));
+        }
     }
     goDashboard();
 }
@@ -4720,6 +6492,7 @@ function renderMaterials() {
     let grandCBBoards = 0, grandLevelBags = 0;
     let grandClips = 0, grandWedges = 0;
     let grandPrimerM2 = 0, grandSealerM2 = 0;
+    let grandTankingM2 = 0;
     let grandTrimLengths = 0;
     let hasUFH = false;
 
@@ -4758,13 +6531,18 @@ function renderMaterials() {
             grandClips    += s.clips ? (s.levelClips  || 0) : 0;
             grandWedges   += s.clips ? (s.levelWedges || 0) : 0;
             if (s.primer)       grandPrimerM2  += s.area || 0;
-            if (s.stone && s.sealer) grandSealerM2 += s.area || 0;
+            if (s.tanking)      grandTankingM2 += s.area || 0;
+            const isStone = s.stone || s.tileType === "natural_stone";
+            const hasSealer = s.sealer || s.tileType === "natural_stone";
+            if (isStone && hasSealer) grandSealerM2 += s.area || 0;
             if (s.ufh)          hasUFH = true;
 
             const prepItems = [];
             if (s.cementBoards) prepItems.push(`${s.cementBoards} cement board${s.cementBoards!==1?"s":""}`);
             if (s.levelBags)    prepItems.push(`${s.levelBags} × 20kg levelling bag${s.levelBags!==1?"s":""}`);
-            if (s.tanking)      prepItems.push("tanking applied");
+            if (s.tanking)      prepItems.push(`Tanking £${(s.prepCost > 0 ? s.prepCost : parseFloat(settings?.tanking||15) * s.area).toFixed(2)}`);
+            else if (s.prepCost > 0) prepItems.push(`Prep £${s.prepCost.toFixed(2)}`);
+            if (s.primer && !s.tanking) prepItems.push(`Primer £${(parseFloat(settings?.primerPrice||3.50) * s.area).toFixed(2)}`);
 
             return `
             <tr class="mat-surf-row">
@@ -4793,7 +6571,7 @@ function renderMaterials() {
             ? `<div style="margin-top:4px;font-size:12px;color:#555;">Tile Trim: <strong>${trimLengths}</strong> length${trimLengths!==1?"s":""} <span style="color:#6b7280">· ${(trimLengths * 2.5).toFixed(1)}m (@ 2.5m each)</span></div>`
             : "";
 
-        const roomSealerM2 = surfaces.reduce((a, s) => a + (s.stone && s.sealer ? (s.area || 0) : 0), 0);
+        const roomSealerM2 = surfaces.reduce((a, s) => a + ((s.stone || s.tileType === "natural_stone") && (s.sealer || s.tileType === "natural_stone") ? (s.area || 0) : 0), 0);
         const sealerLine = (() => {
             if (roomSealerM2 <= 0) return "";
             const coats    = settings.sealerCoats        || 2;
@@ -4844,6 +6622,7 @@ function renderMaterials() {
             <div class="mat-total-item"><span class="mat-total-label">Grout</span><span class="mat-total-value">Wall: ${grandWallGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br>Floor: ${grandFloorGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br><span style="font-size:11px;font-weight:600;">Total: ${grandWallGroutBags + grandFloorGroutBags} bag${(grandWallGroutBags + grandFloorGroutBags)!==1?"s":""}</span></span></div>
             ${grandSiliconeTubes > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Sealant</span><span class="mat-total-value">${grandSiliconeTubes} tube${grandSiliconeTubes!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${grandSiliconeMetres.toFixed(1)}m total</span><br><span style="font-size:11px;font-weight:400;">Floor perimeter bead: ${grandSiliconeFloor.toFixed(1)}m</span></span></div>` : ""}
             ${grandCBBoards  > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Cement Board</span><span class="mat-total-value">${grandCBBoards} board${grandCBBoards!==1?"s":""}</span></div>` : ""}
+            ${grandTankingM2 > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Tanking Kit</span><span class="mat-total-value">${Math.ceil(grandTankingM2 / 6)} tub${Math.ceil(grandTankingM2 / 6)!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${grandTankingM2.toFixed(2)}m² · £${(grandTankingM2 * (parseFloat(settings?.tanking)||15)).toFixed(2)}</span></span></div>` : ""}
             ${grandLevelBags > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling</span><span class="mat-total-value">${grandLevelBags} × 20kg bag${grandLevelBags!==1?"s":""}</span></div>` : ""}
             ${grandClips     > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling Clips</span><span class="mat-total-value">${grandClips}</span></div>` : ""}
             ${grandWedges    > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Wedges</span><span class="mat-total-value">${grandWedges}</span></div>` : ""}
@@ -4941,7 +6720,12 @@ function renderQuote() {
                 const mult = 1 + (parseFloat(settings.markup) || 0) / 100;
 
         // Per-item sell values (kept simple: uses current unit assumptions in settings)
-        const adhSell   = adhBags   * (parseFloat(settings.adhesivePrice) || 0) * mult;
+        const isRapidRoom = room.adhType === "rapid";
+        const isWhiteRoom = room.adhColour === "white";
+        const adhUnitPrice = isRapidRoom
+            ? (isWhiteRoom ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
+            : (isWhiteRoom ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
+        const adhSell = adhBags * adhUnitPrice * mult;
         const groutSell = groutBags * (settings.groutBagSize >= 5 ? (parseFloat(settings.groutPrice5)||7.50) : (parseFloat(settings.groutPrice25)||4.50)) * mult;
 
         // Prep-related items use existing £/m² rates (matches current prep model)
@@ -4961,13 +6745,16 @@ function renderQuote() {
         }, 0);
 
         const inlineParts = [];
-if (cbBoards  > 0) inlineParts.push(`Cement board ${cbBoards} board${cbBoards !== 1 ? "s" : ""} (£${cbSell.toFixed(2)})`);
+        const adhLabel = `${room.adhColour === "white" ? "White" : "Grey"} ${room.adhType === "rapid" ? "Rapid Set" : "Standard"} Adhesive`;
+        if (adhBags > 0) inlineParts.push(`${adhLabel} ${adhBags} × 20kg bag${adhBags !== 1 ? "s" : ""} (£${adhSell.toFixed(2)})`);
+        if (groutBags > 0) inlineParts.push(`Grout ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""} (£${groutSell.toFixed(2)})`);
+        if (cbBoards  > 0) inlineParts.push(`Cement board ${cbBoards} board${cbBoards !== 1 ? "s" : ""} (£${cbSell.toFixed(2)})`);
         if (levelBags > 0) inlineParts.push(`Levelling ${levelBags} bag${levelBags !== 1 ? "s" : ""} (£${levelSell.toFixed(2)})`);
 
         const extraDesc = (room.extraWorkDesc || "").trim();
         const extraCost = parseFloat(room.extraWorkCost || 0);
         const inline = inlineParts.length ? inlineParts.join(" · ") : "—";
-const roomTotal = parseFloat(room.total || 0);
+const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + parseFloat(room.extraWorkCost||0);
         return `
             <tr class="qt-room-header">
                 <td>${esc(room.name)}<span class="qt-area-note">${totalArea.toFixed(2)}m²</span>${room.tileType ? ` <span style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;margin-left:4px;">${TILE_TYPE_LABELS[room.tileType] || room.tileType}</span>` : ""}</td>
@@ -5044,7 +6831,19 @@ const roomTotal = parseFloat(room.total || 0);
     const totalWallGroutBags  = Math.ceil(totalWallGroutKg / (parseFloat(settings.groutBagSize) || 2.5));
     const totalFloorGroutBags = Math.ceil(totalFloorGroutKg / (parseFloat(settings.groutBagSize) || 2.5));
 
-    const jobAdhSell        = totalAdhBags * (parseFloat(settings.adhesivePrice) || 0) * multJob;
+    // Whole-job adhesive cost: sum per room using correct colour/type price
+    let jobAdhSell = 0;
+    getJob().rooms.forEach(room => {
+        const rSurfaces = room.surfaces || [];
+        const rAdhKg = rSurfaces.reduce((a, s) => a + (s.adhKg || 0), 0);
+        const rBags  = Math.ceil(rAdhKg / 20);
+        const rapid  = room.adhType === "rapid";
+        const white  = room.adhColour === "white";
+        const price  = rapid
+            ? (white ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
+            : (white ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
+        jobAdhSell += rBags * price * multJob;
+    });
     const jobWallGroutSell  = totalWallGroutBags * (settings.groutBagSize >= 5 ? (parseFloat(settings.groutPrice5)||7.50) : (parseFloat(settings.groutPrice25)||4.50)) * multJob;
     const jobFloorGroutSell = totalFloorGroutBags * (settings.groutBagSize >= 5 ? (parseFloat(settings.groutPrice5)||7.50) : (parseFloat(settings.groutPrice25)||4.50)) * multJob;
 
@@ -5099,26 +6898,12 @@ const roomTotal = parseFloat(room.total || 0);
 
         ${j.description ? `<div class="quote-description">${esc(j.description)}</div>` : `<div class="quote-description" style="color:#64748b;font-style:italic;">No description — add one below.</div>`}
 
-        ${roomBreakdownRows ? `
         <table class="quote-table">
             <tbody>
-                ${roomBreakdownRows}
-            </tbody>
-        </table>` : ""}
-
-        <table class="quote-table">
-            <tbody>
-                <tr><td>Materials</td><td style="text-align:right">£${totalMats.toFixed(2)}</td></tr>
-                <tr><td>Labour</td><td style="text-align:right">£${totalLabour.toFixed(2)}</td></tr>
-                ${totalPrep > 0 ? `<tr><td>Preparation</td><td style="text-align:right">£${totalPrep.toFixed(2)}</td></tr>` : ""}
-                ${jobSilSell > 0 ? `<tr><td>Sealant (${totalSiliconeTubes} tube${totalSiliconeTubes !== 1 ? "s" : ""})</td><td style="text-align:right">£${jobSilSell.toFixed(2)}</td></tr>` : ""}
+                <tr><td>Materials</td><td style="text-align:right">£${(totalMats + totalPrep + jobSilSell).toFixed(2)}</td></tr>
+                <tr><td>Labour</td><td style="text-align:right">£${(totalLabour + totalExtras).toFixed(2)}</td></tr>
             </tbody>
         </table>
-
-        <div class="quote-mat-schedule">
-            <div class="qms-title">Materials Schedule</div>
-            ${(jobScheduleHtml + roomScheduleHtml) || `<div style="color:#777;font-size:12px;">No material quantities to schedule.</div>`}
-        </div>
 
         <div class="quote-totals">
             <div class="quote-total-row"><span>Subtotal</span><span>£${subtotal.toFixed(2)}</span></div>
@@ -5146,12 +6931,44 @@ const roomTotal = parseFloat(room.total || 0);
 
 /* ─── AI CORE ─── */
 
-const AI_PROXY_URL = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
-const TILEIQ_WORKER_URL = "https://tileiq-worker.kevin-woodley.workers.dev";
+const TILEIQ_WORKER_URL = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
 
 /* ═══════════════════════════════════════════════════════════════
    PUSH NOTIFICATIONS (FCM via @capacitor-firebase/messaging)
 ═══════════════════════════════════════════════════════════════ */
+
+async function checkPendingPushNav() {
+    try {
+        const raw = localStorage.getItem("tileiq-pending-nav");
+        if (!raw) return;
+        const nav = JSON.parse(raw);
+        if (Date.now() - (nav.ts || 0) > 60000) { localStorage.removeItem("tileiq-pending-nav"); return; }
+        // Wait for user to be logged in
+        if (!currentUser) { setTimeout(checkPendingPushNav, 1000); return; }
+        localStorage.removeItem("tileiq-pending-nav");
+        localStorage.removeItem("tileiq-last-sync");
+        try { await loadUserData(); } catch(e) {}
+        const type  = nav.type || "";
+        const token = nav.token || "";
+        const jobId = nav.jobId || "";
+        if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
+            type === "voicemail_job" || type === "call_job" || type === "missed_call") {
+            if (jobId) { currentJobId = jobId; goJob(jobId); }
+            else { goDashboard(); renderDashboard(); }
+        } else if (type === "quote_response" || type === "quote_viewed" ||
+                   type === "schedule_confirmed" || type === "schedule_suggest") {
+            const j = token ? jobs.find(j => j.quoteToken === token) : null;
+            if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
+        } else if (type === "customer_message") {
+            const j = token ? jobs.find(j => j.quoteToken === token) : null;
+            if (j) { currentJobId = j.id; goJob(j.id); }
+            else goDashboard();
+        } else if (jobId) {
+            currentJobId = jobId; goJob(jobId);
+        }
+    } catch(e) { console.warn("checkPendingPushNav:", e.message); }
+}
+
 async function initPushNotifications() {
     try {
         const { FirebaseMessaging } = window.Capacitor?.Plugins || {};
@@ -5188,23 +7005,141 @@ async function initPushNotifications() {
         console.log("FCM token saved successfully");
 
         // Listen for foreground notifications
-        FirebaseMessaging.addListener("notificationReceived", (event) => {
+        FirebaseMessaging.addListener("notificationReceived", async (event) => {
             const n = event.notification;
-            const title = n?.title || "TileIQ Pro";
-            const body  = n?.body  || "";
-            // Show in-app banner
-            showPushBanner(title, body, n?.data);
+            const title = n?.data?._title || n?.title || "TileIQ Pro";
+            const body  = n?.data?._body  || n?.body  || "";
+            const type  = n?.data?.type || "";
+            const navData = n?.data || {};
+
+            // Show local notification so tapping it fires notificationActionPerformed reliably
+            try {
+                const { LocalNotifications } = Capacitor.Plugins;
+                if (LocalNotifications) {
+                    const perm = await LocalNotifications.checkPermissions();
+                    if (perm.display !== "granted") await LocalNotifications.requestPermissions();
+                    await LocalNotifications.schedule({
+                        notifications: [{
+                            id: Math.floor(Math.random() * 100000),
+                            title,
+                            body,
+                            extra: navData,
+                            channelId: "tileiq_quotes",
+                            sound: "default"
+                        }]
+                    });
+                } else {
+                    showPushBanner(title, body, navData);
+                }
+            } catch(e) {
+                showPushBanner(title, body, navData);
+            }
+
+            // Also sync in background
+            if (type === "ai_enquiry" || type === "voicemail" || type === "web_enquiry" || type === "voicemail_job" || type === "call_job" || type === "missed_call") {
+                localStorage.removeItem("tileiq-last-sync");
+                loadUserData().then(() => { renderDashboard(); }).catch(() => {});
+            } else if (type === "quote_response") {
+                syncAllQuoteStatuses().catch(() => {});
+            } else if (type === "customer_message") {
+                const tok = navData.token;
+                if (tok) { const j = jobs.find(j => j.quoteToken === tok); if (j) loadMessagesBadge(j.quoteToken); }
+            } else if (type === "schedule_confirmed" || type === "schedule_suggest") {
+                localStorage.removeItem("tileiq-last-sync");
+                loadUserData().catch(() => {});
+            }
         });
 
-        // Listen for notification tap (app in background)
+        // Local notification tap handler (works from killed state)
+        try {
+            const { LocalNotifications } = Capacitor.Plugins;
+            if (LocalNotifications) {
+                await LocalNotifications.createChannel({
+                    id: "tileiq_quotes", name: "TileIQ Notifications",
+                    importance: 5, sound: "default", vibration: true
+                });
+                LocalNotifications.addListener("localNotificationActionPerformed", (event) => {
+                    const data = event.notification?.extra || {};
+                    const type = data?.type || "";
+                    if (type) localStorage.setItem("tileiq-pending-nav", JSON.stringify({ type, token: data.token||"", jobId: data.jobId||data.job_id||"", ts: Date.now() }));
+                    async function localSyncThenGo(navFn) {
+                        localStorage.removeItem("tileiq-last-sync");
+                        try { await loadUserData(); } catch(e) {}
+                        navFn();
+                    }
+                    if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
+                        type === "voicemail_job" || type === "call_job" || type === "missed_call") {
+                        localSyncThenGo(() => { const jid = data?.jobId||data?.job_id||""; if (jid) { currentJobId = jid; goJob(jid); } else { goDashboard(); renderDashboard(); } });
+                    } else if (type === "quote_response" || type === "quote_viewed" || type === "schedule_confirmed" || type === "schedule_suggest") {
+                        localSyncThenGo(() => { const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null; if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); } });
+                    } else if (type === "customer_message") {
+                        localSyncThenGo(() => { const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null; if (j) { currentJobId = j.id; goJob(j.id); } else goDashboard(); });
+                    } else if (data?.jobId) {
+                        localSyncThenGo(() => { currentJobId = data.jobId; goJob(data.jobId); });
+                    } else { goDashboard(); }
+                });
+            }
+        } catch(e) { console.warn("LocalNotifications setup:", e.message); }
+
+        // Notification tap — sync then navigate to right screen
+
+        // Handle app resume from background — re-sync if stale
+        App.addListener("appStateChange", async ({ isActive }) => {
+            if (!isActive) return;
+            const lastSync = parseInt(localStorage.getItem("tileiq-last-sync") || "0");
+            const age = Date.now() - lastSync;
+            if (age > 5 * 60 * 1000) { // 5 mins stale
+                localStorage.removeItem("tileiq-last-sync");
+                try { await loadUserData(); renderDashboard(); } catch(e) {}
+            }
+        });
+
         FirebaseMessaging.addListener("notificationActionPerformed", (event) => {
             const data = event.notification?.data;
-            if (data?.jobId) {
-                currentJobId = data.jobId;
-                goJob(data.jobId);
+            const type = data?.type || "";
+            async function syncThenGo(navFn) {
+                localStorage.removeItem("tileiq-last-sync");
+                try { await loadUserData(); } catch(e) {}
+                navFn();
+            }
+            if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
+                type === "voicemail_job" || type === "call_job" || type === "missed_call") {
+                syncThenGo(() => {
+                    const jid = data?.jobId || data?.job_id || "";
+                    if (jid) { currentJobId = jid; goJob(jid); }
+                    else { goDashboard(); renderDashboard(); }
+                });
+            } else if (type === "quote_response") {
+                syncThenGo(() => {
+                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
+                    if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
+                });
+            } else if (type === "customer_message") {
+                syncThenGo(() => {
+                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
+                    if (j) {
+                        currentJobId = j.id;
+                        goJob(j.id);
+                        // Wait for job screen to render then open messages
+                        setTimeout(async () => {
+                            if (j.quoteToken) await goMessages();
+                        }, 1000);
+                    } else goDashboard();
+                });
+            } else if (type === "schedule_confirmed" || type === "schedule_suggest") {
+                syncThenGo(() => {
+                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
+                    if (j) { currentJobId = j.id; goJob(j.id); } else goDashboard();
+                });
+            } else if (type === "quote_viewed") {
+                syncThenGo(() => {
+                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
+                    if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
+                });
+            } else if (data?.jobId) {
+                syncThenGo(() => { currentJobId = data.jobId; goJob(data.jobId); });
             } else {
-                goDashboard();
-                syncAllQuoteStatuses();
+                goDashboard(); syncAllQuoteStatuses();
             }
         });
 
@@ -5230,6 +7165,9 @@ function showPushBanner(title, body, data) {
         if (e.target.tagName === "BUTTON") return;
         banner.remove();
         if (data?.jobId) { currentJobId = data.jobId; goJob(data.jobId); }
+        else if (data?.type === "ai_enquiry" || data?.type === "voicemail") {
+            loadUserData().then(() => { goDashboard(); renderDashboard(); });
+        }
         else { goDashboard(); syncAllQuoteStatuses(); }
     });
     document.body.appendChild(banner);
@@ -5604,6 +7542,17 @@ function buildPDFDoc() {
         doc.text(`£${roomTotal.toFixed(2)}`, W - 14, y + 4, { align:"right" });
         y += 7;
 
+        // Show prep line items (tanking, cement board, etc.)
+        const allPrepLines = surfaces.flatMap(s => s.prepLines || []);
+        if (allPrepLines.length > 0) {
+            allPrepLines.forEach(line => {
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(7);
+                doc.setTextColor(...SLATE);
+                doc.text(`  ↳ ${line}`, 16, y + 3.5);
+                y += 5.5;
+            });
+        }
         if (extraCost > 0) {
             doc.setFont("helvetica", "normal");
             doc.setFontSize(7.5);
@@ -5716,7 +7665,8 @@ function buildPDFDoc() {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(140, 150, 160);
-    doc.text("Thank you for your business", 12, pageH - 5);
+    const footerLeft = settings.vatNumber ? `Thank you for your business  ·  VAT Reg: ${settings.vatNumber}` : "Thank you for your business";
+    doc.text(footerLeft, 12, pageH - 5);
     doc.text(`${settings.companyName || ""} · Powered by TileIQ Pro`, W - 12, pageH - 5, { align:"right" });
 
     const safeName = (j.customerName || "quote").replace(/[^a-z0-9]+/gi,"-").replace(/(^-|-$)/g,"");
@@ -6020,7 +7970,7 @@ async function testNetwork() {
 ═══════════════════════════════════════════════════════════════ */
 const FA_CLIENT_ID    = "_Ks4ewOfNFJevi4CJEBmsQ";
 const FA_CLIENT_SECRET = "BIxz-Iu2cFV1ROhKhK-KhQ";
-const FA_REDIRECT_URI = "https://tileiq.app/fa-callback";
+const FA_REDIRECT_URI = "https://tile-iq.com/fa-callback";
 const FA_AUTH_URL     = "https://api.freeagent.com/v2/approve_app";
 
 async function freeAgentConnect() {
@@ -6076,8 +8026,8 @@ function updateAccountingSection() {
 
     section.style.display = "block";
     if (faBtn)   faBtn.style.display   = software === "freeagent"   ? "block" : "none";
-    if (xeroBtn) xeroBtn.style.display  = software === "xero" ? "block" : "none";
     if (qboBtn)  qboBtn.style.display  = software === "quickbooks"  ? "block" : "none";
+    if (xeroBtn) xeroBtn.style.display = software === "xero"        ? "block" : "none";
 
     // Update button labels based on connection status
     if (software === "freeagent")  updateFreeAgentButton();
@@ -6148,8 +8098,8 @@ async function exportFreeAgent() {
 /* ═══════════════════════════════════════════════════════════════
    QUICKBOOKS OAUTH
 ═══════════════════════════════════════════════════════════════ */
-const QBO_CLIENT_ID   = "ABzC6vAWKHR2PPhthaCETo7Ah89AHNXFuBgjugNKuYfLBW7S51";
-const QBO_REDIRECT_URI = "https://tileiq.app/qbo-callback";
+const QBO_CLIENT_ID   = "ABAkZqIBPGsG5uxOYi9cp8KaXtsaAWwiGZ7y8EgnNyleF3VAr9";
+const QBO_REDIRECT_URI = "https://tile-iq.com/qbo-callback";
 const QBO_AUTH_URL    = "https://appcenter.intuit.com/connect/oauth2";
 const QBO_SCOPES      = "com.intuit.quickbooks.accounting";
 
@@ -6240,9 +8190,11 @@ async function exportQBO() {
                 totalMaterials += parseFloat(s.materialSell || 0);
             });
         });
+        const jobDesc = (j.description || [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works");
+        const jobAddr = [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works";
         const items = [];
-        if (totalLabour > 0)    items.push({ description: j.description || "Labour",  quantity: 1, price: totalLabour.toFixed(2) });
-        if (totalMaterials > 0) items.push({ description: "Materials",                quantity: 1, price: totalMaterials.toFixed(2) });
+        if (totalLabour > 0)    items.push({ description: "Labour — " + jobDesc, quantity: 1, price: totalLabour.toFixed(2) });
+        if (totalMaterials > 0) items.push({ description: "Materials — " + jobAddr, quantity: 1, price: totalMaterials.toFixed(2) });
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -6260,8 +8212,191 @@ async function exportQBO() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   QUOTE SENDING & STATUS
+   XERO OAUTH — PKCE (no client secret, token exchange in-app)
 ═══════════════════════════════════════════════════════════════ */
+const XERO_CLIENT_ID_APP    = "E053784FCD6344099E0A47BCFE20ABED";   // from developer.xero.com
+const XERO_REDIRECT_URI_APP = "https://damp-bread-e0f9.kevin-woodley.workers.dev/xero-callback";
+const XERO_AUTH_URL         = "https://login.xero.com/identity/connect/authorize";
+const XERO_TOKEN_URL_APP    = "https://identity.xero.com/connect/token";
+const XERO_CONNECTIONS_URL  = "https://api.xero.com/connections";
+// Granular scopes required for apps created after March 2026
+const XERO_SCOPES = "openid profile email accounting.contacts accounting.invoices offline_access";
+
+// ── PKCE helpers ─────────────────────────────────────────────
+function _xeroGenerateVerifier() {
+    const arr = new Uint8Array(64);
+    crypto.getRandomValues(arr);
+    return btoa(String.fromCharCode(...arr))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+        .slice(0, 128);
+}
+
+async function _xeroCodeChallenge(verifier) {
+    const data    = new TextEncoder().encode(verifier);
+    const digest  = await crypto.subtle.digest("SHA-256", data);
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+// ── Connect ──────────────────────────────────────────────────
+async function xeroConnect() {
+    localStorage.removeItem("xero-tokens");
+    const verifier   = _xeroGenerateVerifier();
+    const challenge  = await _xeroCodeChallenge(verifier);
+    // Embed verifier in state so it survives app restart/resume
+    const stateObj = { ts: Date.now(), v: verifier };
+    const state    = btoa(unescape(encodeURIComponent(JSON.stringify(stateObj)))).replace(/=/g,"");
+    localStorage.setItem("xero-pkce-verifier", verifier);
+    localStorage.setItem("xero-pkce-state",    state);
+    const params = new URLSearchParams({
+        response_type:         "code",
+        client_id:             XERO_CLIENT_ID_APP,
+        redirect_uri:          XERO_REDIRECT_URI_APP,
+        scope:                 XERO_SCOPES,
+        state,
+        code_challenge:        challenge,
+        code_challenge_method: "S256"
+    });
+    const url = `${XERO_AUTH_URL}?${params.toString()}`;
+    const { Browser } = window.Capacitor?.Plugins || {};
+    if (Browser?.open) await Browser.open({ url, presentationStyle: "popover" });
+    else if (window.AndroidBridge?.open) window.AndroidBridge.open(url);
+    else window.open(url, "_system");
+}
+
+// ── Callback — called from handleDeepLink ────────────────────
+async function handleXeroCallback(url) {
+    try {
+        const u     = new URL(url.replace("tileiq://xero-connected", "https://tileiq.app/xero-callback"));
+        const error = u.searchParams.get("error");
+        if (error) { alert("Xero error: " + error); return; }
+        // Worker now exchanges the code and passes back tokens directly
+        const raw = u.searchParams.get("tokens");
+        if (!raw) { alert("Xero: no tokens returned"); return; }
+        const tokenData = JSON.parse(decodeURIComponent(raw));
+        if (!tokenData.access_token) { alert("Xero: invalid token response"); return; }
+        localStorage.removeItem("xero-pkce-verifier");
+        localStorage.removeItem("xero-pkce-state");
+        localStorage.setItem("xero-tokens", JSON.stringify({
+            access_token:  tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            tenant_id:     tokenData.tenant_id,
+            expires_at:    Math.floor(Date.now() / 1000) + (tokenData.expires_in || 1800)
+        }));
+        alert("✅ Xero connected successfully!");
+        updateXeroButton();
+    } catch(e) { console.error("handleXeroCallback:", e); alert("Xero connection failed: " + e.message); }
+}
+
+function getXeroTokens() {
+    try { return JSON.parse(localStorage.getItem("xero-tokens") || "null"); } catch(e) { return null; }
+}
+
+// ── Refresh — also client-side with PKCE (just client_id, no secret) ────────
+async function getValidXeroToken() {
+    const tokens = getXeroTokens();
+    if (!tokens) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (tokens.expires_at > now + 60) return tokens;
+    try {
+        const resp = await fetch(AI_PROXY_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "xero_token_refresh", refresh_token: tokens.refresh_token, tenant_id: tokens.tenant_id })
+        });
+        const data = await resp.json();
+        if (data.access_token) {
+            const refreshed = { ...tokens, access_token: data.access_token, refresh_token: data.refresh_token || tokens.refresh_token, expires_at: now + (data.expires_in || 1800) };
+            localStorage.setItem("xero-tokens", JSON.stringify(refreshed));
+            return refreshed;
+        }
+    } catch(e) { console.error("Xero refresh failed:", e); }
+    return tokens;
+}
+
+function disconnectXero() {
+    localStorage.removeItem("xero-tokens");
+    updateXeroButton();
+    alert("Xero disconnected");
+}
+
+function updateXeroButton() {
+    const btn = document.getElementById("btn-xero");
+    if (!btn) return;
+    document.getElementById("btn-xero-disconnect")?.remove();
+    const tokens = getXeroTokens();
+    if (tokens) {
+        btn.textContent       = "📤 Export to Xero";
+        btn.style.color       = "#fff";
+        btn.style.background  = "#13B5EA";
+        btn.style.borderColor = "#13B5EA";
+        btn.onclick = () => exportXero();
+        const discBtn = document.createElement("button");
+        discBtn.id = "btn-xero-disconnect";
+        discBtn.textContent = "🔌 Disconnect Xero";
+        discBtn.style.cssText = "width:100%;margin-top:6px;padding:10px;background:none;border:1px solid #ef4444;color:#ef4444;border-radius:8px;font-size:13px;cursor:pointer;";
+        discBtn.onclick = disconnectXero;
+        btn.parentNode.insertBefore(discBtn, btn.nextSibling);
+    } else {
+        btn.textContent       = "🔗 Xero";
+        btn.style.color       = "#13B5EA";
+        btn.style.background  = "";
+        btn.style.borderColor = "#13B5EA";
+        btn.onclick = () => xeroConnect();
+    }
+}
+
+async function exportXero() {
+    if (!checkProFeature("accounting")) return;
+    const tokens = await getValidXeroToken();
+    if (!tokens) { xeroConnect(); return; }
+    const j        = getJob();
+    const applyVat = document.getElementById("q-vat")?.value === "true";
+    const vatNumber = settings.vatNumber || "";
+    const btn      = document.getElementById("btn-xero");
+    if (btn) { btn.disabled = true; btn.textContent = "Exporting…"; }
+    try {
+        let totalLabour = 0, totalMaterials = 0;
+        (j.rooms || []).forEach(room => {
+            const ct = room.tileSupply === "customer";
+            const rArea = (room.surfaces || []).reduce((a, s) => a + (s.area || 0), 0);
+            let rLabOpts = null;
+            if (room.labourType === "day") rLabOpts = { type: "day", days: room.days || 1, dayRate: room.dayRate || settings.dayRate || 200, totalArea: rArea };
+            (room.surfaces || []).forEach(s => {
+                s.tileType = s.tileType || room.tileType || "ceramic";
+                calcSurface(s, ct, rLabOpts);
+                totalLabour    += parseFloat(s.labour || 0) + parseFloat(s.ufhCost || 0) + parseFloat(s.prepCost || 0);
+                totalMaterials += parseFloat(s.materialSell || 0);
+            });
+        });
+        const jobDesc = (j.description || [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works");
+        const jobAddr = [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works";
+        const items = [];
+        if (totalLabour > 0)    items.push({ description: "Labour — " + jobDesc, quantity: 1, price: totalLabour.toFixed(2) });
+        if (totalMaterials > 0) items.push({ description: "Materials — " + jobAddr, quantity: 1, price: totalMaterials.toFixed(2) });
+        const resp = await fetch(AI_PROXY_URL, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action:         "xero_push",
+                access_token:   tokens.access_token,
+                tenant_id:      tokens.tenant_id,
+                vat_registered: applyVat,
+                vat_number:     vatNumber,
+                contact: { name: j.customerName, email: j.email || "", phone: j.phone || "" },
+                invoice: { reference: currentQuoteRef || ("Q" + Date.now().toString().slice(-6)), dueDate: "" },
+                items
+            })
+        });
+        const data = await resp.json();
+        if (data.error) { alert("Xero export failed: " + data.error); return; }
+        if (data.invoiceUrl) {
+            const { Browser } = window.Capacitor?.Plugins || {};
+            if (Browser?.open) Browser.open({ url: data.invoiceUrl });
+        }
+        alert("✅ " + (data.message || "Invoice created in Xero"));
+    } catch(e) { alert("Xero export error: " + e.message); }
+    finally { if (btn) { btn.disabled = false; updateXeroButton(); } }
+}
 
 function getQuoteToken(j) {
     if (!j.quoteToken) { j.quoteToken = uid(); saveAll(); }
@@ -6413,6 +8548,18 @@ async function sendInvoiceShare() {
     downloadPDF();
 }
 
+function previewQuote() {
+    renderQuote();
+    const content = document.getElementById("quote-output")?.innerHTML || "";
+    const preview = document.getElementById("quote-preview-content");
+    if (preview) preview.innerHTML = content;
+    show("screen-quote-preview");
+}
+
+function closeQuotePreview() {
+    show("screen-quote");
+}
+
 async function sendQuote() {
     const j = getJob();
     if (!j) return;
@@ -6495,6 +8642,7 @@ async function sendQuoteByEmail() {
             body: JSON.stringify({
                 action: "send_quote_email", to: j.email, customerName: j.customerName, quoteUrl: url,
                 companyName: settings.companyName || "", companyPhone: settings.companyPhone || "",
+                logoUrl: settings.logoUrl || "",
                 replyTo: settings.companyEmail || currentUser?.email || "",
                 fromName: settings.companyName || "TileIQ Pro",
                 verifiedDomain: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
@@ -6579,10 +8727,10 @@ async function buildQuoteUrl(j) {
             totalLabour += parseFloat(s.labour || 0) + parseFloat(s.ufhCost || 0);
             totalPrep   += parseFloat(s.prepCost || 0);
             grand       += parseFloat(s.total || 0);
-            const tileUP = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
-            const tileCostSurface = rCt ? 0 : tileUP * s.area * (1 + settings.markup/100);
-            if (s.type === "wall")  totalWallTiles  += tileCostSurface;
-            if (s.type === "floor") totalFloorTiles += tileCostSurface;
+            const tileUP2 = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
+            const tileCostS = rCt ? 0 : tileUP2 * s.area * (1 + settings.markup/100);
+            if (s.type === "wall")  totalWallTiles  += tileCostS;
+            if (s.type === "floor") totalFloorTiles += tileCostS;
         });
     });
     const subtotal = totalMats + totalLabour + totalPrep;
@@ -6613,11 +8761,11 @@ async function buildQuoteUrl(j) {
     };
     try {
         await sb.from("quote_snapshots").upsert(
-            { token: j.quoteToken, snapshot, created_at: new Date().toISOString() },
+            { token: j.quoteToken, user_id: currentUser?.id, snapshot, created_at: new Date().toISOString() },
             { onConflict: "token" }
         );
     } catch(e) { console.error("Snapshot save failed:", e); }
-    return `https://tileiq.app/quote/${j.quoteToken}`;
+    return `https://tileiq.app/quote/${j.quoteToken}/pdf`;
 }
 
 async function fetchQuoteResponse(token) {
@@ -6662,115 +8810,6 @@ async function syncAllQuoteStatuses() {
     }
     if (changed) { saveAll(); renderDashboard(); renderJobQuoteStatusBar(); }
 }
-/* ═══════════════════════════════════════════════════════════════
-   XERO ACCOUNTING OAUTH (PKCE)
-═══════════════════════════════════════════════════════════════ */
-const XERO_CLIENT_ID    = "E053784FCD6344099E0A47BCFE20ABED";
-const XERO_REDIRECT_URI = "https://damp-bread-e0f9.kevin-woodley.workers.dev/xero-callback";
-const XERO_SCOPES       = "openid profile email accounting.invoices accounting.contacts offline_access";
-
-async function xeroConnect() {
-    const verifier  = Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2,"0")).join("");
-    const digest    = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-    const challenge = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/[+]/g,"-").replace(/[/]/g,"_").replace(/=+$/,"");
-    const state     = "xero_" + verifier;
-    localStorage.setItem("xero-verifier", verifier);
-    const params = new URLSearchParams({ response_type:"code", client_id:XERO_CLIENT_ID, redirect_uri:XERO_REDIRECT_URI, scope:XERO_SCOPES, state, code_challenge:challenge, code_challenge_method:"S256" });
-    const url = "https://login.xero.com/identity/connect/authorize?" + params.toString();
-    const { Browser } = window.Capacitor?.Plugins || {};
-    if (Browser?.open) await Browser.open({ url, presentationStyle:"popover" });
-    else window.open(url, "_system");
-}
-
-function handleXeroCallback(url) {
-    try {
-        const u = new URL(url);
-        const tokens = u.searchParams.get("tokens");
-        if (!tokens) return;
-        const data = JSON.parse(atob(decodeURIComponent(tokens)));
-        localStorage.setItem("xero-tokens", JSON.stringify({ access_token:data.access_token, refresh_token:data.refresh_token, tenant_id:data.tenant_id, expires_at:Math.floor(Date.now()/1000)+(data.expires_in||1800) }));
-        alert("\u2705 Xero connected successfully!");
-        updateXeroButton();
-    } catch(e) { console.error("handleXeroCallback:", e); }
-}
-
-function getXeroTokens() {
-    try { return JSON.parse(localStorage.getItem("xero-tokens") || "null"); } catch(e) { return null; }
-}
-
-async function getValidXeroToken() {
-    const tokens = getXeroTokens();
-    if (!tokens) return null;
-    const now = Math.floor(Date.now()/1000);
-    if (tokens.expires_at > now + 60) return tokens;
-    try {
-        const resp = await fetch(AI_PROXY_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ action:"xero_token_refresh", refresh_token:tokens.refresh_token }) });
-        const data = await resp.json();
-        if (data.access_token) {
-            const refreshed = { ...tokens, access_token:data.access_token, refresh_token:data.refresh_token||tokens.refresh_token, expires_at:now+(data.expires_in||1800) };
-            localStorage.setItem("xero-tokens", JSON.stringify(refreshed));
-            return refreshed;
-        }
-    } catch(e) {}
-    return tokens;
-}
-
-function updateXeroButton() {
-    const btn = document.getElementById("btn-xero");
-    if (!btn) return;
-    const tokens = getXeroTokens();
-    if (tokens) {
-        btn.textContent = "📤 Export to Xero";
-        btn.style.color = "#000";
-        btn.style.background = "#13B5EA";
-        btn.style.borderColor = "#13B5EA";
-        btn.onclick = () => exportXero();
-    } else {
-        btn.textContent = "🔗 Xero";
-        btn.style.color = "#13B5EA";
-        btn.style.background = "";
-        btn.style.borderColor = "#13B5EA";
-        btn.onclick = () => xeroConnect();
-    }
-}
-
-async function exportXero() {
-    if (!checkProFeature("accounting")) return;
-    const tokens = await getValidXeroToken();
-    if (!tokens) { xeroConnect(); return; }
-    const j        = getJob();
-    const applyVat = document.getElementById("q-vat")?.value === "true";
-    const btn      = document.getElementById("btn-xero");
-    if (btn) { btn.disabled = true; btn.textContent = "Exporting..."; }
-    try {
-        let totalLabour = 0, totalMaterials = 0;
-        (j.rooms || []).forEach(room => {
-            const ct = room.tileSupply === "customer";
-            const rArea = (room.surfaces || []).reduce((a,s) => a+(s.area||0), 0);
-            let rLabOpts = null;
-            if (room.labourType === "day") rLabOpts = { type:"day", days:room.days||1, dayRate:room.dayRate||settings.dayRate||200, totalArea:rArea };
-            (room.surfaces || []).forEach(s => {
-                s.tileType = s.tileType || room.tileType || "ceramic";
-                calcSurface(s, ct, rLabOpts);
-                totalLabour    += parseFloat(s.labour||0) + parseFloat(s.ufhCost||0) + parseFloat(s.prepCost||0);
-                totalMaterials += parseFloat(s.materialSell||0);
-            });
-        });
-        const items = [];
-        if (totalLabour > 0)    items.push({ description: j.description || "Labour",  quantity:1, price:totalLabour.toFixed(2) });
-        if (totalMaterials > 0) items.push({ description: "Materials", quantity:1, price:totalMaterials.toFixed(2) });
-        const resp = await fetch(AI_PROXY_URL, {
-            method:"POST", headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ action:"xero_push", access_token:tokens.access_token, tenant_id:tokens.tenant_id, vat_registered:applyVat, contact:{ name:j.customerName, email:j.email||"" }, invoice:{ reference: currentQuoteRef || ("Q"+Date.now().toString().slice(-6)) }, items })
-        });
-        const data = await resp.json();
-        if (data.error) alert("Xero export failed: " + data.error);
-        else if (data.invoiceUrl && confirm("\u2705 Invoice created in Xero!\n\nOpen in Xero?")) window.open(data.invoiceUrl, "_system");
-        else alert("\u2705 " + (data.message || "Invoice created in Xero"));
-    } catch(e) { alert("Xero export error: " + e.message); }
-    finally { if (btn) { btn.disabled = false; updateXeroButton(); } }
-}
-
 /* ═══════════════════════════════════════════════════════════════
    REVENUECAT — REST API (no native SDK needed)
 ═══════════════════════════════════════════════════════════════ */
@@ -6853,6 +8892,7 @@ const ACCESS_CODES = [
     'PROTIILER',     // Pro tiler code
     'EARLYBIRD',     // Early access
     'KEVIN2026',     // Owner code
+    'FOUNDING20',    // Beta tester founding member code
 ];
 
 function redeemAccessCode() {
@@ -7110,7 +9150,7 @@ async function loadPaywallPackages() {
 }
 
 function openPlayStorePurchase(plan) {
-    const pkg = "com.tileiq.pro";
+    const pkg = "com.tileiqpro.android";
     const sku = plan === "yearly" ? "tileiq_pro_yearly" : "tileiq_pro_monthly";
     const url = `https://play.google.com/store/account/subscriptions?sku=${sku}&package=${pkg}`;
     if (window.AndroidBridge?.open) window.AndroidBridge.open(url);
@@ -7145,21 +9185,356 @@ function checkProFeature(featureName) {
 }
 
 
-// Auto-fill demo credentials when ?demo=1 is in the URL
-(function() {
-    if (new URLSearchParams(window.location.search).get("demo") === "1") {
-        window.addEventListener("DOMContentLoaded", function() {
-            const email = document.getElementById("si-email");
-            const pass  = document.getElementById("si-password");
-            if (email) email.value = "demo@tile-iq.com";
-            if (pass)  pass.value  = "Demo1234!";
-        });
-        // Also try after a short delay in case Capacitor renders late
-        setTimeout(function() {
-            const email = document.getElementById("si-email");
-            const pass  = document.getElementById("si-password");
-            if (email && !email.value) email.value = "demo@tile-iq.com";
-            if (pass  && !pass.value)  pass.value  = "Demo1234!";
-        }, 500);
+
+/* ─── BALLPARK PRICE ESTIMATE ────────────────────────────────── */
+function calcBallpark(job) {
+    if (!job || !job.areaMeta || job.areaMeta <= 0) return null;
+    const area = parseFloat(job.areaMeta);
+    const workType = (job.workType || job.jobType || "").toLowerCase();
+    const isWall = workType.includes("wall");
+    const labourRate = isWall
+        ? (parseFloat(settings.labourM2Wall) || 35)
+        : (parseFloat(settings.labourM2Floor) || 28);
+    const markup = 1 + (parseFloat(settings.markup) || 20) / 100;
+
+    // Tile cost range: budget £15/m², premium £50/m²
+    const tileLow = 15;
+    const tileHigh = 50;
+
+    const low  = Math.round((area * labourRate + area * tileLow  * markup) / 10) * 10;
+    const high = Math.round((area * labourRate + area * tileHigh * markup) / 10) * 10;
+
+    return { low, high, area };
+}
+
+function ballparkHtml(job, compact) {
+    const est = calcBallpark(job);
+    if (!est) return "";
+    if (compact) {
+        return `<div style="font-size:12px;color:#f59e0b;font-weight:700;margin-top:5px;">💰 Est. £${est.low.toLocaleString()} – £${est.high.toLocaleString()}</div>`;
     }
-})();
+    return `<div style="background:#1e293b;border:1px solid #f59e0b33;border-radius:10px;padding:12px 14px;margin:12px 16px 0;">
+        <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">💰 Ballpark Estimate</div>
+        <div style="font-size:20px;font-weight:800;color:#f59e0b;">£${est.low.toLocaleString()} – £${est.high.toLocaleString()}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px;">Based on ${est.area}m² · your labour rate · budget to premium tiles</div>
+        <div style="font-size:11px;color:#475569;margin-top:2px;">Add rooms for a full quote</div>
+    </div>`;
+}
+
+/* ─── VOICEMAILS ─────────────────────────────────────────────── */
+/* ================================================================
+   VOICEMAIL GREETING GENERATOR (Google TTS)
+================================================================ */
+async function generateGreeting() {
+    if (!currentUser) return;
+    const nameEl = document.getElementById("set-voicemail-name");
+    const businessName = (nameEl?.value || "").trim() || settings.voicemailName || settings.companyName || "";
+    if (!businessName) {
+        alert("Please enter your business name first.");
+        nameEl?.focus();
+        return;
+    }
+    const btn = document.getElementById("btn-generate-greeting");
+    const msgEl = document.getElementById("greeting-gen-msg");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Generating…"; }
+    if (msgEl) { msgEl.style.color = "#94a3b8"; msgEl.textContent = "Generating your greeting…"; }
+    try {
+        let greetTok = "";
+        try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) greetTok = JSON.parse(s).access_token || ""; } catch(e) {}
+        const voiceName = document.getElementById("greeting-voice")?.value || "en-GB-Neural2-A";
+        alert("Sending voice: " + voiceName);
+        const resp = await fetch(TILEIQ_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + greetTok },
+            body: JSON.stringify({ action: "generate_greeting", user_id: currentUser.id, business_name: businessName, voice_name: voiceName })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || "Failed");
+        if (!data.greetingUrl) throw new Error("No greetingUrl returned: " + JSON.stringify(data));
+        settings.greetingUrl = data.greetingUrl;
+        settings.voicemailName = businessName;
+        settings.greetingVoice = voiceName;
+        saveSettingsLocal();
+        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "✅ Greeting saved! Callers will hear your new greeting."; }
+        const previewBtn = document.getElementById("btn-preview-greeting");
+        if (previewBtn) previewBtn.style.display = "inline-block";
+    } catch(e) {
+        if (msgEl) { msgEl.style.color = "#f87171"; msgEl.textContent = "Failed: " + e.message; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "🎙 Generate Greeting"; }
+    }
+}
+
+function previewGreeting() {
+    const url = settings.greetingUrl;
+    if (!url) { alert("No greeting generated yet."); return; }
+    const audio = new Audio(url);
+    audio.play().catch(e => alert("Could not play audio: " + e.message));
+}
+
+function goVoicemails() {
+  show("screen-voicemails");
+  loadVoicemails();
+}
+
+async function loadVoicemails() {
+  const list = document.getElementById("voicemails-list");
+  if (!list) return;
+  list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;">Loading…</div>';
+
+  try {
+    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+    const token = session?.access_token;
+    if (!token) { list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Sign in required</div>'; return; }
+
+    const headers = { "apikey": SB_KEY, "Authorization": "Bearer " + token };
+
+    // Load from jobs table — voicemail, ai_receptionist, and missed_call sources
+    const resp = await fetch(
+      `${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&source=in.(voicemail,ai_receptionist,missed_call)&select=data,source,updated_at&order=updated_at.desc&limit=50`,
+      { headers }
+    );
+    const rows = await resp.json();
+
+    if (!rows || !rows.length) {
+      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">No messages yet</div><div style=\"font-size:13px;\">Voicemails and AI receptionist enquiries appear here.</div></div>';
+      return;
+    }
+
+    list.innerHTML = rows.map(row => {
+      const v = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+      if (!v) return "";
+      const source = row.source || v.source || "voicemail";
+      const date = new Date(row.updated_at || v.createdAt);
+      const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+      const sourceIcon = source === "ai_receptionist" ? "📞" : source === "missed_call" ? "📵" : "🎙";
+      const sourceLabel = source === "ai_receptionist" ? "AI Enquiry" : source === "missed_call" ? "Missed Call" : "Voicemail";
+      const callerName = v.customerName && v.customerName !== "Unknown Caller" && v.customerName !== "Missed Call" ? v.customerName : "";
+      const callerPhone = v.phone || v.customerPhone || "";
+      const description = v.description || v.voicemailTranscript?.slice(0, 80) || "";
+
+      return `<div onclick="goJob('${v.id}')" style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;cursor:pointer;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:24px;">${sourceIcon}</span>
+      <div>
+        <div style="font-weight:700;font-size:15px;">${esc(callerName || callerPhone || "Unknown")}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${dateStr}</div>
+      </div>
+    </div>
+    <span style="font-size:11px;font-weight:700;color:var(--accent);background:rgba(224,122,47,0.12);padding:3px 8px;border-radius:20px;">${sourceLabel}</span>
+  </div>
+  ${callerName && callerPhone ? `<div style="font-size:12px;color:var(--text-muted);">📞 ${esc(callerPhone)}</div>` : ""}
+  ${description ? `<div style="font-size:13px;color:var(--text-muted);line-height:1.4;">${esc(description)}</div>` : ""}
+  <div style="display:flex;gap:8px;margin-top:4px;" onclick="event.stopPropagation()">
+    ${callerPhone ? `<a href="tel:${esc(callerPhone)}" style="flex:1;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-weight:700;color:var(--text);text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;">📞 Call back</a>` : ""}
+    <button onclick="goJob('${v.id}')" style="flex:1;background:var(--accent);color:#000;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;">View Job →</button>
+  </div>
+</div>`;
+    }).filter(Boolean).join("");
+
+  } catch(e) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Failed to load</div>';
+    console.error("loadVoicemails error:", e);
+  }
+}
+
+async function playVoicemail(id, url) {
+  // Mark as listened
+  try {
+    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+    const token = session?.access_token;
+    await fetch(SB_URL + "/rest/v1/customer_voicemails?id=eq." + id, {
+      method: "PATCH",
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ listened: true })
+    });
+    // Remove unread dot
+    const card = document.getElementById("vm-" + id);
+    if (card) {
+      card.style.borderColor = "var(--border)";
+      const dot = card.querySelector('span[style*="border-radius:50%"]');
+      if (dot) dot.remove();
+    }
+  } catch(e) {}
+
+  // Play audio via proxy
+  const proxyUrl = "https://damp-bread-e0f9.kevin-woodley.workers.dev/audio-proxy?url=" + encodeURIComponent(url);
+  const audio = new Audio(proxyUrl);
+  audio.play().catch(e => {
+    // Fallback - open in browser
+    window.open(proxyUrl, "_blank");
+  });
+}
+
+async function deleteVoicemail(id) {
+  if (!confirm("Delete this voicemail?")) return;
+  try {
+    const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+    const token = session?.access_token;
+    await fetch(SB_URL + "/rest/v1/customer_voicemails?id=eq." + id, {
+      method: "DELETE",
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + token }
+    });
+    const card = document.getElementById("vm-" + id);
+    if (card) card.remove();
+  } catch(e) {
+    alert("Failed to delete voicemail");
+  }
+}
+
+
+/* ─── DIVERT SETUP ───────────────────────────────────────────── */
+function setupDivert() {
+    const twilioNum = (settings.twilioNumber || "").replace(/\s/g, "");
+    if (!twilioNum) {
+        alert("Please enter your TileIQ Business Number above and save settings first.");
+        return;
+    }
+    // Format for divert code: convert 07xxx to +447xxx
+    let e164 = twilioNum;
+    if (e164.startsWith("07")) e164 = "+44" + e164.slice(1);
+    else if (e164.startsWith("447")) e164 = "+" + e164;
+    // Divert on no answer after 20 seconds (works on EE, O2, Vodafone, Three)
+    const code = "**61*" + e164 + "*11*20#";
+    if (confirm("This will open your dialler with the divert setup code.\n\nJust press Call and your missed calls will go to your TileIQ voicemail automatically.\n\nCode: " + code)) {
+        window.open("tel:" + code);
+    }
+}
+
+
+
+// ── Pull to Refresh ──────────────────────────────────────────────────────────
+function initPullToRefresh() {
+    let startY = 0;
+    let pulling = false;
+    let indicator = null;
+    const THRESHOLD = 72;
+    const SCREENS = ["screen-dashboard", "screen-job", "screen-settings"];
+
+    function getIndicator() {
+        if (!indicator) {
+            indicator = document.createElement("div");
+            indicator.id = "ptr-indicator";
+            indicator.style.cssText = [
+                "position:fixed", "top:0", "left:0", "right:0", "z-index:99998",
+                "display:flex", "align-items:center", "justify-content:center",
+                "height:0", "overflow:hidden", "background:#0f172a",
+                "transition:height 0.15s ease", "pointer-events:none"
+            ].join(";");
+            indicator.innerHTML = `<div id="ptr-inner" style="display:flex;align-items:center;gap:10px;color:#e07a2f;font-size:13px;font-weight:600;">
+                <svg id="ptr-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e07a2f" stroke-width="2.5" style="transition:transform 0.2s;">
+                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                </svg>
+                <span id="ptr-label">Pull to refresh</span>
+            </div>`;
+            document.body.appendChild(indicator);
+        }
+        return indicator;
+    }
+
+    function activeScreen() {
+        return SCREENS.find(s => {
+            const el = document.getElementById(s);
+            return el && !el.classList.contains("hidden");
+        });
+    }
+
+    function isAtTop() {
+        const screen = document.getElementById(activeScreen());
+        if (!screen) return false;
+        const scrollable = screen.querySelector(".screen-scroll, .scroll-body, [style*='overflow']") || screen;
+        return (scrollable.scrollTop || 0) <= 2;
+    }
+
+    document.addEventListener("touchstart", (e) => {
+        if (!activeScreen()) return;
+        if (!isAtTop()) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+    }, { passive: true });
+
+    document.addEventListener("touchmove", (e) => {
+        if (!pulling) return;
+        const dy = e.touches[0].clientY - startY;
+        if (dy <= 0) return;
+        const pct = Math.min(dy / THRESHOLD, 1);
+        const h = Math.min(dy * 0.4, THRESHOLD * 0.6);
+        const ind = getIndicator();
+        ind.style.height = h + "px";
+        const icon = document.getElementById("ptr-icon");
+        const label = document.getElementById("ptr-label");
+        if (icon) icon.style.transform = `rotate(${pct * 180}deg)`;
+        if (label) label.textContent = pct >= 1 ? "Release to refresh" : "Pull to refresh";
+        ind.style.opacity = pct.toString();
+    }, { passive: true });
+
+    document.addEventListener("touchend", async (e) => {
+        if (!pulling) return;
+        pulling = false;
+        const dy = e.changedTouches[0].clientY - startY;
+        const ind = getIndicator();
+
+        if (dy >= THRESHOLD) {
+            // Trigger refresh
+            const label = document.getElementById("ptr-label");
+            const icon = document.getElementById("ptr-icon");
+            if (label) label.textContent = "Refreshing…";
+            if (icon) icon.style.animation = "ptr-spin 0.7s linear infinite";
+
+            // Add spin keyframe once
+            if (!document.getElementById("ptr-style")) {
+                const st = document.createElement("style");
+                st.id = "ptr-style";
+                st.textContent = "@keyframes ptr-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}";
+                document.head.appendChild(st);
+            }
+
+            try {
+                await loadUserData();
+                renderDashboard();
+            } catch(e) {}
+
+            // Collapse indicator
+            ind.style.transition = "height 0.3s ease, opacity 0.3s ease";
+            ind.style.height = "0";
+            ind.style.opacity = "0";
+            setTimeout(() => {
+                ind.style.transition = "height 0.15s ease";
+                if (icon) icon.style.animation = "";
+            }, 350);
+        } else {
+            // Snap back
+            ind.style.height = "0";
+            ind.style.opacity = "0";
+        }
+    }, { passive: true });
+}
+
+async function provisionTwilioNumber() {
+    if (!currentUser) { alert("Please sign in first."); return; }
+    const btn = document.querySelector("[onclick='provisionTwilioNumber()']");
+    if (btn) { btn.disabled = true; btn.textContent = "Getting..."; }
+    try {
+        const resp = await fetch(TILEIQ_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "provision_twilio_number", user_id: currentUser.id, friendly_name: settings.companyName || "TileIQ Pro" })
+        });
+        const data = await resp.json();
+        if (data.phone_number) {
+            const formatted = data.phone_number.replace("+44", "0");
+            document.getElementById("set-twilio-number").value = formatted;
+            settings.twilioNumber = formatted.replace(/\s/g, "");
+            saveSettings();
+            alert("Your business number is: " + formatted + (data.already_exists ? " (already assigned)" : " ✅ Number activated!"));
+        } else {
+            alert("Failed to get number: " + (data.error || "Unknown error"));
+        }
+    } catch(e) {
+        alert("Error: " + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Get Number"; }
+    }
+}
