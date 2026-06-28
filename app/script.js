@@ -6558,7 +6558,12 @@ function renderMaterials() {
             const prepItems = [];
             if (s.cementBoards) prepItems.push(`${s.cementBoards} cement board${s.cementBoards!==1?"s":""}`);
             if (s.levelBags)    prepItems.push(`${s.levelBags} × 20kg levelling bag${s.levelBags!==1?"s":""}`);
-            if (s.tanking)      prepItems.push(`Tanking £${(s.prepCost > 0 ? s.prepCost : parseFloat(settings?.tanking||15) * s.area).toFixed(2)}`);
+            if (s.tanking) {
+                const kp = parseFloat(settings?.tanking||45);
+                const lr = parseFloat(settings?.tankingLabour||8);
+                const nk = s.tankingKits || Math.ceil(s.area/6);
+                prepItems.push(`Tanking: ${nk} kit${nk!==1?"s":""} £${(nk*kp).toFixed(2)} + labour £${(s.area*lr).toFixed(2)}`);
+            }
             else if (s.prepCost > 0) prepItems.push(`Prep £${s.prepCost.toFixed(2)}`);
             if (s.primer && !s.tanking) prepItems.push(`Primer £${(parseFloat(settings?.primerPrice||3.50) * s.area).toFixed(2)}`);
 
