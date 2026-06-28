@@ -4882,13 +4882,16 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         }
     }
     if (s.tanking) {
-        const kitRate    = parseFloat(S.tanking) || 15;
+        const kitPrice   = parseFloat(S.tanking) || 45;
+        const kitCoverM2 = 6;
+        const kits       = Math.ceil(s.area / kitCoverM2);
+        const kitCost    = kits * kitPrice;
         const labRate    = parseFloat(S.tankingLabour) || 8;
-        const kitCost    = s.area * kitRate;
         const labCost    = s.area * labRate;
         const c          = kitCost + labCost;
         s.prepCost += c;
-        s.prepLines.push(`Tanking Kit: ${s.area.toFixed(2)}m² × £${kitRate}/m² = £${kitCost.toFixed(2)}`);
+        s.tankingKits = kits;
+        s.prepLines.push(`Tanking Kit: ${kits} kit${kits!==1?"s":""} × £${kitPrice} (covers ${kitCoverM2}m² each) = £${kitCost.toFixed(2)}`);
         s.prepLines.push(`Tanking Labour: ${s.area.toFixed(2)}m² × £${labRate}/m² = £${labCost.toFixed(2)}`);
     }
     // Primer (floors and walls)
@@ -6088,7 +6091,7 @@ function goSettings() {
     document.getElementById("set-level4").value         = s.level4       || 9;
     if (document.getElementById("set-compound-bag-price"))  document.getElementById("set-compound-bag-price").value  = s.compoundBagPrice  || 12;
     if (document.getElementById("set-compound-coverage"))   document.getElementById("set-compound-coverage").value   = s.compoundCoverage   || 3;
-    document.getElementById("set-tanking").value        = s.tanking      || 15;
+    document.getElementById("set-tanking").value        = s.tanking      || 45;
     if (document.getElementById("set-tanking-labour")) document.getElementById("set-tanking-labour").value = s.tankingLabour || 8;
     document.getElementById("set-clip-price").value     = s.clipPrice    || 12;
     document.getElementById("set-wedge-price").value    = s.wedgePrice   || 8;
@@ -6372,7 +6375,7 @@ function saveSettings() {
         level4:        parseFloat(document.getElementById("set-level4").value)         || 9,
         compoundBagPrice:  parseFloat(document.getElementById("set-compound-bag-price")?.value) || 12,
         compoundCoverage:  parseFloat(document.getElementById("set-compound-coverage")?.value)  || 3,
-        tanking:       parseFloat(document.getElementById("set-tanking").value)        || 15,
+        tanking:       parseFloat(document.getElementById("set-tanking").value)        || 45,
         tankingLabour: parseFloat(document.getElementById("set-tanking-labour")?.value) || 8,
         clipPrice:     parseFloat(document.getElementById("set-clip-price").value)     || 12,
         wedgePrice:    parseFloat(document.getElementById("set-wedge-price").value)    || 8,
