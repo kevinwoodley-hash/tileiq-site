@@ -1325,6 +1325,21 @@
                     <div class="field-group"><label>Email</label><input id="set-company-email" type="email"></div>
                 </div>
                 <div class="field-group"><label>Company Address</label><input id="set-company-address" placeholder="Street, Town, Postcode"></div>
+                <div class="form-card" id="domain-verify-card" style="margin-top:12px;">
+                    <div class="form-section-label">✉️ Custom Email Domain</div>
+                    <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Send quotes from your own domain (e.g. quotes@yourbusiness.com)</div>
+                    <div class="field-group">
+                        <label>Your Domain</label>
+                        <input id="set-custom-domain" placeholder="e.g. yourbusiness.com" type="text" autocapitalize="none">
+                    </div>
+                    <div id="domain-verify-msg" style="font-size:12px;margin-bottom:8px;"></div>
+                    <div id="domain-verified-info" style="display:none;font-size:13px;color:#10b981;margin-bottom:8px;"></div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button id="btn-verify-domain" onclick="verifyDomain()" class="btn-primary btn-sm">🔗 Verify Domain</button>
+                        <button onclick="checkDomainStatus()" class="btn-secondary btn-sm">↻ Check Status</button>
+                        <button onclick="removeDomain()" class="btn-secondary btn-sm" style="color:#ef4444;border-color:#ef4444;">✕ Remove</button>
+                    </div>
+                </div>
                 <div class="field-group">
                     <label>VAT Number <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(shown on quotes if entered)</span></label>
                     <input id="set-vat-number" placeholder="GB 123 4567 89" autocomplete="off">
