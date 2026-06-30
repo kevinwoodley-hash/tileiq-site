@@ -4836,7 +4836,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     }
 
     s.ufhCost = (s.ufh && s.type === "floor") ? (
-        (s.ufhMat || 0) + (s.ufhStat || 0) + (s.ufhOther || 0) + s.area * (s.ufhLabour || parseFloat(S.ufhM2Rate) || 15)
+        (s.ufhMat || 0) + (s.ufhStat || 0) + (s.ufhOther || 0) + s.area * (s.ufhLabour || 15)
     ) : 0;
 
     // Wet room tray flat rate (per-job price overrides settings)
@@ -6100,8 +6100,6 @@ function goSettings() {
     document.getElementById("set-rate-modular").value       = tr.modular       || 1.3;
     document.getElementById("set-rate-herringbone").value   = tr.herringbone   || 1.4;
     document.getElementById("set-rate-mosaic").value        = tr.mosaic        || 1.6;
-    document.getElementById("set-ufh-m2").value         = s.ufhM2Rate   || 52;
-    document.getElementById("set-ufh-fixed").value      = s.ufhFixedCost || 180;
     document.getElementById("set-wet-room-tray").value  = s.wetRoomTrayRate || 150;
     document.getElementById("set-niche-labour").value   = s.nicheLabourRate  || 30;
     document.getElementById("set-cementboard").value    = s.cementBoard  || 18;
@@ -6384,8 +6382,6 @@ function saveSettings() {
             herringbone:   parseFloat(document.getElementById("set-rate-herringbone").value)   || 1.4,
             mosaic:        parseFloat(document.getElementById("set-rate-mosaic").value)        || 1.6
         },
-        ufhM2Rate:     parseFloat(document.getElementById("set-ufh-m2").value)         || 52,
-        ufhFixedCost:  parseFloat(document.getElementById("set-ufh-fixed").value)      || 180,
         wetRoomTrayRate: parseFloat(document.getElementById("set-wet-room-tray").value) || 150,
         nicheLabourRate: parseFloat(document.getElementById("set-niche-labour").value)   || 30,
         cementBoard:   parseFloat(document.getElementById("set-cementboard").value)    || 18,
