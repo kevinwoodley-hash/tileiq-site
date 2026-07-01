@@ -9202,8 +9202,8 @@ async function loadPaywallPackages() {
 }
 
 function openPlayStorePurchase(plan) {
-    const pkg = "com.tileiqpro.android";
-    const sku = plan === "yearly" ? "tileiq_pro_yearly" : "tileiq_pro_monthly";
+    const pkg = "com.tileiq.pro";
+    const sku = "tileiq_pro";
     const url = `https://play.google.com/store/account/subscriptions?sku=${sku}&package=${pkg}`;
     if (window.AndroidBridge?.open) window.AndroidBridge.open(url);
     else window.open(url, "_system");
