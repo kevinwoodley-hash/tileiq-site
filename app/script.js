@@ -2,9 +2,9 @@
 (function() {
     function registerEarlyPushListener() {
         try {
-            const FM = window.Capacitor?.Plugins?.FirebaseMessaging;
+            const FM = window.Capacitor?.Plugins?.OneSignalPlugin;
             if (!FM) return false;
-            FM.addListener("notificationActionPerformed", function(event) {
+            FM.addListener("notificationOpened", function(event) {
                 const data = event.notification?.data;
                 const type = data?.type || "";
                 if (type) localStorage.setItem("tileiq-pending-nav", JSON.stringify({ type: type, token: data.token||"", jobId: data.jobId||data.job_id||"", ts: Date.now() }));
@@ -639,6 +639,7 @@ function tryOfflineLogin(email, password) {
         currentUser = session.user;
         _proStatus = null;
         _rcAppUserId = null;
+        if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
         try {
             const localJobs = localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id));
             if (localJobs) jobs = JSON.parse(localJobs);
@@ -710,6 +711,7 @@ async function authSignIn() {
         );
 
         currentUser = json.body.user;
+        if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
 
         // Clear old user's in-memory data if a different user is logging in
         const cachedUserId = localStorage.getItem("tileiq-last-user");
@@ -1741,7 +1743,7 @@ async function loadUserData() {
                 await ble.startNotifications({ deviceId: this._deviceId, service: this.SERVICE_UUID, characteristic: this.CHAR_UUID });
             } catch (err) {
                 console.error('Disto connect error:', err);
-                alert('Could not connect to Disto D2. Make sure Bluetooth is on and the device is nearby.');
+                alert('Disto error: ' + (err.message || err.code || JSON.stringify(err)));
                 this._connected = false;
                 this._updateBtn();
             }
@@ -6991,6 +6993,22 @@ const TILEIQ_WORKER_URL = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
 
 async function checkPendingPushNav() {
     try {
+        // Check OneSignal native pending nav first
+        const OS = window.Capacitor?.Plugins?.OneSignalPlugin;
+        if (OS) {
+            try {
+                const osNav = await OS.getPendingNav();
+                if (osNav?.data) {
+                    const navData = JSON.parse(osNav.data);
+                    localStorage.setItem("tileiq-pending-nav", JSON.stringify({
+                        type: navData.type || "",
+                        token: navData.token || navData.quoteToken || "",
+                        jobId: navData.jobId || navData.job_id || "",
+                        ts: Date.now()
+                    }));
+                }
+            } catch(e) {}
+        }
         const raw = localStorage.getItem("tileiq-pending-nav");
         if (!raw) return;
         const nav = JSON.parse(raw);
@@ -7023,179 +7041,12 @@ async function checkPendingPushNav() {
 
 async function initPushNotifications() {
     try {
-        const { FirebaseMessaging } = window.Capacitor?.Plugins || {};
-        if (!FirebaseMessaging) { console.warn("FirebaseMessaging plugin not found"); return; }
-
-        // Create notification channel (Android 8+) — must exist before any notification arrives
-        try {
-            await FirebaseMessaging.createChannel({
-                id:          "tileiq_quotes",
-                name:        "TileIQ Pro Quotes",
-                description: "Quote accepted, declined and viewed notifications",
-                importance:  4,   // IMPORTANCE_HIGH — shows heads-up
-                visibility:  1,   // VISIBILITY_PUBLIC
-                sound:       "default",
-                vibration:   true,
-                lights:      true
-            });
-            console.log("Notification channel created");
-        } catch(e) { console.warn("Channel creation:", e.message); }
-
-        const { receive } = await FirebaseMessaging.requestPermissions();
-        if (receive !== "granted") { console.warn("Push permission denied:", receive); return; }
-
-        const { token } = await FirebaseMessaging.getToken({ vapidKey: "" });
-        if (!token || !currentUser) { console.warn("No FCM token or user"); return; }
-
-        console.log("FCM token obtained, saving...");
-
-        const { error } = await sb.from("device_tokens").upsert(
-            { user_id: currentUser.id, token, platform: "android", updated_at: new Date().toISOString() },
-            { onConflict: "token" }
-        );
-        if (error) { console.error("device_tokens save error:", error.message); return; }
-        console.log("FCM token saved successfully");
-
-        // Listen for foreground notifications
-        FirebaseMessaging.addListener("notificationReceived", async (event) => {
-            const n = event.notification;
-            const title = n?.data?._title || n?.title || "TileIQ Pro";
-            const body  = n?.data?._body  || n?.body  || "";
-            const type  = n?.data?.type || "";
-            const navData = n?.data || {};
-
-            // Show local notification so tapping it fires notificationActionPerformed reliably
-            try {
-                const { LocalNotifications } = Capacitor.Plugins;
-                if (LocalNotifications) {
-                    const perm = await LocalNotifications.checkPermissions();
-                    if (perm.display !== "granted") await LocalNotifications.requestPermissions();
-                    await LocalNotifications.schedule({
-                        notifications: [{
-                            id: Math.floor(Math.random() * 100000),
-                            title,
-                            body,
-                            extra: navData,
-                            channelId: "tileiq_quotes",
-                            sound: "default"
-                        }]
-                    });
-                } else {
-                    showPushBanner(title, body, navData);
-                }
-            } catch(e) {
-                showPushBanner(title, body, navData);
-            }
-
-            // Also sync in background
-            if (type === "ai_enquiry" || type === "voicemail" || type === "web_enquiry" || type === "voicemail_job" || type === "call_job" || type === "missed_call") {
-                localStorage.removeItem("tileiq-last-sync");
-                loadUserData().then(() => { renderDashboard(); }).catch(() => {});
-            } else if (type === "quote_response") {
-                syncAllQuoteStatuses().catch(() => {});
-            } else if (type === "customer_message") {
-                const tok = navData.token;
-                if (tok) { const j = jobs.find(j => j.quoteToken === tok); if (j) loadMessagesBadge(j.quoteToken); }
-            } else if (type === "schedule_confirmed" || type === "schedule_suggest") {
-                localStorage.removeItem("tileiq-last-sync");
-                loadUserData().catch(() => {});
-            }
-        });
-
-        // Local notification tap handler (works from killed state)
-        try {
-            const { LocalNotifications } = Capacitor.Plugins;
-            if (LocalNotifications) {
-                await LocalNotifications.createChannel({
-                    id: "tileiq_quotes", name: "TileIQ Notifications",
-                    importance: 5, sound: "default", vibration: true
-                });
-                LocalNotifications.addListener("localNotificationActionPerformed", (event) => {
-                    const data = event.notification?.extra || {};
-                    const type = data?.type || "";
-                    if (type) localStorage.setItem("tileiq-pending-nav", JSON.stringify({ type, token: data.token||"", jobId: data.jobId||data.job_id||"", ts: Date.now() }));
-                    async function localSyncThenGo(navFn) {
-                        localStorage.removeItem("tileiq-last-sync");
-                        try { await loadUserData(); } catch(e) {}
-                        navFn();
-                    }
-                    if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
-                        type === "voicemail_job" || type === "call_job" || type === "missed_call") {
-                        localSyncThenGo(() => { const jid = data?.jobId||data?.job_id||""; if (jid) { currentJobId = jid; goJob(jid); } else { goDashboard(); renderDashboard(); } });
-                    } else if (type === "quote_response" || type === "quote_viewed" || type === "schedule_confirmed" || type === "schedule_suggest") {
-                        localSyncThenGo(() => { const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null; if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); } });
-                    } else if (type === "customer_message") {
-                        localSyncThenGo(() => { const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null; if (j) { currentJobId = j.id; goJob(j.id); } else goDashboard(); });
-                    } else if (data?.jobId) {
-                        localSyncThenGo(() => { currentJobId = data.jobId; goJob(data.jobId); });
-                    } else { goDashboard(); }
-                });
-            }
-        } catch(e) { console.warn("LocalNotifications setup:", e.message); }
-
-        // Notification tap — sync then navigate to right screen
-
-        // Handle app resume from background — re-sync if stale
-        App.addListener("appStateChange", async ({ isActive }) => {
-            if (!isActive) return;
-            const lastSync = parseInt(localStorage.getItem("tileiq-last-sync") || "0");
-            const age = Date.now() - lastSync;
-            if (age > 5 * 60 * 1000) { // 5 mins stale
-                localStorage.removeItem("tileiq-last-sync");
-                try { await loadUserData(); renderDashboard(); } catch(e) {}
-            }
-        });
-
-        FirebaseMessaging.addListener("notificationActionPerformed", (event) => {
-            const data = event.notification?.data;
-            const type = data?.type || "";
-            async function syncThenGo(navFn) {
-                localStorage.removeItem("tileiq-last-sync");
-                try { await loadUserData(); } catch(e) {}
-                navFn();
-            }
-            if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
-                type === "voicemail_job" || type === "call_job" || type === "missed_call") {
-                syncThenGo(() => {
-                    const jid = data?.jobId || data?.job_id || "";
-                    if (jid) { currentJobId = jid; goJob(jid); }
-                    else { goDashboard(); renderDashboard(); }
-                });
-            } else if (type === "quote_response") {
-                syncThenGo(() => {
-                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
-                    if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
-                });
-            } else if (type === "customer_message") {
-                syncThenGo(() => {
-                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
-                    if (j) {
-                        currentJobId = j.id;
-                        goJob(j.id);
-                        // Wait for job screen to render then open messages
-                        setTimeout(async () => {
-                            if (j.quoteToken) await goMessages();
-                        }, 1000);
-                    } else goDashboard();
-                });
-            } else if (type === "schedule_confirmed" || type === "schedule_suggest") {
-                syncThenGo(() => {
-                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
-                    if (j) { currentJobId = j.id; goJob(j.id); } else goDashboard();
-                });
-            } else if (type === "quote_viewed") {
-                syncThenGo(() => {
-                    const j = data?.token ? jobs.find(j => j.quoteToken === data.token) : null;
-                    if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
-                });
-            } else if (data?.jobId) {
-                syncThenGo(() => { currentJobId = data.jobId; goJob(data.jobId); });
-            } else {
-                goDashboard(); syncAllQuoteStatuses();
-            }
-        });
-
-    } catch(e) { console.warn("Push notifications unavailable:", e.message); }
+        const { OneSignalPlugin } = window.Capacitor?.Plugins || {};
+        if (!OneSignalPlugin) { console.warn("OneSignalPlugin not found"); return; }
+        // Login handled separately after currentUser is set
+        // Just log current status
+        console.log("OneSignal push notifications ready");
+    } catch(e) { console.warn("initPushNotifications error:", e.message); }
 }
 
 function showPushBanner(title, body, data) {
@@ -8876,6 +8727,10 @@ async function initRevenueCat() {
         const userId = stored ? JSON.parse(stored).user?.id : null;
         if (!userId) return;
         _rcAppUserId = userId;
+        const Purchases = window.Capacitor?.Plugins?.Purchases;
+        if (Purchases) {
+            await Purchases.configure({ apiKey: "goog_XsqjRLLFdCnGQapXIsTsvTgPsgU", appUserID: userId });
+        }
         await refreshProStatus();
     } catch(e) { console.warn("RC init failed:", e.message); }
 }
@@ -9183,34 +9038,79 @@ function devProOverride() {
 async function loadPaywallPackages() {
     const container = document.getElementById("paywall-packages");
     if (!container) return;
-    container.innerHTML = `
-        <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-size:16px;font-weight:800;">Monthly</div>
-                <div style="font-size:20px;font-weight:800;">£9.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
-            </div>
-        </button>
-        <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                    <div style="font-size:16px;font-weight:800;">Annual</div>
-                    <div style="font-size:11px;font-weight:700;margin-top:2px;opacity:0.7;">Best value — save 33%</div>
+    container.innerHTML = `<div style="text-align:center;padding:20px;opacity:0.6;">Loading prices...</div>`;
+    try {
+        const Purchases = window.Capacitor?.Plugins?.Purchases;
+        let monthlyPrice = "£9.99";
+        let yearlyPrice = "£79.99";
+        if (Purchases) {
+            const offerings = await Purchases.getOfferings();
+            const current = offerings?.current;
+            if (current) {
+                const monthly = current.monthly ?? current.availablePackages?.find(p => p.packageType === "MONTHLY");
+                const annual = current.annual ?? current.availablePackages?.find(p => p.packageType === "ANNUAL");
+                if (monthly?.product?.priceString) monthlyPrice = monthly.product.priceString;
+                if (annual?.product?.priceString) yearlyPrice = annual.product.priceString;
+            }
+        }
+        container.innerHTML = `
+            <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="font-size:16px;font-weight:800;">Monthly</div>
+                    <div style="font-size:20px;font-weight:800;">${monthlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
-                <div style="font-size:20px;font-weight:800;">£79.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
-            </div>
-        </button>`;
+            </button>
+            <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:16px;font-weight:800;">Annual</div>
+                        <div style="font-size:11px;font-weight:700;margin-top:2px;opacity:0.7;">Best value — save 33%</div>
+                    </div>
+                    <div style="font-size:20px;font-weight:800;">${yearlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
+                </div>
+            </button>`;
+    } catch(e) {
+        console.warn("Failed to load prices:", e.message);
+        container.innerHTML = `
+            <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="font-size:16px;font-weight:800;">Monthly</div>
+                    <div style="font-size:20px;font-weight:800;">£9.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
+                </div>
+            </button>
+            <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:16px;font-weight:800;">Annual</div>
+                        <div style="font-size:11px;font-weight:700;margin-top:2px;opacity:0.7;">Best value — save 33%</div>
+                    </div>
+                    <div style="font-size:20px;font-weight:800;">£79.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
+                </div>
+            </button>`;
+    }
 }
 
-function openPlayStorePurchase(plan) {
-    const pkg = "com.tileiq.pro";
-    const sku = "tileiq_pro";
-    const url = `https://play.google.com/store/account/subscriptions?sku=${sku}&package=${pkg}`;
-    if (window.AndroidBridge?.open) window.AndroidBridge.open(url);
-    else window.open(url, "_system");
-    setTimeout(async () => {
-        await refreshProStatus();
-        if (_proStatus) { closePaywall(); alert("🎉 Welcome to TileIQ Pro!"); }
-    }, 3000);
+async function openPlayStorePurchase(plan) {
+    try {
+        const Purchases = window.Capacitor?.Plugins?.Purchases;
+        if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
+        const offerings = await Purchases.getOfferings();
+        const current = offerings?.current;
+        if (!current) { alert("No offerings found. Please try again."); return; }
+        const pkg = plan === "yearly"
+            ? current.annual ?? current.availablePackages?.find(p => p.packageType === "ANNUAL")
+            : current.monthly ?? current.availablePackages?.find(p => p.packageType === "MONTHLY");
+        if (!pkg) { alert("Package not found. Please try again."); return; }
+        const result = await Purchases.purchasePackage({ aPackage: pkg });
+        if (result?.customerInfo?.entitlements?.active?.pro) {
+            _proStatus = true;
+            updateProBadge();
+            closePaywall();
+            alert("🎉 Welcome to TileIQ Pro!");
+        }
+    } catch(e) {
+        if (e?.code !== "1") console.warn("Purchase error:", e.message);
+    }
 }
 
 async function restorePurchases() {
