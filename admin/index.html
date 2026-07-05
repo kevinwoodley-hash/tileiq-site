@@ -994,14 +994,21 @@ async function loadDevices() {
     const data = await resp.json();
     const subs = data.players || [];
     if (!subs.length) { el.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No devices registered</div>'; return; }
-    el.innerHTML = subs.map(s => {
-      const platform = s.device_type === 1 ? '🤖 Android' : s.device_type === 0 ? '🍎 iOS' : '📱 Device';
-      const model = s.device_model || 'Unknown device';
-      const os = s.device_os ? `OS ${s.device_os}` : '';
-      const enabled = s.notification_types > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
-      const lastActive = s.last_active ? new Date(s.last_active * 1000).toLocaleDateString('en-GB') : '—';
+    // Group by device model
+    const groups = {};
+    for (const s of subs) {
+      const platform = s.device_type === 1 ? '🤖 Android' : s.device_type === 0 ? '🍎 iOS' : '📱';
+      const key = `${platform} ${s.device_model || 'Unknown'}`;
+      if (!groups[key]) groups[key] = { count: 0, enabled: 0, lastActive: 0 };
+      groups[key].count++;
+      if (s.notification_types > 0) groups[key].enabled++;
+      if (s.last_active > groups[key].lastActive) groups[key].lastActive = s.last_active;
+    }
+    el.innerHTML = Object.entries(groups).sort((a,b) => b[1].count - a[1].count).map(([name, g]) => {
+      const lastActive = g.lastActive ? new Date(g.lastActive * 1000).toLocaleDateString('en-GB') : '—';
+      const status = g.enabled > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
       return `<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
-        <div>${enabled} ${platform} — ${model} ${os}</div>
+        <div>${status} ${name} <span style="color:#64748b;font-size:11px;">(${g.count} installs, ${g.enabled} subscribed)</span></div>
         <div style="color:#64748b">Last active: ${lastActive}</div>
       </div>`;
     }).join('');
