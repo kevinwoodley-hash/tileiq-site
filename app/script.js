@@ -8729,7 +8729,8 @@ async function initRevenueCat() {
         _rcAppUserId = userId;
         const Purchases = window.Capacitor?.Plugins?.Purchases;
         if (Purchases) {
-            await Purchases.configure({ apiKey: "goog_XsqjRLLFdCnGQapXIsTsvTgPsgU", appUserID: userId });
+            const rcKey = window.Capacitor?.getPlatform() === "ios" ? "appl_bGoiXrIhxXmTqdTTbDScmgtQQRL" : "goog_XsqjRLLFdCnGQapXIsTsvTgPsgU";
+            await Purchases.configure({ apiKey: rcKey, appUserID: userId });
         }
         await refreshProStatus();
     } catch(e) { console.warn("RC init failed:", e.message); }
