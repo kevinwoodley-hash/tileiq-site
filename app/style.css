@@ -1094,7 +1094,7 @@ textarea { resize: vertical; }
 
 /* iOS safe area fixes */
 .ios .screen:not(#screen-signin):not(#screen-signup):not(#screen-forgot):not(#screen-verify) {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
     padding-top: env(safe-area-inset-top);
 }
 
@@ -1114,4 +1114,22 @@ textarea { resize: vertical; }
 .auth-wrap {
     min-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/* iOS - fix white bars and disable bounce scroll */
+.ios body {
+    background: #0f172a;
+    overscroll-behavior: none;
+}
+
+html.ios, .ios body {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+}
+
+.ios .screen {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
 }
