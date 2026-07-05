@@ -550,6 +550,11 @@ body {
           <div class="stat-card"><div class="stat-label">App Installs</div><div class="stat-value" id="val-installs">—</div></div>
         </div>
 
+        <div class="stats-section-label">Installed Devices</div>
+        <div id="devices-list" style="margin-bottom:16px;">
+          <div style="color:#94a3b8;font-size:13px;">Loading devices...</div>
+        </div>
+
         <div class="stats-section-label">Jobs & Quotes</div>
         <div class="stat-grid">
           <div class="stat-card"><div class="stat-label">Total Jobs</div><div class="stat-value" id="val-total-jobs">—</div></div>
@@ -979,6 +984,32 @@ async function deleteAnnouncement(id) {
 }
 
 // ── Stats ──────────────────────────────────────────────────────
+async function loadDevices() {
+  const el = document.getElementById('devices-list');
+  if (!el) return;
+  try {
+    const resp = await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/devices', {
+      headers: { 'x-admin-secret': ADMIN_SECRET }
+    });
+    const data = await resp.json();
+    const subs = data.subscriptions || [];
+    if (!subs.length) { el.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No devices registered</div>'; return; }
+    el.innerHTML = subs.map(s => {
+      const platform = s.type === 'AndroidPush' ? '🤖 Android' : s.type === 'iOSPush' ? '🍎 iOS' : s.type;
+      const model = s.device_model || 'Unknown device';
+      const os = s.device_os ? `OS ${s.device_os}` : '';
+      const enabled = s.enabled ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
+      const lastActive = s.last_active ? new Date(s.last_active * 1000).toLocaleDateString('en-GB') : '—';
+      return `<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
+        <div>${enabled} ${platform} — ${model} ${os}</div>
+        <div style="color:#64748b">Last active: ${lastActive}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="color:#ef4444;font-size:13px;">Failed to load devices: ' + e.message + '</div>';
+  }
+}
+
 async function loadStats() {
   try {
     const [usersData, statsRes] = await Promise.all([
@@ -996,6 +1027,8 @@ async function loadStats() {
       document.getElementById('val-free').textContent = s.free_users || 0;
       document.getElementById('val-mrr').textContent = '£' + (s.estimated_mrr || '0.00');
       document.getElementById('val-installs').textContent = s.device_tokens || 0;
+      // Load OneSignal devices
+      loadDevices();
       document.getElementById('val-total-jobs').textContent = s.total_jobs || 0;
       document.getElementById('val-jobs-week').textContent = s.jobs_this_week || 0;
       document.getElementById('val-jobs-month').textContent = s.jobs_this_month || 0;
