@@ -1129,3 +1129,10 @@ textarea { resize: vertical; }
 body {
     overscroll-behavior-y: none;
 }
+
+/* Prevent iOS page dragging */
+html, body {
+    height: 100%;
+    overflow: hidden;
+    touch-action: pan-y;
+}
