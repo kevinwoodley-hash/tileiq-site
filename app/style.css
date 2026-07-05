@@ -1130,9 +1130,9 @@ body {
     overscroll-behavior-y: none;
 }
 
-/* Prevent iOS page dragging */
+/* iOS page containment */
 html, body {
     height: 100%;
-    overflow: hidden;
-    touch-action: pan-y;
+    width: 100%;
+    max-width: 100%;
 }
