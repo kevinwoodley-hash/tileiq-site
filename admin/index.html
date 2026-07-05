@@ -992,13 +992,13 @@ async function loadDevices() {
       headers: { 'x-admin-secret': ADMIN_SECRET }
     });
     const data = await resp.json();
-    const subs = data.subscriptions || [];
+    const subs = data.players || [];
     if (!subs.length) { el.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No devices registered</div>'; return; }
     el.innerHTML = subs.map(s => {
-      const platform = s.type === 'AndroidPush' ? '🤖 Android' : s.type === 'iOSPush' ? '🍎 iOS' : s.type;
+      const platform = s.device_type === 1 ? '🤖 Android' : s.device_type === 0 ? '🍎 iOS' : '📱 Device';
       const model = s.device_model || 'Unknown device';
       const os = s.device_os ? `OS ${s.device_os}` : '';
-      const enabled = s.enabled ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
+      const enabled = s.notification_types > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
       const lastActive = s.last_active ? new Date(s.last_active * 1000).toLocaleDateString('en-GB') : '—';
       return `<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
         <div>${enabled} ${platform} — ${model} ${os}</div>
