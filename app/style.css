@@ -1093,11 +1093,25 @@ textarea { resize: vertical; }
 
 
 /* iOS safe area fixes */
-.ios .screen {
+.ios .screen:not(#screen-signin):not(#screen-signup):not(#screen-forgot):not(#screen-verify) {
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
     padding-top: env(safe-area-inset-top);
 }
 
 .ios #bottom-nav {
     padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Auth screens - safe area for all platforms */
+#screen-signin.screen,
+#screen-signup.screen,
+#screen-forgot.screen,
+#screen-verify.screen {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-top: env(safe-area-inset-top, 0px);
+}
+
+.auth-wrap {
+    min-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
