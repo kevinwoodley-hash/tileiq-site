@@ -1090,3 +1090,14 @@ textarea { resize: vertical; }
 
 /* Settings tab panels */
 .hidden-panel { display: none !important; }
+
+
+/* iOS safe area fixes */
+.ios .screen {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    padding-top: env(safe-area-inset-top);
+}
+
+.ios #bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+}
