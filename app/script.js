@@ -9093,10 +9093,10 @@ async function loadPaywallPackages() {
 
 async function openPlayStorePurchase(plan) {
     try {
-        alert("Purchase tapped: " + plan + " | Purchases=" + (!!window.Capacitor?.Plugins?.Purchases));
         const Purchases = window.Capacitor?.Plugins?.Purchases;
         if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
         const offerings = await Purchases.getOfferings();
+        alert("Offerings: " + JSON.stringify(Object.keys(offerings || {})) + " current=" + (!!offerings?.current));
         const current = offerings?.current;
         if (!current) { alert("No offerings found. Please try again."); return; }
         const pkg = plan === "yearly"
