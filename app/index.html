@@ -593,10 +593,10 @@
         <div id="job-running-total" class="running-total hidden"></div>
         <div class="job-actions">
             <button onclick="goEditJob()" class="btn-secondary" style="width:100%;margin-bottom:8px;">✏ Edit Customer Details</button>
-            <div style="display:flex;gap:8px;">
-                <button onclick="goMaterials()" class="btn-secondary" style="flex:1;">📦 Materials</button>
-                <button onclick="goQuote();setTimeout(previewQuote,400)" class="btn-secondary" style="flex:1;">👁 Preview</button>
-                <button onclick="goQuote()" class="btn-primary" style="flex:1;">Quote →</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="goMaterials()" class="btn-secondary" style="flex:1;min-width:80px;">📦 Materials</button>
+                <button onclick="goQuote();setTimeout(previewQuote,400)" class="btn-secondary" style="flex:1;min-width:80px;">👁 Preview</button>
+                <button onclick="goQuote()" class="btn-primary" style="flex:1;min-width:80px;">Quote →</button>
             </div>
         </div>
         <div id="job-quote-status-bar" style="display:none;margin-top:10px;"></div>

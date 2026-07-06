@@ -1143,3 +1143,10 @@ html, body {
     overflow: hidden;
     position: relative;
 }
+
+/* iOS - smaller job action buttons to fit screen */
+.ios .job-actions .btn-secondary,
+.ios .job-actions .btn-primary {
+    font-size: 12px;
+    padding: 10px 6px;
+}
