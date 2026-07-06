@@ -1130,9 +1130,16 @@ body {
     overscroll-behavior-y: none;
 }
 
-/* iOS page containment */
+/* iOS page containment - prevent elastic scroll on outer container */
 html, body {
     height: 100%;
     width: 100%;
     max-width: 100%;
+    overflow: hidden;
+}
+
+#app {
+    height: 100%;
+    overflow: hidden;
+    position: relative;
 }
