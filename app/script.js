@@ -29,11 +29,6 @@ const AI_PROXY_URL = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
          → Room Editor (floor / wall / both) → Quote
    ================================================================ */
 
-// Platform debug
-setTimeout(function() {
-    alert("Platform: " + window.Capacitor?.getPlatform() + " | Plugins: " + Object.keys(window.Capacitor?.Plugins || {}).join(","));
-}, 3000);
-
 window.onerror = function(msg, src, line) {
     document.body.innerHTML = '<div style="padding:24px;background:#1C1C1E;color:#fff;font-family:monospace;font-size:13px;word-break:break-all;min-height:100vh">'
         + '<b style="color:#E6AF2E">JS Error</b><br><br>' + msg
@@ -7049,7 +7044,7 @@ async function initPushNotifications() {
         const platform = window.Capacitor?.getPlatform();
         if (platform === "ios") {
             // Use official OneSignal Capacitor plugin for iOS
-            const { OneSignal } = window.Capacitor?.Plugins || {};
+            const { OneSignalCapacitor: OneSignal } = window.Capacitor?.Plugins || {};
             if (OneSignal) {
                 await OneSignal.initialize({ appId: "dc2bf0d9-3071-4c44-b1c6-76adc54db456" });
                 await OneSignal.Notifications.requestPermission(true);
