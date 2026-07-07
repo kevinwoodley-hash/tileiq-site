@@ -7041,11 +7041,27 @@ async function checkPendingPushNav() {
 
 async function initPushNotifications() {
     try {
-        const { OneSignalPlugin } = window.Capacitor?.Plugins || {};
-        if (!OneSignalPlugin) { console.warn("OneSignalPlugin not found"); return; }
-        // Login handled separately after currentUser is set
-        // Just log current status
-        console.log("OneSignal push notifications ready");
+        const platform = window.Capacitor?.getPlatform();
+        if (platform === "ios") {
+            // Use OneSignal Cordova plugin for iOS
+            const OS = window.plugins?.OneSignal;
+            if (OS) {
+                OS.initialize("dc2bf0d9-3071-4c44-b1c6-76adc54db456");
+                OS.Notifications.requestPermission(true);
+                console.log("OneSignal iOS initialized");
+                if (currentUser?.id) {
+                    OS.login(currentUser.id);
+                    console.log("OneSignal iOS login:", currentUser.id);
+                }
+            } else {
+                console.warn("OneSignal Cordova plugin not found on iOS");
+            }
+        } else {
+            // Android handled natively via OneSignalPlugin
+            const { OneSignalPlugin } = window.Capacitor?.Plugins || {};
+            if (!OneSignalPlugin) { console.warn("OneSignalPlugin not found"); return; }
+            console.log("OneSignal Android push notifications ready");
+        }
     } catch(e) { console.warn("initPushNotifications error:", e.message); }
 }
 
