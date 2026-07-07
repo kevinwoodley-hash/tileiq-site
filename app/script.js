@@ -29,6 +29,11 @@ const AI_PROXY_URL = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
          → Room Editor (floor / wall / both) → Quote
    ================================================================ */
 
+// Platform debug
+setTimeout(function() {
+    alert("Platform: " + window.Capacitor?.getPlatform() + " | Plugins: " + Object.keys(window.Capacitor?.Plugins || {}).join(","));
+}, 3000);
+
 window.onerror = function(msg, src, line) {
     document.body.innerHTML = '<div style="padding:24px;background:#1C1C1E;color:#fff;font-family:monospace;font-size:13px;word-break:break-all;min-height:100vh">'
         + '<b style="color:#E6AF2E">JS Error</b><br><br>' + msg
