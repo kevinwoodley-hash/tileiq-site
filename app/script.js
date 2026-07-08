@@ -8743,7 +8743,7 @@ async function initRevenueCat() {
         const userId = stored ? JSON.parse(stored).user?.id : null;
         if (!userId) return;
         _rcAppUserId = userId;
-        const Purchases = window.Capacitor?.Plugins?.Purchases;
+        const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
         if (Purchases) {
             const rcKey = window.Capacitor?.getPlatform() === "ios" ? "appl_bGoiXrIhxXmTqdTTbDScmgtQQRL" : "goog_XsqjRLLFdCnGQapXIsTsvTgPsgU";
             await Purchases.configure({ apiKey: rcKey, appUserID: userId });
@@ -9057,7 +9057,7 @@ async function loadPaywallPackages() {
     if (!container) return;
     container.innerHTML = `<div style="text-align:center;padding:20px;opacity:0.6;">Loading prices...</div>`;
     try {
-        const Purchases = window.Capacitor?.Plugins?.Purchases;
+        const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
         let monthlyPrice = "£9.99";
         let yearlyPrice = "£79.99";
         if (Purchases) {
@@ -9109,7 +9109,7 @@ async function loadPaywallPackages() {
 
 async function openPlayStorePurchase(plan) {
     try {
-        const Purchases = window.Capacitor?.Plugins?.Purchases;
+        const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
         if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
         const offerings = await Purchases.getOfferings();
         alert("Offerings: " + JSON.stringify(Object.keys(offerings || {})) + " current=" + (!!offerings?.current));
