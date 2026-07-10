@@ -9114,7 +9114,10 @@ async function openPlayStorePurchase(plan) {
         alert("Purchases plugin: " + (!!Purchases));
         if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
         alert("Calling getOfferings...");
-        const offerings = await Purchases.getOfferings();
+        const offerings = await Promise.race([
+            Purchases.getOfferings(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("getOfferings timeout after 10s")), 10000))
+        ]);
         alert("Got offerings: " + JSON.stringify(Object.keys(offerings||{})));
         const current = offerings?.current;
         if (!current) { alert("No offerings found. Please try again."); return; }
