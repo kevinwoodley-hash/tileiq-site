@@ -9111,8 +9111,11 @@ async function openPlayStorePurchase(plan) {
     alert("tapped: " + plan);
     try {
         const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
+        alert("Purchases plugin: " + (!!Purchases));
         if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
+        alert("Calling getOfferings...");
         const offerings = await Purchases.getOfferings();
+        alert("Got offerings: " + JSON.stringify(Object.keys(offerings||{})));
         const current = offerings?.current;
         if (!current) { alert("No offerings found. Please try again."); return; }
         const pkg = plan === "yearly"
