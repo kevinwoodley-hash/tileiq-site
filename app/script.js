@@ -9108,11 +9108,11 @@ async function loadPaywallPackages() {
 }
 
 async function openPlayStorePurchase(plan) {
+    alert("tapped: " + plan);
     try {
         const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
         if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
         const offerings = await Purchases.getOfferings();
-        alert("Offerings: " + JSON.stringify(Object.keys(offerings || {})) + " current=" + (!!offerings?.current));
         const current = offerings?.current;
         if (!current) { alert("No offerings found. Please try again."); return; }
         const pkg = plan === "yearly"
