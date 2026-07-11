@@ -7067,6 +7067,27 @@ async function initPushNotifications() {
             if (!OneSignalPlugin) { console.warn("OneSignalPlugin not found"); return; }
             console.log("OneSignal Android push notifications ready");
         }
+        // Listen for foreground notifications on both platforms
+        const OSPlugin = window.Capacitor?.Plugins?.OneSignalPlugin || window.Capacitor?.Plugins?.OneSignalCapacitor;
+        if (OSPlugin?.addListener) {
+            OSPlugin.addListener("notificationWillDisplay", (event) => {
+                const n = event.notification || event;
+                const title = n.title || "TileIQ Pro";
+                const body = n.body || "";
+                const data = n.additionalData || n.data || {};
+                showPushBanner(title, body, data);
+            });
+            OSPlugin.addListener("notificationOpened", (event) => {
+                const n = event.notification || event;
+                const data = n.additionalData || n.data || {};
+                const type = data?.type || "";
+                const jobId = data?.jobId || data?.job_id || "";
+                if (jobId) { currentJobId = jobId; goJob(jobId); }
+                else if (type === "quote_response" || type === "quote_viewed") {
+                    syncAllQuoteStatuses().then(() => goDashboard());
+                } else { goDashboard(); }
+            });
+        }
     } catch(e) { console.warn("initPushNotifications error:", e.message); }
 }
 
