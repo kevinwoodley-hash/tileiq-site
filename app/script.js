@@ -3071,8 +3071,8 @@ function renderJobView() {
         <div style="padding:10px 16px 4px;">
             <div class="cbar-name">${esc(job.customerName)}${nextStage ? ` <button data-advance="1" style="background:#f59e0b;color:#000;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;margin-left:8px;touch-action:manipulation;">→ ${nextStage.label}</button>` : " ✅"}</div>
             ${parts ? `<div class="cbar-address">${esc(parts)}</div>` : ""}
-            ${job.phone ? `<span class="cbar-contact">📞 ${esc(job.phone)}</span>` : ""}
-            ${job.email ? `<span class="cbar-contact">✉ ${esc(job.email)}</span>` : ""}
+            ${job.phone ? `<a href="tel:${esc(job.phone)}" class="cbar-contact" style="color:inherit;text-decoration:none;">📞 ${esc(job.phone)}</a>` : ""}
+            ${job.email ? `<a href="mailto:${esc(job.email)}" class="cbar-contact" style="color:inherit;text-decoration:none;">✉ ${esc(job.email)}</a>` : ""}
             ${job.tileSupply === "customer" ? `<span class="cbar-badge">👤 Customer tiles</span>` : ""}
             ${parts ? `<button onclick="getDirections('${job.id}')" style="background:#E07A2F;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;margin-top:6px;display:inline-block;">🗺️ Directions</button>` : ""}
         </div>
@@ -6234,21 +6234,24 @@ async function uploadLogo() {
     if (btn) { btn.disabled = true; btn.textContent = "Uploading…"; }
     if (msg) msg.textContent = "";
 
+    // Use hidden file input for cross-platform compatibility
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.onchange = async function() {
+        const file = fileInput.files[0];
+        if (!file) { if (btn) { btn.disabled = false; btn.textContent = "\u{1F4F7} Upload Logo"; } return; }
+        if (btn) { btn.disabled = true; btn.textContent = "Uploading\u2026"; }
     try {
-        const { Camera } = Capacitor.Plugins;
-        const photo = await Camera.getPhoto({
-            quality: 80,
-            allowEditing: false,
-            resultType: "base64",
-            source: "PHOTOS"
+        const reader = new FileReader();
+        const base64 = await new Promise((resolve) => {
+            reader.onload = e => resolve(e.target.result.split(",")[1]);
+            reader.readAsDataURL(file);
         });
-
-        // Convert base64 to blob
-        const base64 = photo.base64String;
         const byteChars = atob(base64);
         const byteArr = new Uint8Array(byteChars.length);
         for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-        const blob = new Blob([byteArr], { type: "image/jpeg" });
+        const blob = new Blob([byteArr], { type: file.type || "image/jpeg" });
 
         const fileName = currentUser.id + "/logo.jpg";
         const SB_SVC = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6d21xYWJ4cHh1dXpuaGJwZXdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjk2NDIsImV4cCI6MjA4ODQwNTY0Mn0.N1K9ERPwAV5tcvmLcSrYp7aDKTazDXxFT9sf6GzcXKU";
@@ -6298,6 +6301,8 @@ async function uploadLogo() {
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = "📷 Upload Logo"; }
     }
+    };
+    fileInput.click();
 }
 
 async function removeLogo() {
