@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0">
     <link rel="stylesheet" href="style.css">
     <style>
+        /* Web demo phone frame */
+        @media (min-width: 500px) {
+            body { background: #0a0f1a !important; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+            #app { max-width: 390px; width: 390px; height: 844px; max-height: 100vh; border-radius: 40px; overflow: hidden; box-shadow: 0 0 0 2px #334155, 0 30px 80px rgba(0,0,0,0.8); margin: 20px auto; position: relative; }
+        }
         .page-body { padding-bottom: calc(70px + env(safe-area-inset-bottom)) !important; }
         #screen-help { padding-bottom: 70px; }
         #screen-help > div[id="help-messages"] { padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important; }
