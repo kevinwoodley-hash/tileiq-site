@@ -6305,6 +6305,31 @@ async function uploadLogo() {
     fileInput.click();
 }
 
+async function deleteAccount() {
+    if (!currentUser) { alert("Please log in first."); return; }
+    const confirmed = confirm("Are you sure you want to delete your account?\n\nThis will permanently delete all your jobs, quotes, customers and settings. This cannot be undone.");
+    if (!confirmed) return;
+    const confirmed2 = confirm("Final confirmation: Delete your TileIQ Pro account and all data permanently?");
+    if (!confirmed2) return;
+    try {
+        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tok },
+            body: JSON.stringify({ action: "delete_account" })
+        });
+        const result = await resp.json();
+        if (result.ok) {
+            alert("Your account has been deleted. You will now be signed out.");
+            await authSignOut();
+        } else {
+            alert("Failed to delete account: " + (result.error || "Unknown error"));
+        }
+    } catch(e) {
+        alert("Error deleting account: " + e.message);
+    }
+}
+
 async function removeLogo() {
     if (!currentUser) return;
     settings.logoUrl = "";
