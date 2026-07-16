@@ -15,6 +15,10 @@
     // Try immediately, then retry after Capacitor loads
     if (!registerEarlyPushListener()) {
         document.addEventListener("DOMContentLoaded", function() {
+    // Hide access code on iOS per App Store guidelines
+    if (window.Capacitor?.getPlatform() === "ios") {
+        document.querySelectorAll(".ios-hide").forEach(el => el.style.display = "none");
+    }
             if (!registerEarlyPushListener()) {
                 setTimeout(registerEarlyPushListener, 500);
                 setTimeout(registerEarlyPushListener, 1500);
