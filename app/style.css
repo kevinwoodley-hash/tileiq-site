@@ -1160,3 +1160,8 @@ html, body {
     min-height: auto;
     padding-bottom: calc(40px + env(safe-area-inset-bottom));
 }
+
+/* Hide access codes on iOS - not permitted by App Store */
+.ios .ios-hide {
+    display: none !important;
+}
