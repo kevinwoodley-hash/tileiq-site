@@ -1162,6 +1162,6 @@ html, body {
 }
 
 /* Hide access codes on iOS - not permitted by App Store */
-.ios .ios-hide {
+.ios .ios-hide, html.ios .ios-hide {
     display: none !important;
 }
