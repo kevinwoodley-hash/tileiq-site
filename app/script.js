@@ -202,7 +202,7 @@ function getDirections(jobId) {
     var parts = [job.address, job.city, job.postcode].filter(Boolean);
     if (!parts.length) { alert("No address saved for this job."); return; }
     var query = encodeURIComponent(parts.join(", "));
-    window.open("geo:0,0?q=" + query, "_system");
+    var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent); window.open(isIos ? "maps://?q=" + query : "geo:0,0?q=" + query, "_system");
 }
 
 
@@ -7817,75 +7817,6 @@ async function gpsAddress(prefix) {
     );
 }
 
-async function addrSearch(prefix) {
-    const input = document.getElementById(prefix + "-address");
-    const box   = document.getElementById(prefix + "-addr-suggestions");
-    if (!input || !box) return;
-    const q = input.value.trim();
-    if (q.length < 4) { box.style.display = "none"; return; }
-    clearTimeout(addrSearchTimer);
-    addrSearchTimer = setTimeout(async () => {
-        try {
-            const res     = await fetch("https://nominatim.openstreetmap.org/search?q=" + encodeURIComponent(q + ", UK") + "&format=json&addressdetails=1&limit=5&countrycodes=gb", {
-                headers: { "Accept-Language": "en-GB", "User-Agent": "TileIQ Pro/1.0 (support@tileiq.app)" }
-            });
-            const results = await res.json();
-            if (!results.length) { box.style.display = "none"; return; }
-            const rows = [];
-            results.forEach(function(r, i) {
-                const a     = r.address || {};
-                const road  = a.road || a.pedestrian || a.path || "";
-                const num   = a.house_number ? a.house_number + " " : "";
-                const line1 = (num + road).trim() || r.display_name.split(",")[0];
-                const city  = a.city || a.town || a.village || a.county || "";
-                const pc    = a.postcode || "";
-                const sub   = [city, pc].filter(Boolean).join(", ");
-                const div   = document.createElement("div");
-                div.style.cssText = "padding:12px 14px;cursor:pointer;border-bottom:1px solid #334155;font-size:14px;";
-                div.innerHTML = "<div style=\"font-weight:600;color:#e2e8f0;\">" + esc(line1) + "</div>" + (sub ? "<div style=\"font-size:12px;color:#64748b;margin-top:2px;\">" + esc(sub) + "</div>" : "");
-                div.addEventListener("mouseenter", function() { this.style.background = "#334155"; });
-                div.addEventListener("mouseleave", function() { this.style.background = ""; });
-                div.addEventListener("click",      function() { addrPick(prefix, i); });
-                rows.push(div);
-            });
-            box.innerHTML = "";
-            rows.forEach(function(d) { box.appendChild(d); });
-            box._results      = results;
-            box.style.display = "block";
-        } catch(e) { box.style.display = "none"; }
-    }, 400);
-}
-
-function addrPick(prefix, idx) {
-    const box = document.getElementById(prefix + "-addr-suggestions");
-    const r   = box?._results?.[idx];
-    if (!r) return;
-    const a     = r.address || {};
-    const road  = a.road || a.pedestrian || a.path || "";
-    const num   = a.house_number ? a.house_number + " " : "";
-    const line1 = (num + road).trim() || r.display_name.split(",")[0];
-    const city  = a.city || a.town || a.village || a.county || "";
-    const pc    = a.postcode || "";
-    const addrEl = document.getElementById(prefix + "-address");
-    const cityEl = document.getElementById(prefix + "-city");
-    const pcEl   = document.getElementById(prefix + "-postcode");
-    if (addrEl) addrEl.value = line1;
-    if (cityEl && city) cityEl.value = city;
-    if (pcEl   && pc)   pcEl.value   = pc;
-    box.style.display = "none";
-}
-
-document.addEventListener("click", function(e) {
-    ["nj","ej"].forEach(function(p) {
-        const box = document.getElementById(p + "-addr-suggestions");
-        if (box && !box.contains(e.target) && e.target.id !== p + "-address") {
-            box.style.display = "none";
-        }
-    });
-});
-
-
-/* ═══════════════════════════════════════════════════════════════
    POSTCODE LOOKUP  (postcodes.io — free, no API key)
    prefix = 'nj' (new job) or 'ej' (edit job)
 ═══════════════════════════════════════════════════════════════ */
