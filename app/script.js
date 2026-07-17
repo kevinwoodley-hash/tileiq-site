@@ -811,19 +811,50 @@ async function authSignUp() {
     const btn = document.getElementById("su-submit");
     btn.disabled = true; btn.textContent = "Creating account…";
     try {
-        const res = await fetch("https://lzwmqabxpxuuznhbpewm.supabase.co/auth/v1/signup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": SB_KEY },
-            body: JSON.stringify({ email, password, data: { full_name: name } })
+        const json = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "https://lzwmqabxpxuuznhbpewm.supabase.co/auth/v1/signup");
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.setRequestHeader("apikey", SB_KEY);
+            xhr.timeout = 15000;
+            xhr.onload = () => {
+                try { resolve({ status: xhr.status, body: JSON.parse(xhr.responseText) }); }
+                catch(e) { reject(new Error("Bad response from server")); }
+            };
+            xhr.onerror   = () => reject(new Error("Network error. Please check your connection and try again."));
+            xhr.ontimeout = () => reject(new Error("Connection timed out. Please try again."));
+            xhr.send(JSON.stringify({ email, password, data: { full_name: name } }));
         });
-        const json = await res.json();
-        if (!res.ok) { authShowError("signup-error", json.msg || json.message || "Signup failed."); return; }
+        if (json.status !== 200 && json.status !== 201) {
+            const msg = json.body?.msg || json.body?.message || "";
+            if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("registered") || json.body?.code === "user_already_exists") {
+                document.getElementById("si-email").value    = email;
+                document.getElementById("si-password").value = password;
+                await authSignIn();
+                return;
+            }
+            authShowError("signup-error", msg || "Signup failed.");
+            return;
+        }
         // No email verification required — sign in immediately
+        // Send welcome email
+        fetch(TILEIQ_WORKER_URL + "/api/welcome-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, name })
+        }).catch(() => {});
         document.getElementById("si-email").value    = email;
         document.getElementById("si-password").value = password;
         await authSignIn();
     } catch(e) {
-        authShowError("signup-error", "Network error. Please try again.");
+        // Network error - try signing in anyway, Supabase may have created the account
+        try {
+            document.getElementById("si-email").value    = document.getElementById("su-email").value.trim();
+            document.getElementById("si-password").value = document.getElementById("su-password").value;
+            await authSignIn();
+        } catch(e2) {
+            authShowError("signup-error", "Network error. Please check your connection and try again.");
+        }
     } finally {
         btn.disabled = false; btn.textContent = "Create account";
     }
@@ -7817,6 +7848,7 @@ async function gpsAddress(prefix) {
     );
 }
 
+/* ═══════════════════════════════════════════════════════════════
    POSTCODE LOOKUP  (postcodes.io — free, no API key)
    prefix = 'nj' (new job) or 'ej' (edit job)
 ═══════════════════════════════════════════════════════════════ */
