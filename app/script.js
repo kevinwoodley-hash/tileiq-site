@@ -6419,6 +6419,25 @@ async function loadAdminData() {
             </div>`;
         }).join("");
     } catch(e) { console.warn("Admin devices error:", e.message); }
+
+    // Load support messages
+    try {
+        const resp3 = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/support", {
+            headers: { "x-admin-secret": "MadnessTheSpecials" }
+        });
+        const msgs = await resp3.json();
+        const el = document.getElementById("adm-support");
+        if (!el) return;
+        if (!msgs.length) { el.innerHTML = '<div style="color:#64748b;">No support messages</div>'; return; }
+        el.innerHTML = msgs.slice(0, 10).map(m => `
+            <div style="background:#1e293b;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:#f59e0b;font-size:12px;font-weight:700;">${m.user_email || m.user_id || "Unknown"}</span>
+                    <span style="color:#64748b;font-size:11px;">${m.created_at ? new Date(m.created_at).toLocaleDateString("en-GB") : ""}</span>
+                </div>
+                <div style="color:#e2e8f0;font-size:13px;">${m.message || m.content || ""}</div>
+            </div>`).join("");
+    } catch(e) { console.warn("Admin support error:", e.message); }
 }
 
 async function sendAdminAnnouncement() {
@@ -6437,6 +6456,29 @@ async function sendAdminAnnouncement() {
             document.getElementById("adm-ann-title").value = "";
             document.getElementById("adm-ann-body").value = "";
         } else { alert("Error: " + JSON.stringify(r)); }
+    } catch(e) { alert("Error: " + e.message); }
+}
+
+async function sendAdminUserPush() {
+    const email = document.getElementById("adm-user-email").value.trim();
+    const msg = document.getElementById("adm-user-msg").value.trim();
+    if (!email || !msg) { alert("Enter email and message"); return; }
+    try {
+        // Look up user ID by email
+        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/user-by-email?email=" + encodeURIComponent(email), {
+            headers: { "x-admin-secret": "MadnessTheSpecials" }
+        });
+        const user = await resp.json();
+        if (!user.id) { alert("User not found"); return; }
+        const resp2 = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "test_push", user_id: user.id, title: "Message from TileIQ", body: msg })
+        });
+        const r = await resp2.json();
+        alert("Sent! " + JSON.stringify(r));
+        document.getElementById("adm-user-email").value = "";
+        document.getElementById("adm-user-msg").value = "";
     } catch(e) { alert("Error: " + e.message); }
 }
 

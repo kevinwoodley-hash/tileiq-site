@@ -3581,14 +3581,20 @@
         <div id="adm-quotes" style="font-size:24px;font-weight:800;color:#f1f5f9;">—</div>
       </div>
     </div>
-    <div style="font-size:13px;font-weight:700;color:#94a3b8;margin-bottom:8px;">INSTALLED DEVICES</div>
-    <div id="adm-devices" style="margin-bottom:16px;font-size:13px;color:#64748b;">Loading...</div>
     <div style="font-size:13px;font-weight:700;color:#94a3b8;margin-bottom:8px;">SEND ANNOUNCEMENT</div>
     <div style="background:#1e293b;border-radius:10px;padding:14px;margin-bottom:16px;">
       <input id="adm-ann-title" placeholder="Title" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;padding:10px;font-size:14px;margin-bottom:8px;box-sizing:border-box;">
       <textarea id="adm-ann-body" placeholder="Message..." rows="3" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;padding:10px;font-size:14px;resize:none;box-sizing:border-box;"></textarea>
       <button onclick="sendAdminAnnouncement()" style="width:100%;background:#f59e0b;color:#000;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">📢 Send to All Users</button>
     </div>
+    <div style="font-size:13px;font-weight:700;color:#94a3b8;margin-bottom:8px;">SEND TO USER</div>
+    <div style="background:#1e293b;border-radius:10px;padding:14px;margin-bottom:16px;">
+      <input id="adm-user-email" placeholder="User email" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;padding:10px;font-size:14px;margin-bottom:8px;box-sizing:border-box;">
+      <textarea id="adm-user-msg" placeholder="Message..." rows="2" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;padding:10px;font-size:14px;resize:none;box-sizing:border-box;"></textarea>
+      <button onclick="sendAdminUserPush()" style="width:100%;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">📨 Send to User</button>
+    </div>
+    <div style="font-size:13px;font-weight:700;color:#94a3b8;margin-bottom:8px;">SUPPORT MESSAGES</div>
+    <div id="adm-support" style="margin-bottom:16px;font-size:13px;color:#64748b;">Loading...</div>
     <button onclick="sendAdminTestPush()" style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px;font-size:14px;color:#f1f5f9;cursor:pointer;margin-bottom:16px;">🔔 Send Test Push to Me</button>
   </div>
 </div>
