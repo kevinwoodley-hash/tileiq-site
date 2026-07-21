@@ -166,7 +166,7 @@ function _updateBottomNav(screenId) {
     if (!nav) return;
 
     // Screens where nav should be visible
-    const navScreens = ["screen-home","screen-dashboard","screen-job","screen-room",
+    const navScreens = ["screen-home","screen-dashboard","screen-job","screen-room","screen-admin",
                         "screen-quote","screen-quote-preview","screen-customers","screen-settings","screen-help",
                         "screen-new-job","screen-edit-job","screen-materials","screen-contact","screen-privacy","screen-terms"];
     // Screens where nav should be hidden (auth, loading)
@@ -644,6 +644,9 @@ function tryOfflineLogin(email, password) {
         _proStatus = null;
         _rcAppUserId = null;
         if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
+        // Show admin button for admin user only
+        const adminBtn = document.getElementById("btn-admin");
+        if (adminBtn) adminBtn.style.display = currentUser.id === "7a5b00a3-8043-4fd1-9956-76c7c3b8fc9d" ? "flex" : "none";
         try {
             const localJobs = localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id));
             if (localJobs) jobs = JSON.parse(localJobs);
@@ -716,6 +719,9 @@ async function authSignIn() {
 
         currentUser = json.body.user;
         if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
+        // Show admin button for admin user only
+        const adminBtn = document.getElementById("btn-admin");
+        if (adminBtn) adminBtn.style.display = currentUser.id === "7a5b00a3-8043-4fd1-9956-76c7c3b8fc9d" ? "flex" : "none";
 
         // Clear old user's in-memory data if a different user is logging in
         const cachedUserId = localStorage.getItem("tileiq-last-user");
@@ -6363,6 +6369,87 @@ async function deleteAccount() {
     } catch(e) {
         alert("Error deleting account: " + e.message);
     }
+}
+
+
+const ADMIN_USER_ID = "7a5b00a3-8043-4fd1-9956-76c7c3b8fc9d";
+
+function goAdmin() {
+    show("screen-admin");
+    loadAdminData();
+}
+
+async function loadAdminData() {
+    try {
+        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/stats", {
+            headers: { "x-admin-secret": "MadnessTheSpecials" }
+        });
+        const s = await resp.json();
+        document.getElementById("adm-total-users").textContent = (s.pro_users || 0) + (s.free_users || 0);
+        document.getElementById("adm-pro-users").textContent = s.pro_users || 0;
+        document.getElementById("adm-mrr").textContent = "£" + (s.estimated_mrr || "0.00");
+        document.getElementById("adm-active-7").textContent = s.active_7d || 0;
+        document.getElementById("adm-total-jobs").textContent = s.total_jobs || 0;
+        document.getElementById("adm-quotes").textContent = s.quotes_sent || 0;
+    } catch(e) { console.warn("Admin stats error:", e.message); }
+
+    try {
+        const resp2 = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/devices", {
+            headers: { "x-admin-secret": "MadnessTheSpecials" }
+        });
+        const data = await resp2.json();
+        const players = data.players || [];
+        const groups = {};
+        for (const p of players) {
+            const platform = p.device_type === 1 ? "🤖 Android" : p.device_type === 0 ? "🍎 iOS" : "📱";
+            const key = platform + " " + (p.device_model || "Unknown");
+            if (!groups[key]) groups[key] = { count: 0, enabled: 0, lastActive: 0 };
+            groups[key].count++;
+            if (p.notification_types > 0) groups[key].enabled++;
+            if (p.last_active > groups[key].lastActive) groups[key].lastActive = p.last_active;
+        }
+        const el = document.getElementById("adm-devices");
+        if (!players.length) { el.textContent = "No devices"; return; }
+        el.innerHTML = Object.entries(groups).sort((a,b) => b[1].count - a[1].count).map(([name, g]) => {
+            const last = g.lastActive ? new Date(g.lastActive * 1000).toLocaleDateString("en-GB") : "—";
+            const dot = g.enabled > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
+            return `<div style="background:#1e293b;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                <div style="color:#f1f5f9;">${dot} ${name} <span style="color:#64748b;font-size:11px;">${g.count} installs</span></div>
+                <div style="color:#64748b;font-size:11px;">${last}</div>
+            </div>`;
+        }).join("");
+    } catch(e) { console.warn("Admin devices error:", e.message); }
+}
+
+async function sendAdminAnnouncement() {
+    const title = document.getElementById("adm-ann-title").value.trim();
+    const body = document.getElementById("adm-ann-body").value.trim();
+    if (!title || !body) { alert("Enter title and message"); return; }
+    try {
+        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/announce", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-admin-secret": "MadnessTheSpecials" },
+            body: JSON.stringify({ title, body })
+        });
+        const r = await resp.json();
+        if (r.ok) {
+            alert("Announcement sent!");
+            document.getElementById("adm-ann-title").value = "";
+            document.getElementById("adm-ann-body").value = "";
+        } else { alert("Error: " + JSON.stringify(r)); }
+    } catch(e) { alert("Error: " + e.message); }
+}
+
+async function sendAdminTestPush() {
+    try {
+        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "test_push", user_id: ADMIN_USER_ID })
+        });
+        const r = await resp.json();
+        alert("Push sent: " + JSON.stringify(r));
+    } catch(e) { alert("Error: " + e.message); }
 }
 
 async function removeLogo() {
