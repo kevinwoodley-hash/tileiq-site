@@ -646,7 +646,7 @@ function tryOfflineLogin(email, password) {
         if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
         // Show admin button for admin user only
         const adminBtn = document.getElementById("btn-admin");
-        if (adminBtn) adminBtn.style.display = currentUser.id === "7a5b00a3-8043-4fd1-9956-76c7c3b8fc9d" ? "flex" : "none";
+        if (adminBtn) adminBtn.style.display = currentUser.id === "621cf673-20e9-4cb4-bcde-140d7c80958c" ? "flex" : "none";
         try {
             const localJobs = localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id));
             if (localJobs) jobs = JSON.parse(localJobs);
@@ -721,7 +721,7 @@ async function authSignIn() {
         if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
         // Show admin button for admin user only
         const adminBtn = document.getElementById("btn-admin");
-        if (adminBtn) adminBtn.style.display = currentUser.id === "7a5b00a3-8043-4fd1-9956-76c7c3b8fc9d" ? "flex" : "none";
+        if (adminBtn) adminBtn.style.display = currentUser.id === "621cf673-20e9-4cb4-bcde-140d7c80958c" ? "flex" : "none";
 
         // Clear old user's in-memory data if a different user is logging in
         const cachedUserId = localStorage.getItem("tileiq-last-user");
@@ -6372,7 +6372,7 @@ async function deleteAccount() {
 }
 
 
-const ADMIN_USER_ID = "7a5b00a3-8043-4fd1-9956-76c7c3b8fc9d";
+const ADMIN_USER_ID = "621cf673-20e9-4cb4-bcde-140d7c80958c";
 
 function goAdmin() {
     show("screen-admin");
