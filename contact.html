@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Contact TileIQ Pro. Get help with the app, ask about the AI Receptionist, pricing, accounts or anything else." />
+  <title>Contact TileIQ Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="contact-page">
+  <header class="site-header contact-header">
+    <div class="container nav">
+      <a class="brand brand-image" href="index.html" aria-label="TileIQ Pro home">
+        <img src="images/tileiq-pro-logo.png" alt="TileIQ Pro">
+      </a>
+      <nav class="nav-links" id="site-nav">
+        <a href="features.html">Features</a>
+        <a href="index.html#receptionist">AI Receptionist</a>
+        <a href="index.html#leica">Leica Disto™</a>
+        <a href="index.html#pricing">Pricing</a>
+        <a href="index.html#testimonials">Testimonials</a>
+        <a class="active" href="contact.html">Contact</a>
+      </nav>
+      <div class="nav-actions-mobile">
+        <a class="btn btn-primary btn-small desktop-cta" href="https://tile-iq.com/app">Try TileIQ Free <span>→</span></a>
+        <button class="mobile-menu-btn" type="button" aria-label="Open menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="contact-main">
+    <section class="contact-hero">
+      <div class="container contact-layout">
+        <div class="contact-copy">
+          <span class="contact-kicker">CONTACT TILEIQ</span>
+          <h1>Need a hand?<br><span>Talk to us.</span></h1>
+          <p>Whether you’re already using TileIQ or just want to know if it’s right for your tiling business, send us a message and we’ll get back to you.</p>
+
+          <div class="contact-help-grid">
+            <article>
+              <span>?</span>
+              <div><strong>App support</strong><p>Having a problem or need help using a feature?</p></div>
+            </article>
+            <article>
+              <span>☎</span>
+              <div><strong>AI Receptionist</strong><p>Ask how call answering and automatic job capture works.</p></div>
+            </article>
+            <article>
+              <span>£</span>
+              <div><strong>Pricing &amp; accounts</strong><p>Questions about subscriptions, trials or your account.</p></div>
+            </article>
+            <article>
+              <span>✦</span>
+              <div><strong>Ideas &amp; feedback</strong><p>Tell us what would make TileIQ even better for tilers.</p></div>
+            </article>
+          </div>
+
+          <div class="contact-note">
+            <b>Already inside the app?</b>
+            <span>You can also use Contact Support from TileIQ Pro.</span>
+          </div>
+        </div>
+
+        <div class="contact-form-card">
+          <div id="contact-success" class="contact-success" hidden>
+            <span>✓</span>
+            <h2>Message sent.</h2>
+            <p>Thanks for getting in touch. We’ll get back to you as soon as possible.</p>
+            <a class="btn btn-primary" href="index.html">Back to TileIQ</a>
+          </div>
+
+          <form id="website-contact-form">
+            <div class="form-heading">
+              <span>Send us a message</span>
+              <h2>How can we help?</h2>
+            </div>
+
+            <label>
+              What’s this about?
+              <select id="enquiry-type" required>
+                <option value="App support">App support</option>
+                <option value="AI Receptionist">AI Receptionist</option>
+                <option value="Pricing / account">Pricing / account</option>
+                <option value="Sales enquiry">Sales enquiry</option>
+                <option value="Suggestion">Suggestion / feedback</option>
+                <option value="General">Something else</option>
+              </select>
+            </label>
+
+            <div class="form-two">
+              <label>
+                Your name
+                <input id="contact-name" type="text" autocomplete="name" placeholder="Your name" required>
+              </label>
+              <label>
+                Business name
+                <input id="contact-business" type="text" autocomplete="organization" placeholder="Your tiling business">
+              </label>
+            </div>
+
+            <div class="form-two">
+              <label>
+                Email
+                <input id="contact-email" type="email" autocomplete="email" placeholder="you@example.com" required>
+              </label>
+              <label>
+                Phone
+                <input id="contact-phone" type="tel" autocomplete="tel" placeholder="07...">
+              </label>
+            </div>
+
+            <label>
+              Message
+              <textarea id="contact-message" rows="7" placeholder="Tell us what you need help with..." required></textarea>
+            </label>
+
+            <div id="contact-error" class="contact-error" hidden></div>
+            <button id="contact-submit" class="btn btn-primary contact-submit" type="submit">Send message <span>→</span></button>
+            <p class="form-privacy">Your details are only used to respond to your TileIQ enquiry.</p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="contact-footer">
+    <div class="container contact-footer-inner">
+      <img src="images/tileiq-pro-logo.png" alt="TileIQ Pro">
+      <span>Built for tilers.</span>
+      <a href="index.html">← Back to website</a>
+    </div>
+  </footer>
+
+  <script src="contact.js"></script>
+<script src="mobile-menu.js"></script>
+</body>
+</html>
