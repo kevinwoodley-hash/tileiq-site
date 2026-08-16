@@ -2,84 +2,24 @@
 <html lang="en">
 <head>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-274KES4P2G"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-274KES4P2G');
-</script>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Contact — TileIQ Pro</title>
-<meta name="description" content="Get in touch with the TileIQ Pro team."/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-274KES4P2G');</script>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Contact — TileIQ Pro</title><meta name="description" content="Get in touch with the TileIQ Pro team."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet"/>
-<style>
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  :root{--bg:#080a0c;--panel:#111619;--panel2:#0b1012;--line:#283337;--teal:#11b8b3;--muted:#98a3a9;--white:#f3f7f8;}
-  html,body{min-height:100%;background:var(--bg);color:var(--white);font-family:'DM Sans',sans-serif}
-  body{background:radial-gradient(circle at 15% 15%,rgba(17,184,179,.12),transparent 25%),var(--bg)}
-  .wrap{max-width:760px;margin:0 auto;padding:0 20px 60px}
-  nav{padding:20px 0;display:flex;align-items:center;justify-content:space-between;gap:20px}
-  .logo{font:800 26px 'Manrope',sans-serif;text-decoration:none;color:#fff}.logo span{color:#f5a623}
-  .back{font-size:13px;color:var(--muted);text-decoration:none}
-  .intro{padding:55px 0 28px}.kicker{color:var(--teal);font-size:11px;font-weight:800;letter-spacing:.14em}
-  h1{font:800 clamp(2.8rem,8vw,4.8rem)/1 'Manrope',sans-serif;letter-spacing:-.05em;margin:10px 0 14px}h1 span{color:var(--teal)}
-  .subtitle{font-size:16px;color:#bbc4c8;line-height:1.65;max-width:620px}
-  .card{background:linear-gradient(155deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:0 25px 70px rgba(0,0,0,.25)}
-  .field{margin-bottom:17px}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  label{display:block;font-size:11px;font-weight:700;color:#c4cdd1;margin-bottom:7px}
-  input,select,textarea{width:100%;background:#070b0d;border:1px solid #333e42;border-radius:10px;color:#fff;padding:13px 14px;font:500 14px 'DM Sans';outline:none}
-  input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(17,184,179,.08)}textarea{min-height:150px;resize:vertical}
-  .btn{width:100%;padding:15px;background:linear-gradient(135deg,#19c7c0,#099895);color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer}.btn:disabled{opacity:.55;cursor:wait}
-  .error,.success{display:none;border-radius:9px;padding:13px 14px;margin-bottom:16px;font-size:13px}.error{background:#341518;border:1px solid #762d33;color:#ffb6bc}.success{background:#0d2c2a;border:1px solid #16706d;color:#9ff5ef}
-  .help{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 18px}.help div{padding:13px;border:1px solid #243034;border-radius:11px;background:#0b1012}.help strong{display:block;font-size:12px;color:#fff}.help small{color:#879399;line-height:1.4}
-  @media(max-width:600px){.two,.help{grid-template-columns:1fr}.card{padding:22px 16px}.intro{padding-top:34px}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <nav><a href="https://tile-iq.com" class="logo">TileIQ <span>Pro</span></a><a href="https://tile-iq.com" class="back">← Back to website</a></nav>
-  <section class="intro"><span class="kicker">CONTACT TILEIQ</span><h1>Need a hand?<br><span>Talk to us.</span></h1><p class="subtitle">Questions about the app, AI Receptionist, pricing or your account? Send us a message and we’ll get back to you.</p></section>
-  <div class="help"><div><strong>App support</strong><small>Problems or questions about TileIQ Pro.</small></div><div><strong>AI Receptionist</strong><small>Questions about call answering and job capture.</small></div></div>
-  <div class="card">
-    <div class="error" id="error-msg"></div><div class="success" id="success-msg">Message sent. Thanks — we’ll get back to you as soon as possible.</div>
-    <div class="field"><label>What’s this about?</label><select id="type"><option value="App support">App support</option><option value="AI Receptionist">AI Receptionist</option><option value="Pricing / account">Pricing / account</option><option value="Sales enquiry">Sales enquiry</option><option value="Suggestion">Suggestion / feedback</option><option value="General">Something else</option></select></div>
-    <div class="two"><div class="field"><label>Your name</label><input type="text" id="name" autocomplete="name" placeholder="John Smith"/></div><div class="field"><label>Business name</label><input type="text" id="business" autocomplete="organization" placeholder="Your tiling business"/></div></div>
-    <div class="two"><div class="field"><label>Email address</label><input type="email" id="email" autocomplete="email" placeholder="john@example.com"/></div><div class="field"><label>Phone</label><input type="tel" id="phone" autocomplete="tel" placeholder="07..."/></div></div>
-    <div class="field"><label>Message</label><textarea id="message" placeholder="How can we help?"></textarea></div>
-    <button class="btn" id="send-btn" type="button" onclick="sendMessage()">Send Message →</button>
-  </div>
-</div>
+<style>*{box-sizing:border-box}body{margin:0;min-height:100%;background:radial-gradient(circle at 15% 15%,rgba(17,184,179,.12),transparent 25%),#080a0c;color:#f3f7f8;font-family:'DM Sans',sans-serif}.wrap{max-width:760px;margin:auto;padding:0 20px 60px}nav{padding:20px 0;display:flex;justify-content:space-between;align-items:center}.logo{font:800 26px Manrope;text-decoration:none;color:#fff}.logo span,.kicker,h1 span{color:#11b8b3}.back{font-size:13px;color:#98a3a9;text-decoration:none}.intro{padding:55px 0 28px}.kicker{font-size:11px;font-weight:800;letter-spacing:.14em}h1{font:800 clamp(2.8rem,8vw,4.8rem)/1 Manrope;letter-spacing:-.05em;margin:10px 0 14px}.subtitle{font-size:16px;color:#bbc4c8;line-height:1.65}.help,.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.help{margin-bottom:18px}.help div,.card{background:#0b1012;border:1px solid #283337;border-radius:11px}.help div{padding:13px}.help strong{display:block;font-size:12px}.help small{color:#879399}.card{border-radius:18px;padding:28px}.field{margin-bottom:17px}label{display:block;font-size:11px;font-weight:700;color:#c4cdd1;margin-bottom:7px}input,select,textarea{width:100%;background:#070b0d;border:1px solid #333e42;border-radius:10px;color:#fff;padding:13px 14px;font:500 14px 'DM Sans';outline:none}input:focus,select:focus,textarea:focus{border-color:#11b8b3}textarea{min-height:150px;resize:vertical}.btn{width:100%;padding:15px;background:linear-gradient(135deg,#19c7c0,#099895);color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer}.btn:disabled{opacity:.55}.error,.success{display:none;border-radius:9px;padding:13px 14px;margin-bottom:16px;font-size:13px}.error{background:#341518;border:1px solid #762d33;color:#ffb6bc}.success{background:#0d2c2a;border:1px solid #16706d;color:#9ff5ef}.website-trap{position:absolute;left:-9999px}@media(max-width:600px){.two,.help{grid-template-columns:1fr}.card{padding:22px 16px}.intro{padding-top:34px}}</style>
+</head><body><div class="wrap">
+<nav><a href="https://tile-iq.com" class="logo">TileIQ <span>Pro</span></a><a href="https://tile-iq.com" class="back">← Back to website</a></nav>
+<section class="intro"><span class="kicker">CONTACT TILEIQ</span><h1>Need a hand?<br><span>Talk to us.</span></h1><p class="subtitle">Questions about the app, AI Receptionist, pricing or your account? Send us a message and we’ll get back to you.</p></section>
+<div class="help"><div><strong>App support</strong><small>Problems or questions about TileIQ Pro.</small></div><div><strong>AI Receptionist</strong><small>Questions about call answering and job capture.</small></div></div>
+<div class="card"><div class="error" id="error-msg"></div><div class="success" id="success-msg">Message sent. Thanks — we’ll get back to you as soon as possible.</div>
+<div class="field"><label>What’s this about?</label><select id="type"><option>App support</option><option>AI Receptionist</option><option>Pricing / account</option><option>Sales enquiry</option><option value="Suggestion">Suggestion / feedback</option><option value="General">Something else</option></select></div>
+<div class="two"><div class="field"><label>Your name</label><input id="name" autocomplete="name"/></div><div class="field"><label>Business name</label><input id="business" autocomplete="organization"/></div></div>
+<div class="two"><div class="field"><label>Email address</label><input type="email" id="email" autocomplete="email"/></div><div class="field"><label>Phone</label><input type="tel" id="phone" autocomplete="tel"/></div></div>
+<div class="field"><label>Message</label><textarea id="message" placeholder="How can we help?"></textarea></div><input class="website-trap" id="website" tabindex="-1" autocomplete="off" aria-hidden="true"/>
+<button class="btn" id="send-btn" type="button" onclick="sendMessage()">Send Message →</button></div></div>
 <script>
-const WORKER_URL='https://damp-bread-e0f9.kevin-woodley.workers.dev';
-async function sendMessage(){
-  const name=document.getElementById('name').value.trim();
-  const business=document.getElementById('business').value.trim();
-  const email=document.getElementById('email').value.trim();
-  const phone=document.getElementById('phone').value.trim();
-  const enquiry=document.getElementById('type').value;
-  const message=document.getElementById('message').value.trim();
-  const btn=document.getElementById('send-btn');
-  const err=document.getElementById('error-msg');
-  const success=document.getElementById('success-msg');
-  err.style.display='none';success.style.display='none';
-  if(!name)return showError('Please enter your name.');
-  if(!email)return showError('Please enter your email address.');
-  if(!message)return showError('Please enter a message.');
-  btn.disabled=true;btn.textContent='Sending…';
-  const formatted=`Website enquiry: ${enquiry}\nName: ${name}\nBusiness: ${business||'Not supplied'}\nPhone: ${phone||'Not supplied'}\n\n${message}`;
-  try{
-    const resp=await fetch(WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'contact_support',type:enquiry==='Suggestion'?'suggestion':'problem',message:formatted,fromEmail:email,userName:business?`${name} — ${business}`:name,appVersion:'TileIQ Website'})});
-    if(!resp.ok)throw new Error(`Server error ${resp.status}`);
-    success.style.display='block';
-    document.getElementById('name').value='';document.getElementById('business').value='';document.getElementById('email').value='';document.getElementById('phone').value='';document.getElementById('message').value='';
-    if(typeof gtag!=='undefined')gtag('event','contact_form_submit');
-  }catch(e){showError('We couldn’t send your message. Please try again.');}
-  finally{btn.disabled=false;btn.textContent='Send Message →';}
-}
+const WORKER_URL='https://tileiq-website-contact.kevin-woodley.workers.dev';
+async function sendMessage(){const name=document.getElementById('name').value.trim(),business=document.getElementById('business').value.trim(),email=document.getElementById('email').value.trim(),phone=document.getElementById('phone').value.trim(),enquiryType=document.getElementById('type').value,message=document.getElementById('message').value.trim(),website=document.getElementById('website').value,btn=document.getElementById('send-btn'),err=document.getElementById('error-msg'),success=document.getElementById('success-msg');err.style.display='none';success.style.display='none';if(!name)return showError('Please enter your name.');if(!email)return showError('Please enter your email address.');if(!message)return showError('Please enter a message.');btn.disabled=true;btn.textContent='Sending…';try{const resp=await fetch(WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'website_contact',enquiryType,name,business,email,phone,message,website})});const result=await resp.json().catch(()=>({}));if(!resp.ok||!result.ok)throw new Error(result.error||`Server error ${resp.status}`);success.style.display='block';['name','business','email','phone','message'].forEach(id=>document.getElementById(id).value='');if(typeof gtag!=='undefined')gtag('event','contact_form_submit');}catch(e){showError(e.message||'We couldn’t send your message. Please try again.');}finally{btn.disabled=false;btn.textContent='Send Message →';}}
 function showError(msg){const el=document.getElementById('error-msg');el.textContent=msg;el.style.display='block';document.getElementById('send-btn').disabled=false;document.getElementById('send-btn').textContent='Send Message →';}
-</script>
-</body>
-</html>
+</script></body></html>
