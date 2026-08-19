@@ -1,9 +1,9 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // Website trial buttons open the REAL TileIQ web app in its built-in demo mode.
-  document.querySelectorAll('a[href="https://tile-iq.com/app"], a[href="https://tile-iq.com/app/"], a[href="https://tile-iq.com/app/demo.html"]').forEach(link => {
+  // Website trial buttons open the real TileIQ app through the protected auto-login demo wrapper.
+  document.querySelectorAll('a[href="https://tile-iq.com/app"], a[href="https://tile-iq.com/app/"], a[href="https://tile-iq.com/app/?demo=1"], a[href="https://tile-iq.com/app/demo.html"]').forEach(link => {
     const label = (link.textContent || "").toLowerCase();
     if (label.includes("try tileiq") || label.includes("lock in my price") || label.includes("try tileiq with leica")) {
-      link.href = "https://tile-iq.com/app/?demo=1";
+      link.href = "https://tile-iq.com/app/demo.html";
     }
   });
 
@@ -13,7 +13,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const style = document.createElement("style");
   style.textContent = `
-    /* Keep the site header/navigation available while scrolling on every device */
     .site-header{
       position:fixed!important;
       top:0!important;
@@ -27,8 +26,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     body{padding-top:78px!important}
     .contact-page{padding-top:78px!important}
-
-    /* Desktop: full navigation stays visible */
     .mobile-menu-btn{display:none!important}
     .nav-links{
       display:flex!important;
@@ -50,8 +47,6 @@ document.addEventListener("DOMContentLoaded", () => {
       background:transparent!important;
     }
     .desktop-cta{display:inline-flex!important}
-
-    /* Mobile/tablet: fixed hamburger header */
     @media(max-width:900px){
       .mobile-menu-btn{display:flex!important}
       .desktop-cta{display:none!important}
