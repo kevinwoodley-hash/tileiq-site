@@ -1,9 +1,9 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // Website trial buttons open the isolated demo experience instead of the live app login.
-  document.querySelectorAll('a[href="https://tile-iq.com/app"], a[href="https://tile-iq.com/app/"]').forEach(link => {
+  // Website trial buttons open the REAL TileIQ web app in its built-in demo mode.
+  document.querySelectorAll('a[href="https://tile-iq.com/app"], a[href="https://tile-iq.com/app/"], a[href="https://tile-iq.com/app/demo.html"]').forEach(link => {
     const label = (link.textContent || "").toLowerCase();
     if (label.includes("try tileiq") || label.includes("lock in my price") || label.includes("try tileiq with leica")) {
-      link.href = "https://tile-iq.com/app/demo.html";
+      link.href = "https://tile-iq.com/app/?demo=1";
     }
   });
 
