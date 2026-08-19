@@ -4,26 +4,99 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>TileIQ Pro Demo</title>
-<link rel="stylesheet" href="style.css">
 <style>
-:root{--demo-accent:#f59e0b;--demo-bg:#0b0f14;--demo-card:#151a21;--demo-line:#2a313a;--demo-muted:#98a2ad}
-*{box-sizing:border-box}body{margin:0;background:var(--demo-bg);color:#f7f8fa;font-family:Arial,Helvetica,sans-serif}.demo-shell{max-width:1200px;margin:0 auto;min-height:100vh}.demo-top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;background:rgba(11,15,20,.96);border-bottom:1px solid var(--demo-line);backdrop-filter:blur(12px)}.demo-brand{font-weight:800;font-size:20px}.demo-brand span{color:var(--demo-accent)}.demo-user{display:flex;align-items:center;gap:10px;color:var(--demo-muted);font-size:13px}.demo-avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--demo-accent);color:#111;font-weight:800}.demo-grid{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 63px)}.demo-side{border-right:1px solid var(--demo-line);padding:20px 14px}.demo-side button{width:100%;display:flex;align-items:center;gap:10px;background:transparent;color:#d7dde3;border:0;border-radius:10px;padding:12px;text-align:left;font-size:14px;cursor:pointer}.demo-side button.active,.demo-side button:hover{background:#20262e;color:#fff}.demo-side small{display:block;color:#6f7a86;padding:18px 12px 8px;text-transform:uppercase;letter-spacing:.12em;font-size:9px}.demo-main{padding:28px}.demo-banner{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:17px 20px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);border-radius:14px;margin-bottom:22px}.demo-banner b{color:var(--demo-accent)}.demo-banner a{color:var(--demo-accent);font-weight:700;text-decoration:none}.demo-head{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:22px}.demo-head h1{margin:0 0 5px;font-size:30px}.demo-head p{margin:0;color:var(--demo-muted)}.demo-btn{border:0;border-radius:10px;background:var(--demo-accent);color:#111;font-weight:800;padding:12px 16px;cursor:pointer}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}.stat{background:var(--demo-card);border:1px solid var(--demo-line);border-radius:14px;padding:18px}.stat small{color:var(--demo-muted)}.stat strong{display:block;font-size:27px;margin-top:7px}.panel{background:var(--demo-card);border:1px solid var(--demo-line);border-radius:14px;overflow:hidden}.panel-head{display:flex;justify-content:space-between;align-items:center;padding:17px 18px;border-bottom:1px solid var(--demo-line)}.panel-head h2{font-size:17px;margin:0}.job{display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--demo-line);cursor:pointer}.job:last-child{border-bottom:0}.job:hover{background:#1a2028}.job strong,.job span{display:block}.job small{color:var(--demo-muted);margin-top:4px}.pill{display:inline-flex!important;width:max-content;padding:5px 9px;border-radius:20px;font-size:11px;font-weight:700}.quoted{background:rgba(245,158,11,.14);color:#ffc05b}.booked{background:rgba(34,197,94,.14);color:#72df96}.draft{background:rgba(96,165,250,.14);color:#8bc1ff}.screen{display:none}.screen.active{display:block}.customer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.customer{background:var(--demo-card);border:1px solid var(--demo-line);border-radius:14px;padding:17px}.customer b{display:block;margin-bottom:5px}.customer span{color:var(--demo-muted);font-size:13px}.quote-card{max-width:720px;background:#fff;color:#1f2933;margin:0 auto;border-radius:12px;padding:28px}.quote-card h2{margin-top:0}.quote-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e4e7eb}.quote-total{display:flex;justify-content:space-between;font-size:20px;font-weight:800;padding-top:18px}.demo-note{color:var(--demo-muted);font-size:12px;margin-top:12px;text-align:center}
-@media(max-width:800px){.demo-grid{grid-template-columns:1fr}.demo-side{position:sticky;top:63px;z-index:15;display:flex;overflow-x:auto;border-right:0;border-bottom:1px solid var(--demo-line);padding:8px;background:#0b0f14}.demo-side small{display:none}.demo-side button{width:auto;white-space:nowrap}.demo-main{padding:18px}.stats{grid-template-columns:1fr 1fr}.job{grid-template-columns:1fr auto}.job .hide-mobile{display:none}.customer-grid{grid-template-columns:1fr}.demo-banner{align-items:flex-start;flex-direction:column}}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;font-family:Arial,Helvetica,sans-serif}.demo-bar{height:38px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 12px;background:#E07A2F;color:#111;font-size:12px;font-weight:700;position:relative;z-index:10}.demo-bar span{font-weight:500}.demo-bar a{position:absolute;right:12px;color:#111;text-decoration:none;font-weight:800}.demo-frame{display:block;width:100%;height:calc(100% - 38px);border:0;background:#fff}@media(max-width:640px){.demo-bar{height:34px;font-size:11px;justify-content:flex-start;padding-right:88px}.demo-frame{height:calc(100% - 34px)}.demo-bar a{right:9px}}
 </style>
 </head>
 <body>
-<div class="demo-shell">
-<header class="demo-top"><div class="demo-brand">TileIQ <span>Pro</span> <small style="font-size:10px;color:#98a2ad">DEMO</small></div><div class="demo-user"><span>Demo User</span><div class="demo-avatar">DU</div></div></header>
-<div class="demo-grid">
-<nav class="demo-side"><small>Demo workspace</small><button class="active" data-screen="dashboard">⌂ Dashboard</button><button data-screen="jobs">▣ Jobs</button><button data-screen="customers">♙ Customers</button><button data-screen="quote">£ Quote example</button><small>TileIQ</small><button onclick="location.href='https://tile-iq.com'">← Back to website</button></nav>
-<main class="demo-main">
-<div class="demo-banner"><div><b>You’re using the TileIQ demo.</b><br><span style="color:#c6cdd4;font-size:13px">Sample data only. Nothing here is connected to a real TileIQ account.</span></div><a href="https://tile-iq.com/app">Sign in to the real app →</a></div>
-<section id="dashboard" class="screen active"><div class="demo-head"><div><h1>Good afternoon, Demo User</h1><p>Here’s what’s happening with your tiling business.</p></div><button class="demo-btn" onclick="demoAlert()">+ New Job</button></div><div class="stats"><div class="stat"><small>Open quotes</small><strong>4</strong></div><div class="stat"><small>Booked jobs</small><strong>7</strong></div><div class="stat"><small>This month</small><strong>£8,420</strong></div><div class="stat"><small>Awaiting payment</small><strong>£2,180</strong></div></div><div class="panel"><div class="panel-head"><h2>Recent jobs</h2><span style="color:#98a2ad;font-size:12px">Demo data</span></div><div class="job" onclick="openQuote()"><div><strong>Sarah Mitchell</strong><small>Bathroom renovation · Oxford</small></div><div class="hide-mobile"><span>£2,840</span><small>Quote #1042</small></div><div class="hide-mobile"><span>19 Aug 2026</span><small>Updated today</small></div><span class="pill quoted">Quoted</span></div><div class="job"><div><strong>James Carter</strong><small>Kitchen floor · Abingdon</small></div><div class="hide-mobile"><span>£1,460</span><small>Job #1039</small></div><div class="hide-mobile"><span>24 Aug 2026</span><small>Booked</small></div><span class="pill booked">Booked</span></div><div class="job"><div><strong>Emma Wilson</strong><small>En-suite · Witney</small></div><div class="hide-mobile"><span>£980</span><small>Quote #1044</small></div><div class="hide-mobile"><span>18 Aug 2026</span><small>Draft</small></div><span class="pill draft">Draft</span></div></div></section>
-<section id="jobs" class="screen"><div class="demo-head"><div><h1>Jobs</h1><p>Quotes, booked work and current jobs in one place.</p></div><button class="demo-btn" onclick="demoAlert()">+ New Job</button></div><div class="panel"><div class="job" onclick="openQuote()"><div><strong>Sarah Mitchell</strong><small>Main bathroom · Porcelain</small></div><div class="hide-mobile">£2,840</div><div class="hide-mobile">42.6 m²</div><span class="pill quoted">Quoted</span></div><div class="job"><div><strong>James Carter</strong><small>Kitchen floor · Porcelain</small></div><div class="hide-mobile">£1,460</div><div class="hide-mobile">26.4 m²</div><span class="pill booked">Booked</span></div><div class="job"><div><strong>Emma Wilson</strong><small>En-suite · Ceramic</small></div><div class="hide-mobile">£980</div><div class="hide-mobile">18.2 m²</div><span class="pill draft">Draft</span></div></div></section>
-<section id="customers" class="screen"><div class="demo-head"><div><h1>Customers</h1><p>Customer details ready for quotes, jobs and invoices.</p></div></div><div class="customer-grid"><div class="customer"><b>Sarah Mitchell</b><span>Oxford<br>07700 900123<br>sarah@example.com</span></div><div class="customer"><b>James Carter</b><span>Abingdon<br>07700 900456<br>james@example.com</span></div><div class="customer"><b>Emma Wilson</b><span>Witney<br>07700 900789<br>emma@example.com</span></div></div></section>
-<section id="quote" class="screen"><div class="demo-head"><div><h1>Quote example</h1><p>A sample customer-ready TileIQ quote.</p></div></div><div class="quote-card"><h2>TileIQ Pro</h2><p><b>Quote #1042</b><br>Sarah Mitchell · Oxford</p><div class="quote-row"><span>Preparation & tanking</span><b>£420</b></div><div class="quote-row"><span>Wall & floor tiling labour</span><b>£1,760</b></div><div class="quote-row"><span>Adhesive, grout & sundries</span><b>£310</b></div><div class="quote-row"><span>Trims & silicone</span><b>£350</b></div><div class="quote-total"><span>Total</span><span>£2,840</span></div></div><div class="demo-note">Demo quote — no email or invoice will be sent.</div></section>
-</main></div></div>
+<div class="demo-bar">TileIQ Pro Demo <span>— real app, demo account</span><a href="https://tile-iq.com">Exit demo</a></div>
+<iframe id="tileiq-demo-app" class="demo-frame" src="/app/?demo=1" title="TileIQ Pro Demo"></iframe>
 <script>
-const buttons=document.querySelectorAll('[data-screen]');const screens=document.querySelectorAll('.screen');buttons.forEach(btn=>btn.addEventListener('click',()=>{buttons.forEach(b=>b.classList.remove('active'));btn.classList.add('active');screens.forEach(s=>s.classList.remove('active'));document.getElementById(btn.dataset.screen).classList.add('active');window.scrollTo(0,0)}));function openQuote(){buttons.forEach(b=>b.classList.remove('active'));document.querySelector('[data-screen="quote"]').classList.add('active');screens.forEach(s=>s.classList.remove('active'));document.getElementById('quote').classList.add('active');window.scrollTo(0,0)}function demoAlert(){alert('Demo mode: this shows where you would create a new TileIQ job. No real data will be saved.');}
+(() => {
+  const frame = document.getElementById('tileiq-demo-app');
+  let loginClicked = false;
+
+  function installDemoProtection(win, doc) {
+    if (!doc || doc.documentElement.dataset.demoProtected === '1') return;
+    doc.documentElement.dataset.demoProtected = '1';
+
+    const isPasswordAction = (el) => {
+      if (!el) return false;
+      if (el.id === 'si-pwd-toggle') return false;
+      const text = (el.textContent || '').trim().toLowerCase();
+      const href = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
+      const onclick = (el.getAttribute && el.getAttribute('onclick') || '').toLowerCase();
+      return /change\s+password|reset\s+password|set\s+password|update\s+password/.test(text) ||
+             /password/.test(href) || /password/.test(onclick);
+    };
+
+    doc.addEventListener('click', (event) => {
+      const action = event.target.closest && event.target.closest('button,a,[role="button"]');
+      if (!action || !isPasswordAction(action)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      win.alert('Password changes are disabled for the TileIQ demo account.');
+    }, true);
+
+    doc.addEventListener('submit', (event) => {
+      const form = event.target;
+      if (!form || form.querySelector('#si-email')) return;
+      const text = (form.textContent || '').toLowerCase();
+      const passwordFields = form.querySelectorAll('input[type="password"]');
+      if (passwordFields.length && /password/.test(text)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        win.alert('Password changes are disabled for the TileIQ demo account.');
+      }
+    }, true);
+
+    const hidePasswordActions = () => {
+      doc.querySelectorAll('button,a,[role="button"]').forEach(el => {
+        if (el.id === 'si-pwd-toggle') return;
+        const text = (el.textContent || '').trim().toLowerCase();
+        if (/change\s+password|reset\s+password|set\s+password|update\s+password/.test(text)) {
+          el.style.display = 'none';
+          el.setAttribute('aria-hidden','true');
+        }
+      });
+    };
+    hidePasswordActions();
+    new MutationObserver(hidePasswordActions).observe(doc.body, {childList:true,subtree:true});
+  }
+
+  function autoLogin() {
+    let win, doc;
+    try { win = frame.contentWindow; doc = frame.contentDocument; } catch(e) { return; }
+    if (!win || !doc) return;
+    installDemoProtection(win, doc);
+
+    const email = doc.getElementById('si-email');
+    const password = doc.getElementById('si-password');
+    const signInScreen = doc.getElementById('screen-signin');
+    if (!email || !password || !signInScreen) return;
+
+    email.value = 'demo@tile-iq.com';
+    password.value = 'Demo1234!';
+    email.dispatchEvent(new Event('input', {bubbles:true}));
+    password.dispatchEvent(new Event('input', {bubbles:true}));
+
+    const visible = !signInScreen.classList.contains('hidden');
+    if (!visible || loginClicked) return;
+    const signInButton = [...signInScreen.querySelectorAll('button')].find(b => /^sign\s*in$/i.test((b.textContent || '').trim())) ||
+                         [...signInScreen.querySelectorAll('button')].find(b => /sign\s*in/i.test((b.textContent || '').trim()));
+    if (signInButton) {
+      loginClicked = true;
+      signInButton.click();
+    }
+  }
+
+  frame.addEventListener('load', () => {
+    loginClicked = false;
+    autoLogin();
+    const timer = setInterval(autoLogin, 400);
+    setTimeout(() => clearInterval(timer), 15000);
+  });
+})();
 </script>
-</body></html>
+</body>
+</html>
