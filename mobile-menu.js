@@ -5,7 +5,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const style = document.createElement("style");
   style.textContent = `
-    /* Desktop: show the full navigation and hide the hamburger */
+    /* Keep the site header/navigation available while scrolling on every device */
+    .site-header{
+      position:fixed!important;
+      top:0!important;
+      left:0!important;
+      right:0!important;
+      z-index:1000!important;
+      background:rgba(7,10,12,.96)!important;
+      border-bottom:1px solid #1f2a2d!important;
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+    }
+    body{padding-top:78px!important}
+    .contact-page{padding-top:78px!important}
+
+    /* Desktop: full navigation stays visible */
     .mobile-menu-btn{display:none!important}
     .nav-links{
       display:flex!important;
@@ -28,21 +43,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     .desktop-cta{display:inline-flex!important}
 
-    /* Mobile/tablet: keep the header and hamburger visible while scrolling */
+    /* Mobile/tablet: fixed hamburger header */
     @media(max-width:900px){
-      .site-header{
-        position:fixed!important;
-        top:0!important;
-        left:0!important;
-        right:0!important;
-        z-index:1000!important;
-        background:rgba(7,10,12,.96)!important;
-        border-bottom:1px solid #1f2a2d!important;
-        backdrop-filter:blur(12px);
-        -webkit-backdrop-filter:blur(12px);
-      }
-      body{padding-top:78px!important}
-      .contact-page{padding-top:0!important}
       .mobile-menu-btn{display:flex!important}
       .desktop-cta{display:none!important}
       .nav{position:relative!important}
@@ -91,14 +93,8 @@ document.addEventListener("DOMContentLoaded", () => {
     button.setAttribute("aria-expanded", String(open));
   });
 
-  nav.querySelectorAll("a").forEach(link => {
-    link.addEventListener("click", closeMenu);
-  });
-
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape") closeMenu();
-  });
-
+  nav.querySelectorAll("a").forEach(link => link.addEventListener("click", closeMenu));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
   document.addEventListener("click", e => {
     if (!nav.classList.contains("mobile-open")) return;
     if (!nav.contains(e.target) && !button.contains(e.target)) closeMenu();
