@@ -9,13 +9,20 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
+  <style>
+    @media(max-width:900px){
+      .site-header{position:fixed!important;top:0!important;left:0;right:0;z-index:1000!important;background:rgba(7,10,12,.96)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 1px 0 rgba(255,255,255,.06)}
+      body{padding-top:78px}
+      .nav-links{position:fixed!important;top:78px!important;left:12px!important;right:12px!important;width:auto!important;max-height:calc(100vh - 94px);overflow-y:auto}
+    }
+  </style>
 </head>
 <body>
   <header class="site-header">
     <div class="container nav">
       <a class="brand brand-image" href="#top" aria-label="TileIQ Pro home"><img src="images/tileiq-pro-logo.png" alt="TileIQ Pro"></a>
       <nav class="nav-links" id="site-nav">
-        <a href="features.html">Features</a>
+        <a href="#features">Features</a>
         <a href="#receptionist">AI Receptionist</a>
         <a href="#leica">Leica Disto™</a>
         <a href="#pricing">Pricing</a>
@@ -57,7 +64,6 @@
           <div class="hero-actions">
             <a class="btn btn-primary btn-large" href="https://tile-iq.com/app">Try TileIQ Free <span>→</span></a>
             <a class="google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play"></a>
-            
           </div>
           <div class="tiny-trust">◈ No credit card required &nbsp;•&nbsp; Cancel anytime</div>
         </div>
@@ -93,119 +99,48 @@
       </div>
     </section>
 
-
     <section class="leica-detail-section" id="leica">
       <div class="container leica-detail-card">
         <div class="leica-copy">
           <span class="kicker">Leica Disto™ integration</span>
           <h2>Measure once.<br><span>It’s already in TileIQ.</span></h2>
           <p>Connect a compatible Leica Disto to TileIQ via Bluetooth and send measurements directly into the app while you survey the job. No writing dimensions down. No typing them in again. No swapping between a laser measure, calculator and notebook.</p>
-
           <div class="leica-benefits">
             <div><b>✓</b><span><strong>Faster site surveys</strong><small>Take the measurement and carry on. TileIQ receives it immediately.</small></span></div>
             <div><b>✓</b><span><strong>Fewer transcription mistakes</strong><small>Reduce the risk of entering a measurement incorrectly later.</small></span></div>
             <div><b>✓</b><span><strong>Less duplicated admin</strong><small>The figures you capture on site are already where you need them.</small></span></div>
             <div><b>✓</b><span><strong>Ready for the quote</strong><small>Measurements feed into the room and job workflow so TileIQ can calculate what you need.</small></span></div>
           </div>
-
           <a class="btn btn-primary" href="https://tile-iq.com/app">Try TileIQ with Leica Disto <span>→</span></a>
         </div>
-
         <div class="leica-flow-visual" aria-label="Leica Disto measurements flowing into TileIQ">
-          <div class="leica-photo leica-photo-hand">
-            <img src="images/leica-disto-hand.jpg" alt="Hand holding a Leica DISTO D2 laser measure">
-          </div>
-
-          <div class="leica-transfer">
-            <span class="bt-icon">⌁</span>
-            <div class="transfer-line"><i></i><i></i><i></i></div>
-            <small>Bluetooth</small>
-          </div>
-
-          <div class="leica-phone-real">
-            <div class="phone-real-notch"></div>
-            <img src="images/tileiq-add-room-screen.png" alt="TileIQ Add Room screen showing Disto connection">
-          </div>
+          <div class="leica-photo leica-photo-hand"><img src="images/leica-disto-hand.jpg" alt="Hand holding a Leica DISTO D2 laser measure"></div>
+          <div class="leica-transfer"><span class="bt-icon">⌁</span><div class="transfer-line"><i></i><i></i><i></i></div><small>Bluetooth</small></div>
+          <div class="leica-phone-real"><div class="phone-real-notch"></div><img src="images/tileiq-add-room-screen.png" alt="TileIQ Add Room screen showing Disto connection"></div>
         </div>
       </div>
-
       <div class="container leica-steps">
-        <article><span>1</span><div><b>Connect</b><p>Pair your compatible Leica Disto with TileIQ using Bluetooth.</p></div></article>
-        <em>→</em>
-        <article><span>2</span><div><b>Measure</b><p>Take your measurements normally while surveying the job.</p></div></article>
-        <em>→</em>
-        <article><span>3</span><div><b>Send to TileIQ</b><p>The measurement appears in the app without retyping it.</p></div></article>
-        <em>→</em>
+        <article><span>1</span><div><b>Connect</b><p>Pair your compatible Leica Disto with TileIQ using Bluetooth.</p></div></article><em>→</em>
+        <article><span>2</span><div><b>Measure</b><p>Take your measurements normally while surveying the job.</p></div></article><em>→</em>
+        <article><span>3</span><div><b>Send to TileIQ</b><p>The measurement appears in the app without retyping it.</p></div></article><em>→</em>
         <article><span>4</span><div><b>Calculate &amp; quote</b><p>Use the measurement in the room, material and quote workflow.</p></div></article>
       </div>
     </section>
 
     <section class="ai-section" id="receptionist">
       <div class="container ai-card">
-        <div class="ai-visual">
-          <div class="mini-phone">
-            <div class="call-ring">☎</div>
-          </div>
-          <div class="enquiry-card">
-            <div class="person-row"><span class="avatar">JS</span><div><small>New enquiry from</small><strong>John Smith</strong></div></div>
-            <ul><li>Bathroom renovation</li><li>3.2m × 2.4m</li><li>Wants a quote</li></ul>
-            <button>Added to TileIQ ✓</button>
-          </div>
-        </div>
-        <div class="ai-copy">
-          <span class="kicker">NEW &nbsp; AI Receptionist</span>
-          <h2>Answers calls when you can’t.<br>Adds job details straight into TileIQ.</h2>
-          <p>Never miss another job. Our AI Receptionist answers your calls, captures the important details and creates the job in your TileIQ account automatically. You stay focused on the work that matters.</p>
-          <a class="btn btn-primary" href="ai-receptionist.html">Learn more about AI Receptionist <span>→</span></a>
-        </div>
+        <div class="ai-visual"><div class="mini-phone"><div class="call-ring">☎</div></div><div class="enquiry-card"><div class="person-row"><span class="avatar">JS</span><div><small>New enquiry from</small><strong>John Smith</strong></div></div><ul><li>Bathroom renovation</li><li>3.2m × 2.4m</li><li>Wants a quote</li></ul><button>Added to TileIQ ✓</button></div></div>
+        <div class="ai-copy"><span class="kicker">NEW &nbsp; AI Receptionist</span><h2>Answers calls when you can’t.<br>Adds job details straight into TileIQ.</h2><p>Never miss another job. Our AI Receptionist answers your calls, captures the important details and creates the job in your TileIQ account automatically. You stay focused on the work that matters.</p><a class="btn btn-primary" href="ai-receptionist.html">Learn more about AI Receptionist <span>→</span></a></div>
         <div class="ai-bot">◉</div>
       </div>
     </section>
 
-    <section class="testimonials-section" id="testimonials">
-      <div class="container testimonials-grid">
-        <div class="testimonial-lead">
-          <div class="stars">★★★★★</div>
-          <h2>Loved by tilers<br>across the UK</h2>
-          <p>TileIQ helps tilers save time, look professional and grow their business.</p>
-        </div>
-        <article><p>“TileIQ has completely changed the way I work. Quotes in minutes instead of hours.”</p><div class="reviewer"><span>LT</span><div><b>Liam T.</b><small>Tiler, Oxford</small></div></div></article>
-        <article><p>“The AI receptionist is brilliant. I never miss a call or a job anymore.”</p><div class="reviewer"><span>MR</span><div><b>Mark R.</b><small>Tiler, Manchester</small></div></div></article>
-        <article><p>“The best tool I’ve found for tilers. Simple, fast and incredibly powerful.”</p><div class="reviewer"><span>DS</span><div><b>Dean S.</b><small>Tiler, Leeds</small></div></div></article>
-      </div>
-    </section>
+    <section class="testimonials-section" id="testimonials"><div class="container testimonials-grid"><div class="testimonial-lead"><div class="stars">★★★★★</div><h2>Loved by tilers<br>across the UK</h2><p>TileIQ helps tilers save time, look professional and grow their business.</p></div><article><p>“TileIQ has completely changed the way I work. Quotes in minutes instead of hours.”</p><div class="reviewer"><span>LT</span><div><b>Liam T.</b><small>Tiler, Oxford</small></div></div></article><article><p>“The AI receptionist is brilliant. I never miss a call or a job anymore.”</p><div class="reviewer"><span>MR</span><div><b>Mark R.</b><small>Tiler, Manchester</small></div></div></article><article><p>“The best tool I’ve found for tilers. Simple, fast and incredibly powerful.”</p><div class="reviewer"><span>DS</span><div><b>Dean S.</b><small>Tiler, Leeds</small></div></div></article></div></section>
 
-    <section class="cta-section pricing-promo-section" id="pricing">
-      <div class="container pricing-promo-card">
-        <div class="pricing-promo-copy">
-          <span class="promo-badge">LIMITED-TIME PROMOTIONAL PRICING</span>
-          <h2>Sign up today.<br><span>Keep this pricing forever.</span></h2>
-          <p>TileIQ is currently available at promotional pricing. Start your subscription while this offer is available and your promotional subscription price will stay locked in for as long as you remain continuously subscribed.</p>
-          <div class="promo-points">
-            <span>✓ Lock in today’s promotional price</span>
-            <span>✓ Keep it while continuously subscribed</span>
-            <span>✓ 30-day free trial</span>
-            <span>✓ No credit card required to start</span>
-          </div>
-        </div>
-        <div class="pricing-promo-action">
-          <strong>Founding offer</strong>
-          <p>Join TileIQ now and secure the current promotional rate.</p>
-          <a class="btn btn-dark" href="https://tile-iq.com/app">Lock in my price <span>→</span></a>
-          <small>Promotional pricing applies while your subscription remains continuously active.</small>
-        </div>
-      </div>
-    </section>
+    <section class="cta-section pricing-promo-section" id="pricing"><div class="container pricing-promo-card"><div class="pricing-promo-copy"><span class="promo-badge">LIMITED-TIME PROMOTIONAL PRICING</span><h2>Sign up today.<br><span>Keep this pricing forever.</span></h2><p>TileIQ is currently available at promotional pricing. Start your subscription while this offer is available and your promotional subscription price will stay locked in for as long as you remain continuously subscribed.</p><div class="promo-points"><span>✓ Lock in today’s promotional price</span><span>✓ Keep it while continuously subscribed</span><span>✓ 30-day free trial</span><span>✓ No credit card required to start</span></div></div><div class="pricing-promo-action"><strong>Founding offer</strong><p>Join TileIQ now and secure the current promotional rate.</p><a class="btn btn-dark" href="https://tile-iq.com/app">Lock in my price <span>→</span></a><small>Promotional pricing applies while your subscription remains continuously active.</small></div></div></section>
   </main>
 
-  <footer>
-    <div class="container footer-grid">
-      <span>◉ 30-day free trial<br><small>No credit card required</small></span>
-      <span>↻ Cancel anytime<br><small>No contracts</small></span>
-      <span>♙ Trusted by tilers<br><small>Across the UK</small></span>
-      <span>⬡ Secure &amp; reliable<br><small>Your data is safe</small></span>
-    </div>
-  </footer>
+  <footer><div class="container footer-grid"><span>◉ 30-day free trial<br><small>No credit card required</small></span><span>↻ Cancel anytime<br><small>No contracts</small></span><span>♙ Trusted by tilers<br><small>Across the UK</small></span><span>⬡ Secure &amp; reliable<br><small>Your data is safe</small></span></div></footer>
 <script src="mobile-menu.js"></script>
 </body>
 </html>
