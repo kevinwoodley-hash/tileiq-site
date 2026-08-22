@@ -2021,7 +2021,13 @@ function renderHomeScreen() {
                 ? `<span style="background:#7c3aed;color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">✨ PRO (Access Code)</span>`
                 : `<span style="background:#f59e0b;color:#000;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">⭐ PRO</span>`;
         } else {
-            tierEl.innerHTML = `<span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Free Plan</span>`;
+            const used = settings.quotesCreatedLifetime || 0;
+            const left = Math.max(0, FREE_JOB_LIMIT - used);
+            const quotaText = left > 0
+                ? `${left} of ${FREE_JOB_LIMIT} free quotes left`
+                : `Free quote limit reached`;
+            tierEl.innerHTML = `<span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Free Plan</span>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${quotaText}</div>`;
         }
     }
 
