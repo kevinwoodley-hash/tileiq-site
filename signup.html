@@ -4,19 +4,51 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Create your TileIQ account</title>
-  <style>html,body{margin:0;width:100%;height:100%;background:#07090b;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style>
+  <style>
+    html,body{margin:0;width:100%;height:100%;background:#07090b;overflow:hidden;font-family:Arial,sans-serif}
+    iframe{display:block;width:100%;height:100%;border:0}
+    .download-panel{position:fixed;inset:0;z-index:10;background:rgba(7,9,11,.96);display:none;align-items:center;justify-content:center;padding:24px;color:#fff;text-align:center}
+    .download-card{width:min(520px,100%);background:#111417;border:1px solid #2b3338;border-radius:20px;padding:30px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+    .download-card h1{margin:0 0 10px;font-size:30px}.download-card h1 span{color:#19c7c0}.download-card p{color:#b8c0c6;line-height:1.55;margin:0 0 22px}
+    .price{font-size:18px;font-weight:700;color:#19c7c0;margin-bottom:24px}
+    .store-row{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+    .google-play img{width:155px;max-width:155px;height:auto}
+    .ios-soon{min-height:46px;display:inline-flex;align-items:center;justify-content:center;padding:8px 18px;border:1px solid #5b6168;border-radius:9px;background:#111;color:#fff;font-size:13px;font-weight:700;line-height:1.15}
+    .continue-link{display:inline-block;margin-top:22px;color:#a8b2b7;font-size:13px;text-decoration:underline}
+  </style>
 </head>
 <body>
   <iframe id="tileiq-app" src="/app" title="Create your TileIQ account"></iframe>
+  <div class="download-panel" id="download-panel">
+    <div class="download-card">
+      <h1>Account created. <span>You're ready.</span></h1>
+      <p>Download TileIQ Pro and sign in using the same email and password you just created.</p>
+      <div class="price">Your promotional price: £9.99/month or £79.99/year</div>
+      <div class="store-row">
+        <a class="google-play" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play"></a>
+        <div class="ios-soon" aria-label="Coming soon on iOS">Coming Soon<br>on iOS</div>
+      </div>
+      <a class="continue-link" href="/app">Continue in the web app</a>
+    </div>
+  </div>
   <script>
     const frame=document.getElementById('tileiq-app');
+    const panel=document.getElementById('download-panel');
+    let signupWasSubmitted=false;
+
     frame.addEventListener('load',()=>{
       try{
         const w=frame.contentWindow;
+        const d=frame.contentDocument;
         const openSignup=()=>{
           if(typeof w.show==='function'){
             w.show('screen-signup');
             if(typeof w.generateCaptcha==='function') w.generateCaptcha();
+            const btn=d.getElementById('su-submit');
+            if(btn && !btn.dataset.tileiqDownloadHook){
+              btn.dataset.tileiqDownloadHook='1';
+              btn.addEventListener('click',()=>{signupWasSubmitted=true;});
+            }
             return true;
           }
           return false;
@@ -25,9 +57,19 @@
           let tries=0;
           const timer=setInterval(()=>{
             tries++;
-            if(openSignup()||tries>30) clearInterval(timer);
+            if(openSignup()||tries>40) clearInterval(timer);
           },100);
         }
+        setInterval(()=>{
+          if(!signupWasSubmitted) return;
+          try{
+            const signup=d.getElementById('screen-signup');
+            const err=d.getElementById('signup-error');
+            const movedOn=signup && signup.classList.contains('hidden');
+            const hasError=err && !err.classList.contains('hidden') && err.textContent.trim();
+            if(movedOn && !hasError) panel.style.display='flex';
+          }catch(e){}
+        },400);
       }catch(e){
         window.location.href='/app';
       }
