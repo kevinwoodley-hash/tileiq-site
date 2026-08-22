@@ -260,9 +260,7 @@
         <div style="width:100%;max-width:340px;background:var(--card);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid var(--border);">
             <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:12px;letter-spacing:0.05em;">PRO INCLUDES</div>
             <div style="display:flex;flex-direction:column;gap:10px;">
-                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Unlimited jobs</div>
-                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> AI quote descriptions</div>
-                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> FreeAgent, QuickBooks &amp; Xero exports</div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Unlimited quotes (free plan: 3)</div>
                 <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Professional PDF quotes &amp; invoices</div>
                 <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Push notifications</div>
             </div>
@@ -1983,8 +1981,36 @@
                     </select>
                 </div>
             </div>
-            <div class="form-card" style="display:none;margin-top:12px;">
+            <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">📞 Business Phone</div>
+                <div class="field-group">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="set-ai-receptionist" style="width:auto;">
+                        <span>Enable AI Receptionist</span>
+                    </label>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">When you miss a call, our AI answers, asks about the job, and adds it to your app automatically.</div>
+                </div>
+                <div class="field-group">
+                    <label>AI Receptionist Voice</label>
+                    <select id="set-ai-call-voice">
+                        <option value="Polly.Amy-Generative">Female</option>
+                        <option value="Polly.Brian-Generative">Male</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Business Website</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input id="set-business-website" placeholder="e.g. www.yourtilingbusiness.co.uk" style="flex:1;">
+                        <button id="btn-sync-website" onclick="syncBusinessWebsite()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔄 Sync</button>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Your AI receptionist will read this to answer questions about your services, area, and qualifications.</div>
+                    <div id="website-sync-msg" style="font-size:12px;margin-top:6px;"></div>
+                </div>
+                <div class="field-group">
+                    <label>Your Name</label>
+                    <input id="set-tiler-name" placeholder="e.g. Kevin">
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Your AI receptionist will use this when referring to you on calls, e.g. "Kevin will call you back."</div>
+                </div>
                 <div class="field-group">
                     <label>Voicemail Greeting Name</label>
                     <input id="set-voicemail-name" placeholder="e.g. Kevin's Tiling or Woodley Tiling Co.">
@@ -2000,7 +2026,7 @@
                 </div>
                 <div class="field-group">
                     <label>Network Divert Setup</label>
-                    <div id="divert-setup-info" style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Tap below to set up call divert so missed calls go to your TileIQ voicemail.</div>
+                    <div id="divert-setup-info" style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Tap below to set up call divert so missed calls go to your AI receptionist.</div>
                     <button onclick="setupDivert()" class="btn-primary" style="width:100%;">📲 Set Up Call Divert</button>
                 </div>
             </div>

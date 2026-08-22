@@ -121,7 +121,8 @@ let settings = {
     companyEmail:  "",
     vatNumber:     "",
     quoteReminderDays: 3,  // days before chasing a pending quote
-    terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship."
+    terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.",
+    quotesCreatedLifetime: 0  // free-tier counter: total quotes ever created (never decrements, syncs via settings)
 };
 const DEFAULT_SETTINGS = { ...settings }; // snapshot of defaults for reset on sign out
 
@@ -1281,7 +1282,6 @@ function renderDnsRecords(records) {
 }
 
 async function startDomainVerification() {
-    if (!isPro()) { showPaywall("domain_verify"); return; }
     const domainInput = document.getElementById("set-custom-domain");
     const domain = (domainInput?.value || "").trim().toLowerCase().replace(/^https?:\/\//,"").replace(/\//g,"");
     const msgEl  = document.getElementById("domain-verify-msg");
@@ -2663,6 +2663,7 @@ function createJob() {
     };
 
     jobs.unshift(job);
+    settings.quotesCreatedLifetime = (settings.quotesCreatedLifetime || 0) + 1;
     saveAll();
     currentJobId = job.id;
     renderJobView();
@@ -3309,7 +3310,20 @@ function renderJobView() {
             transcriptEl.innerHTML = `
                 <div style="margin:12px 16px 0;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;">
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">🎙 Voicemail Transcript</div>
-                    <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${esc(job.voicemailTranscript)}</div>
+                    <div style="font-size:13px;color:#cbd5e1;line-height:1.5;white-space:pre-wrap;">${esc(job.voicemailTranscript)}</div>
+                    ${(() => {
+                        const urls = Array.isArray(job.voicemailAudioUrls) && job.voicemailAudioUrls.length
+                            ? job.voicemailAudioUrls
+                            : (job.voicemailAudioUrl ? [job.voicemailAudioUrl] : []);
+                        if (!urls.length) return "";
+                        return `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">` +
+                            urls.map((u, i) => `
+                                <div style="display:flex;gap:4px;">
+                                    <button onclick="playJobVoicemail('${u}')" style="background:#e07a2f;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;">▶ ${urls.length > 1 ? "Message " + (i + 1) : "Play Message"}</button>
+                                    <button onclick="deleteJobVoicemail('${u}')" title="Delete this message" style="background:#1e293b;color:#f87171;border:1px solid #334155;border-radius:8px;padding:9px 11px;font-size:13px;cursor:pointer;">🗑</button>
+                                </div>`).join("") +
+                            `</div>`;
+                    })()}
                 </div>`;
         } else {
             transcriptEl.style.display = "none";
@@ -6121,6 +6135,11 @@ function openJobFromCal(jobId) {
 function goSettings() {
     settingsTab("profile"); // always open on profile tab
     const s = settings;
+    document.getElementById("set-ai-receptionist").checked = s.aiReceptionistEnabled || false;
+    if (document.getElementById("set-ai-call-voice")) document.getElementById("set-ai-call-voice").value = s.aiCallVoice || "Polly.Amy-Generative";
+    if (document.getElementById("set-business-website")) document.getElementById("set-business-website").value = s.businessWebsite || "";
+    const websiteMsgEl = document.getElementById("website-sync-msg");
+    if (websiteMsgEl) websiteMsgEl.textContent = s.businessProfileSummary ? "Website synced" : "";
     document.getElementById("set-tile-price").value     = s.tilePrice;
     document.getElementById("set-grout-price-25").value  = s.groutPrice25 || 4.50;
     document.getElementById("set-grout-price-5").value   = s.groutPrice5  || 7.50;
@@ -6187,11 +6206,12 @@ function goSettings() {
         if (logoPlaceholder) logoPlaceholder.style.display = "block";
         if (removeBtn) removeBtn.style.display = "none";
     }
+    if (document.getElementById("set-tiler-name")) document.getElementById("set-tiler-name").value = s.tilerName || "";
     if (document.getElementById("set-voicemail-name")) document.getElementById("set-voicemail-name").value = s.voicemailName || "";
     if (document.getElementById("set-twilio-number")) document.getElementById("set-twilio-number").value = s.twilioNumber || "";
     // Inject greeting buttons next to voicemail name field if not already present
     const vmNameEl = document.getElementById("set-voicemail-name");
-    const existingWrapper = document.getElementById("btn-generate-greeting")?.closest("div");
+    const existingWrapper = document.getElementById("btn-generate-call-greeting")?.closest("div");
     if (existingWrapper) existingWrapper.remove();
     const existingMsg = document.getElementById("greeting-gen-msg");
     if (existingMsg) existingMsg.remove();
@@ -6199,14 +6219,7 @@ function goSettings() {
         const wrapper = document.createElement("div");
         wrapper.style.cssText = "margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
         wrapper.innerHTML = `
-            <select id="greeting-voice" style="flex:1;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:10px;padding:11px 14px;font-size:14px;cursor:pointer;">
-                <option value="en-GB-Neural2-A" ${(s.greetingVoice||'en-GB-Neural2-A')==='en-GB-Neural2-A'?'selected':''}>🎙 Female 1</option>
-                <option value="en-GB-Neural2-C" ${(s.greetingVoice||'')==='en-GB-Neural2-C'?'selected':''}>🎙 Female 2</option>
-                <option value="en-GB-Neural2-B" ${(s.greetingVoice||'')==='en-GB-Neural2-B'?'selected':''}>🎙 Male 1</option>
-                <option value="en-GB-Neural2-D" ${(s.greetingVoice||'')==='en-GB-Neural2-D'?'selected':''}>🎙 Male 2</option>
-            </select>
-            <button id="btn-generate-greeting" onclick="generateGreeting()" style="flex:1;background:#e07a2f;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">🎙 Generate</button>
-            <button id="btn-preview-greeting" onclick="previewGreeting()" style="${s.greetingUrl ? "" : "display:none;"}flex:1;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">▶ Preview</button>
+            <button id="btn-generate-call-greeting" onclick="generateCallGreeting()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">🎙 Generate/Preview Greeting</button>
         `;
         const msgDiv = document.createElement("div");
         msgDiv.id = "greeting-gen-msg";
@@ -6554,6 +6567,10 @@ function copyEnquiryLink() {
 }
 function saveSettings() {
     settings = {
+        aiReceptionistEnabled: document.getElementById("set-ai-receptionist").checked,
+        aiCallVoice: document.getElementById("set-ai-call-voice")?.value || "Polly.Amy-Generative",
+        businessWebsite: (document.getElementById("set-business-website")?.value || "").trim(),
+        businessProfileSummary: settings.businessProfileSummary || "",
         tilePrice:     parseFloat(document.getElementById("set-tile-price").value)     || 25.00,
         groutPrice25:  parseFloat(document.getElementById("set-grout-price-25").value)  || 4.50,
         groutPrice5:   parseFloat(document.getElementById("set-grout-price-5").value)   || 7.50,
@@ -6604,11 +6621,15 @@ function saveSettings() {
         sealerCoats:         parseInt(document.getElementById("set-sealer-coats").value)       || 2,
         applyVat:      document.getElementById("set-vat").value === "true",
         companyName:    document.getElementById("set-company-name").value.trim(),
+        tilerName:      (document.getElementById("set-tiler-name")?.value || "").trim(),
         voicemailName:  (document.getElementById("set-voicemail-name")?.value || "").trim(),
         twilioNumber:   (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, ""),
         mobileNumber:   (document.getElementById("set-mobile-number")?.value || "").trim().replace(/\s/g, ""),
         slug:           (document.getElementById("set-enquiry-slug")?.value || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, ""),
         logoUrl:        settings.logoUrl || "",
+        greetingUrl:    settings.greetingUrl || "",
+        greetingVoice:  settings.greetingVoice || "",
+        callGreetingUrl: settings.callGreetingUrl || "",
         companyAddress: (document.getElementById("set-company-address")?.value || "").trim(),
         companyPhone:  document.getElementById("set-company-phone").value.trim(),
         companyEmail:  document.getElementById("set-company-email").value.trim(),
@@ -7321,7 +7342,6 @@ function showPushBanner(title, body, data) {
 
 
 async function callAnthropicAI(prompt) {
-    if (!checkProFeature("ai")) throw new Error("AI descriptions require TileIQ Pro");
     // Get the stored session token to authenticate with the Worker
     let token = "";
     try {
@@ -8121,7 +8141,6 @@ function updateFreeAgentButton() {
 }
 
 async function exportFreeAgent() {
-    if (!checkProFeature("accounting")) return;
     const tokens = await getValidFreeAgentToken();
     if (!tokens) { freeAgentConnect(); return; }
     const j      = getJob();
@@ -8235,7 +8254,6 @@ function updateQBOButton() {
 }
 
 async function exportQBO() {
-    if (!checkProFeature("accounting")) return;
     const tokens = await getValidQBOToken();
     if (!tokens) { qboConnect(); return; }
     const j      = getJob();
@@ -8413,7 +8431,6 @@ function updateXeroButton() {
 }
 
 async function exportXero() {
-    if (!checkProFeature("accounting")) return;
     const tokens = await getValidXeroToken();
     if (!tokens) { xeroConnect(); return; }
     const j        = getJob();
@@ -8580,8 +8597,8 @@ async function sendInvoiceByEmail(jobId) {
                     companyName: settings.companyName || "", companyPhone: settings.companyPhone || "",
                     replyTo: settings.companyEmail || currentUser?.email || "",
                     fromName: settings.companyName || "TileIQ Pro",
-                    verifiedDomain: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
-                    fromEmail: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null,
+                    verifiedDomain: (settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
+                    fromEmail: (settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null,
                     pdfBase64: pdf.base64, pdfFileName: fileName, isInvoice: true
                 })
             });
@@ -8711,8 +8728,8 @@ async function sendQuoteByEmail() {
                 logoUrl: settings.logoUrl || "",
                 replyTo: settings.companyEmail || currentUser?.email || "",
                 fromName: settings.companyName || "TileIQ Pro",
-                verifiedDomain: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
-                fromEmail: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null
+                verifiedDomain: (settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
+                fromEmail: (settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null
             })
         });
         if (resp.ok) { _markQuoteSent(j); alert("✅ Quote sent to " + j.email); return; }
@@ -9218,13 +9235,14 @@ async function loadPaywallPackages() {
             }
         }
         container.innerHTML = `
-            <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
+            <button onclick="openPlayStorePurchase('monthly', this)" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div style="font-size:16px;font-weight:800;">Monthly</div>
                     <div style="font-size:20px;font-weight:800;">${monthlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
+                <div style="font-size:12px;margin-top:6px;opacity:0.75;">1 month free trial, then ${monthlyPrice}/month. Cancel anytime before the trial ends to avoid being charged.</div>
             </button>
-            <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
+            <button onclick="openPlayStorePurchase('yearly', this)" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
                         <div style="font-size:16px;font-weight:800;">Annual</div>
@@ -9232,17 +9250,19 @@ async function loadPaywallPackages() {
                     </div>
                     <div style="font-size:20px;font-weight:800;">${yearlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
                 </div>
-            </button>`;
+            </button>
+            <div style="font-size:11px;opacity:0.6;margin-top:10px;text-align:center;">Subscriptions renew automatically until cancelled. Manage or cancel anytime in your account settings.</div>`;
     } catch(e) {
         console.warn("Failed to load prices:", e.message);
         container.innerHTML = `
-            <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
+            <button onclick="openPlayStorePurchase('monthly', this)" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div style="font-size:16px;font-weight:800;">Monthly</div>
                     <div style="font-size:20px;font-weight:800;">£9.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
+                <div style="font-size:12px;margin-top:6px;opacity:0.75;">1 month free trial, then £9.99/month. Cancel anytime before the trial ends to avoid being charged.</div>
             </button>
-            <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
+            <button onclick="openPlayStorePurchase('yearly', this)" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
                         <div style="font-size:16px;font-weight:800;">Annual</div>
@@ -9250,11 +9270,18 @@ async function loadPaywallPackages() {
                     </div>
                     <div style="font-size:20px;font-weight:800;">£79.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
                 </div>
-            </button>`;
+            </button>
+            <div style="font-size:11px;opacity:0.6;margin-top:10px;text-align:center;">Subscriptions renew automatically until cancelled. Manage or cancel anytime in your account settings.</div>`;
     }
 }
 
-async function openPlayStorePurchase(plan) {
+async function openPlayStorePurchase(plan, btnEl) {
+    const originalText = btnEl ? btnEl.innerHTML : null;
+    if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.style.opacity = "0.6";
+        btnEl.innerHTML = "Processing...";
+    }
     try {
         const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
         if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
@@ -9262,7 +9289,6 @@ async function openPlayStorePurchase(plan) {
             Purchases.getOfferings(),
             new Promise((_, reject) => setTimeout(() => reject(new Error("getOfferings timeout after 10s")), 10000))
         ]);
-        alert("Got offerings: " + JSON.stringify(Object.keys(offerings||{})));
         const current = offerings?.current;
         if (!current) { alert("No offerings found. Please try again."); return; }
         const pkg = plan === "yearly"
@@ -9277,7 +9303,16 @@ async function openPlayStorePurchase(plan) {
             alert("🎉 Welcome to TileIQ Pro!");
         }
     } catch(e) {
-        if (e?.code !== "1") console.warn("Purchase error:", e.message);
+        if (e?.code !== "1") {
+            console.warn("Purchase error:", e.message);
+            alert("Something went wrong with the purchase. Please try again.");
+        }
+    } finally {
+        if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.style.opacity = "1";
+            btnEl.innerHTML = originalText;
+        }
     }
 }
 
@@ -9293,7 +9328,7 @@ async function restorePurchases() {
 
 function checkJobLimit() {
     if (isPro()) return true;
-    if (jobs.length < FREE_JOB_LIMIT) return true;
+    if ((settings.quotesCreatedLifetime || 0) < FREE_JOB_LIMIT) return true;
     showPaywall("job_limit");
     return false;
 }
@@ -9361,8 +9396,7 @@ async function generateGreeting() {
     try {
         let greetTok = "";
         try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) greetTok = JSON.parse(s).access_token || ""; } catch(e) {}
-        const voiceName = document.getElementById("greeting-voice")?.value || "en-GB-Neural2-A";
-        alert("Sending voice: " + voiceName);
+        const voiceName = "Xb7hH8MSUJpSbSDYk0k2"; // Alice — locked voice
         const resp = await fetch(TILEIQ_WORKER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + greetTok },
@@ -9375,19 +9409,63 @@ async function generateGreeting() {
         settings.voicemailName = businessName;
         settings.greetingVoice = voiceName;
         saveSettingsLocal();
-        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "✅ Greeting saved! Callers will hear your new greeting."; }
-        const previewBtn = document.getElementById("btn-preview-greeting");
-        if (previewBtn) previewBtn.style.display = "inline-block";
+        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "✅ Greeting saved — playing preview…"; }
+        previewGreeting();
     } catch(e) {
         if (msgEl) { msgEl.style.color = "#f87171"; msgEl.textContent = "Failed: " + e.message; }
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "🎙 Generate Greeting"; }
+        if (btn) { btn.disabled = false; btn.textContent = "🎙 Generate/Preview"; }
     }
 }
 
 function previewGreeting() {
-    const url = settings.greetingUrl;
-    if (!url) { alert("No greeting generated yet."); return; }
+    const baseUrl = settings.greetingUrl;
+    if (!baseUrl) { alert("No greeting generated yet."); return; }
+    const url = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "cb=" + Date.now();
+    const audio = new Audio(url);
+    audio.play().catch(e => alert("Could not play audio: " + e.message));
+}
+
+async function generateCallGreeting() {
+    if (!currentUser) return;
+    const nameEl = document.getElementById("set-voicemail-name");
+    const businessName = (nameEl?.value || "").trim() || settings.voicemailName || settings.companyName || "";
+    if (!businessName) {
+        alert("Please enter your business name first.");
+        nameEl?.focus();
+        return;
+    }
+    const btn = document.getElementById("btn-generate-call-greeting");
+    const msgEl = document.getElementById("greeting-gen-msg");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Generating…"; }
+    try {
+        let greetTok = "";
+        try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) greetTok = JSON.parse(s).access_token || ""; } catch(e) {}
+        const selectedGender = document.getElementById("set-ai-call-voice")?.value || "Polly.Amy-Generative";
+        const voiceName = selectedGender.includes("Brian") ? "JBFqnCBsd6RMkjVDRZzb" : "Xb7hH8MSUJpSbSDYk0k2"; // George (male) or Alice (female)
+        const resp = await fetch(TILEIQ_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + greetTok },
+            body: JSON.stringify({ action: "generate_greeting", greeting_type: "call", user_id: currentUser.id, business_name: businessName, voice_name: voiceName })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || "Failed");
+        if (!data.callGreetingUrl) throw new Error("No callGreetingUrl returned: " + JSON.stringify(data));
+        settings.callGreetingUrl = data.callGreetingUrl;
+        saveSettingsLocal();
+        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "✅ Call greeting saved — playing preview…"; }
+        previewCallGreeting();
+    } catch(e) {
+        if (msgEl) { msgEl.style.color = "#f87171"; msgEl.textContent = "Failed: " + e.message; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📞 Generate/Preview Call Greeting"; }
+    }
+}
+
+function previewCallGreeting() {
+    const baseUrl = settings.callGreetingUrl;
+    if (!baseUrl) { alert("No call greeting generated yet."); return; }
+    const url = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "cb=" + Date.now();
     const audio = new Audio(url);
     audio.play().catch(e => alert("Could not play audio: " + e.message));
 }
@@ -9460,6 +9538,62 @@ async function loadVoicemails() {
   }
 }
 
+async function syncBusinessWebsite() {
+    if (!currentUser) return;
+    const urlEl = document.getElementById("set-business-website");
+    const websiteUrl = (urlEl?.value || "").trim();
+    if (!websiteUrl) {
+        alert("Please enter your website address first.");
+        urlEl?.focus();
+        return;
+    }
+    const btn = document.getElementById("btn-sync-website");
+    const msgEl = document.getElementById("website-sync-msg");
+    if (btn) { btn.disabled = true; btn.textContent = "Syncing..."; }
+    if (msgEl) { msgEl.style.color = "#94a3b8"; msgEl.textContent = "Reading your website..."; }
+    try {
+        let tok = "";
+        try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) tok = JSON.parse(s).access_token || ""; } catch(e) {}
+        const resp = await fetch(TILEIQ_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tok },
+            body: JSON.stringify({ action: "generate_business_profile", user_id: currentUser.id, website_url: websiteUrl })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || "Failed");
+        if (!data.businessProfileSummary) throw new Error("No summary returned");
+        settings.businessProfileSummary = data.businessProfileSummary;
+        settings.businessWebsite = websiteUrl;
+        saveSettingsLocal();
+        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "Website synced - your AI receptionist can now answer questions using this info."; }
+    } catch(e) {
+        if (msgEl) { msgEl.style.color = "#f87171"; msgEl.textContent = "Failed: " + e.message; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Sync"; }
+    }
+}
+
+function deleteJobVoicemail(url) {
+    if (!confirm("Delete this message? This cannot be undone.")) return;
+    const job = getJob();
+    if (!job) return;
+    if (Array.isArray(job.voicemailAudioUrls)) {
+        job.voicemailAudioUrls = job.voicemailAudioUrls.filter(u => u !== url);
+    }
+    if (job.voicemailAudioUrl === url) {
+        job.voicemailAudioUrl = "";
+    }
+    saveAll();
+    renderJobView();
+}
+
+function playJobVoicemail(url) {
+    const audio = new Audio(url);
+    audio.play().catch(e => {
+        window.open(url, "_blank");
+    });
+}
+
 async function playVoicemail(id, url) {
   // Mark as listened
   try {
@@ -9516,8 +9650,8 @@ function setupDivert() {
     let e164 = twilioNum;
     if (e164.startsWith("07")) e164 = "+44" + e164.slice(1);
     else if (e164.startsWith("447")) e164 = "+" + e164;
-    // Divert on no answer after 20 seconds (works on EE, O2, Vodafone, Three)
-    const code = "**61*" + e164 + "*11*20#";
+    // Divert on no answer after 15 seconds (works on EE, O2, Vodafone, Three)
+    const code = "**61*" + e164 + "*11*15#";
     if (confirm("This will open your dialler with the divert setup code.\n\nJust press Call and your missed calls will go to your TileIQ voicemail automatically.\n\nCode: " + code)) {
         window.open("tel:" + code);
     }
