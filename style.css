@@ -14,7 +14,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-
 a{text-decoration:none;color:inherit}
 img{max-width:100%;display:block}
 .container{width:min(1180px,calc(100% - 36px));margin:0 auto}
-.site-header{position:absolute;top:0;left:0;right:0;z-index:20;padding:18px 0}
+.site-header{position:fixed;top:0;left:0;right:0;z-index:200;padding:18px 0;background:rgba(7,10,12,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid #1b2528}
 .nav{display:flex;align-items:center;justify-content:space-between;gap:28px}
 .brand{display:flex;align-items:center;gap:10px}
 .brand-icon{display:grid;grid-template-columns:repeat(2,10px);grid-template-rows:repeat(2,15px);gap:2px;padding:5px;border:2px solid var(--yellow)}
@@ -741,11 +741,14 @@ footer{border-top-color:#173033}
 
 @media(max-width:900px){
   .site-header{
-    position:relative;
+    position:fixed;
+    top:0;
+    left:0;
+    right:0;
     background:#070a0c;
     border-bottom:1px solid #1b2528;
     padding:10px 0;
-    z-index:50;
+    z-index:200;
   }
   .nav{
     position:relative;
