@@ -14,7 +14,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-
 a{text-decoration:none;color:inherit}
 img{max-width:100%;display:block}
 .container{width:min(1180px,calc(100% - 36px));margin:0 auto}
-.site-header{position:absolute;top:0;left:0;right:0;z-index:20;padding:18px 0}
+.site-header{position:fixed;top:0;left:0;right:0;z-index:200;padding:18px 0;background:rgba(7,10,12,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid #1b2528}
 .nav{display:flex;align-items:center;justify-content:space-between;gap:28px}
 .brand{display:flex;align-items:center;gap:10px}
 .brand-icon{display:grid;grid-template-columns:repeat(2,10px);grid-template-rows:repeat(2,15px);gap:2px;padding:5px;border:2px solid var(--yellow)}
@@ -64,7 +64,7 @@ linear-gradient(90deg,#0c0f11,#121619);border:1px solid #11696a;border-radius:18
 .kicker{display:inline-block;color:var(--yellow);font-weight:800;font-size:15px}.ai-copy h2{font:800 31px/1.15 'Manrope';margin:8px 0 12px}.ai-copy p{color:#ddd;line-height:1.55;font-size:14px;max-width:600px}.ai-bot{font-size:110px;color:var(--yellow);text-align:center;filter:drop-shadow(0 0 20px rgba(17,184,179,.45))}
 .testimonials-section{padding:0 0 16px}.testimonials-grid{display:grid;grid-template-columns:.72fr repeat(3,1fr);gap:16px}.testimonial-lead{padding:15px 6px}.stars{color:var(--yellow);letter-spacing:3px}.testimonial-lead h2{font:800 26px/1.25 'Manrope';margin:8px 0}.testimonial-lead p{font-size:13px;color:#ddd}.testimonials-grid article{background:linear-gradient(135deg,#171a1d,#22262a);border-radius:14px;padding:20px}.testimonials-grid article>p{font-size:14px;line-height:1.6;margin:0 0 18px}.reviewer{display:flex;gap:10px;align-items:center}.reviewer b{display:block}.reviewer small{display:block;color:#aaa;margin-top:2px}
 .cta-section{padding:0 0 14px}.cta-card{background:linear-gradient(90deg,#0eaaa6,#18c5bf);color:#111;border-radius:12px;padding:18px 24px;display:flex;justify-content:space-between;align-items:center}.cta-card h2{font:800 20px 'Manrope';margin:0}.cta-card p{margin:4px 0 0;font-size:13px}
-footer{border-top:1px solid #222;background:#0b0e10;padding:15px 0}.footer-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;text-align:center;font-size:12px}.footer-grid small{color:#8f969d;font-size:10px}
+footer{border-top:1px solid #222;background:#0b0e10;padding:15px 0}.footer-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;text-align:center;font-size:12px}.footer-grid small{color:#8f969d;font-size:10px}.footer-training a{color:var(--yellow);font-weight:700;text-decoration:none}.footer-training a:hover{text-decoration:underline}
 @media(max-width:980px){
   .nav-links{display:none}.hero-grid{grid-template-columns:1fr}.hero-copy{text-align:center}.hero-copy>p{margin-left:auto;margin-right:auto}.benefits{max-width:460px;margin-left:auto;margin-right:auto;text-align:left}.hero-actions{justify-content:center}.hero-phone-wrap{height:560px}.workflow-grid{grid-template-columns:1fr 1fr}.feature-grid{grid-template-columns:repeat(3,1fr)}.feature-grid article{border-bottom:1px solid #20252a}.ai-card{grid-template-columns:1fr}.ai-bot{display:none}.ai-copy{text-align:center}.ai-visual{justify-content:center}.testimonials-grid{grid-template-columns:1fr 1fr}.testimonial-lead{grid-column:1/-1;text-align:center}
 }
@@ -80,7 +80,7 @@ footer{border-top:1px solid #222;background:#0b0e10;padding:15px 0}.footer-grid{
 
 /* Contact page */
 .contact-page{min-height:100vh;background:#080a0c}
-.contact-header{position:relative;background:#080a0c;border-bottom:1px solid #1d2227}
+.contact-header{background:#080a0c;border-bottom:1px solid #1d2227}
 .contact-main{background:
   radial-gradient(circle at 15% 18%,rgba(17,184,179,.12),transparent 24%),
   radial-gradient(circle at 90% 75%,rgba(17,184,179,.07),transparent 25%),
@@ -741,11 +741,14 @@ footer{border-top-color:#173033}
 
 @media(max-width:900px){
   .site-header{
-    position:relative;
+    position:fixed;
+    top:0;
+    left:0;
+    right:0;
     background:#070a0c;
     border-bottom:1px solid #1b2528;
     padding:10px 0;
-    z-index:50;
+    z-index:200;
   }
   .nav{
     position:relative;
@@ -929,4 +932,21 @@ footer{border-top-color:#173033}
   .hero-wide .hero-copy h1{font-size:2.65rem!important}
   .footer-grid{grid-template-columns:1fr!important}
   .leica-flow-visual{transform:scale(.92);transform-origin:left center}
+}
+
+
+/* Google Play download badge */
+.google-play-link {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+.google-play-link img {
+  display: block;
+  width: 135px;
+  max-width: 100%;
+  height: auto;
+}
+@media (max-width: 600px) {
+  .google-play-link img { width: 125px; }
 }
