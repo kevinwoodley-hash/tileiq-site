@@ -5,12 +5,67 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>TileIQ Pro Demo</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;font-family:Arial,Helvetica,sans-serif}.demo-bar{height:38px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 12px;background:#E07A2F;color:#111;font-size:12px;font-weight:700;position:relative;z-index:10}.demo-bar span{font-weight:500}.demo-bar a{position:absolute;right:12px;color:#111;text-decoration:none;font-weight:800}.demo-frame{display:block;width:100%;height:calc(100% - 38px);border:0;background:#fff}@media(max-width:640px){.demo-bar{height:34px;font-size:11px;justify-content:flex-start;padding-right:88px}.demo-frame{height:calc(100% - 34px)}.demo-bar a{right:9px}}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;font-family:Arial,Helvetica,sans-serif}
+.demo-bar{height:38px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 12px;background:#E07A2F;color:#111;font-size:12px;font-weight:700;position:relative;z-index:10}
+.demo-bar span{font-weight:500}
+.demo-bar a{position:absolute;right:12px;color:#111;text-decoration:none;font-weight:800}
+
+.demo-stage{
+  width:100%;
+  height:calc(100% - 38px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:radial-gradient(circle at 50% 15%,#152229,#07090b 70%);
+  padding:28px;
+}
+.phone-frame{
+  position:relative;
+  width:390px;
+  height:min(844px,100%);
+  background:#111417;
+  border-radius:54px;
+  padding:14px;
+  box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 2px #2a2f35 inset;
+  flex-shrink:0;
+}
+.phone-frame::before{
+  content:"";
+  position:absolute;
+  top:14px;left:50%;
+  transform:translateX(-50%);
+  width:120px;height:28px;
+  background:#111417;
+  border-radius:0 0 18px 18px;
+  z-index:2;
+}
+.demo-frame{
+  display:block;
+  width:100%;
+  height:100%;
+  border:0;
+  border-radius:38px;
+  background:#fff;
+}
+
+@media(max-width:640px){
+  .demo-bar{height:34px;font-size:11px;justify-content:flex-start;padding-right:88px}
+  .demo-bar a{right:9px}
+  .demo-stage{height:calc(100% - 34px);padding:0;background:none}
+  .phone-frame{width:100%;height:100%;border-radius:0;padding:0;box-shadow:none;background:transparent}
+  .phone-frame::before{display:none}
+  .demo-frame{border-radius:0}
+}
 </style>
 </head>
 <body>
 <div class="demo-bar">TileIQ Pro Demo <span>— real app, demo account</span><a href="https://tile-iq.com">Exit demo</a></div>
-<iframe id="tileiq-demo-app" class="demo-frame" src="/app/?demo=1" title="TileIQ Pro Demo"></iframe>
+<div class="demo-stage">
+  <div class="phone-frame">
+    <iframe id="tileiq-demo-app" class="demo-frame" src="/app/?demo=1" title="TileIQ Pro Demo"></iframe>
+  </div>
+</div>
 <script>
 (() => {
   const frame = document.getElementById('tileiq-demo-app');
