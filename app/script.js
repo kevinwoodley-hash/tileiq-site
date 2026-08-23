@@ -2243,22 +2243,20 @@ function renderHomeDashboard() {
         </div>`;
     }
 
-    if (scheduleToday.length) {
-        html += `<div>
-            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">Today's schedule · ${scheduleToday.length}</div>
-            ${scheduleToday.map(j => {
-                const addr  = [j.address, j.city].filter(Boolean).join(", ");
-                const total = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
-                return `<div onclick="goJob('${j.id}')" style="background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;">
-                    <div style="display:flex;justify-content:space-between;">
-                        <span style="font-size:13px;font-weight:700;color:var(--text);">${esc(j.customerName)}</span>
-                        <span style="font-size:11px;font-weight:700;color:var(--text-muted);">${STATUS_LABEL[j.status] || "Enquiry"}</span>
-                    </div>
-                    ${addr ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(addr)}${total ? " · £" + total.toLocaleString("en-GB", { maximumFractionDigits: 0 }) : ""}</div>` : ""}
-                </div>`;
-            }).join("")}
-        </div>`;
-    }
+    html += `<div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">Today's schedule${scheduleToday.length ? " · " + scheduleToday.length : ""}</div>
+        ${scheduleToday.length ? scheduleToday.map(j => {
+            const addr  = [j.address, j.city].filter(Boolean).join(", ");
+            const total = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
+            return `<div onclick="goJob('${j.id}')" style="background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="font-size:13px;font-weight:700;color:var(--text);">${esc(j.customerName)}</span>
+                    <span style="font-size:11px;font-weight:700;color:var(--text-muted);">${STATUS_LABEL[j.status] || "Enquiry"}</span>
+                </div>
+                ${addr ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(addr)}${total ? " · £" + total.toLocaleString("en-GB", { maximumFractionDigits: 0 }) : ""}</div>` : ""}
+            </div>`;
+        }).join("") : `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;color:var(--text-muted);text-align:center;">No jobs scheduled today</div>`}
+    </div>`;
 
     el.innerHTML = html;
 }
