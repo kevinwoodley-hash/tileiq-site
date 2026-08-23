@@ -80,7 +80,7 @@ footer{border-top:1px solid #222;background:#0b0e10;padding:15px 0}.footer-grid{
 
 /* Contact page */
 .contact-page{min-height:100vh;background:#080a0c}
-.contact-header{position:relative;background:#080a0c;border-bottom:1px solid #1d2227}
+.contact-header{background:#080a0c;border-bottom:1px solid #1d2227}
 .contact-main{background:
   radial-gradient(circle at 15% 18%,rgba(17,184,179,.12),transparent 24%),
   radial-gradient(circle at 90% 75%,rgba(17,184,179,.07),transparent 25%),
