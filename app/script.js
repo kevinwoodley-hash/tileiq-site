@@ -2045,6 +2045,8 @@ function renderHomeScreen() {
     const badge = document.getElementById("offline-badge-home");
     const mainBadge = document.getElementById("offline-badge");
     if (badge && mainBadge) badge.style.display = mainBadge.style.display;
+
+    renderHomeDashboard();
 }
 
 function goDashboard() {
@@ -2121,24 +2123,27 @@ function renderQuoteTotals() {
         </div>` : ""}`;
 }
 
-function renderReminders() {
-    const banner = document.getElementById("reminder-banner");
-    if (!banner) return;
-
+function getOverdueQuotes() {
     const days = parseInt(settings.quoteReminderDays) || 0;
-    if (!days) { banner.style.display = "none"; return; }
-
-    const now      = Date.now();
-    const cutoff   = days * 24 * 60 * 60 * 1000;
-    const overdue  = jobs.filter(j => {
-        if (!j.quoteToken || j.quoteStatus) return false; // no quote sent, or already responded
+    if (!days) return [];
+    const now    = Date.now();
+    const cutoff = days * 24 * 60 * 60 * 1000;
+    return jobs.filter(j => {
+        if (j.jobArchived || !j.quoteToken || j.quoteStatus) return false; // no quote sent, or already responded
         const sentAt = j.quoteSentAt ? new Date(j.quoteSentAt).getTime() : null;
         if (!sentAt) return false;
         return (now - sentAt) >= cutoff;
     });
+}
 
+function renderReminders() {
+    const banner = document.getElementById("reminder-banner");
+    if (!banner) return;
+
+    const overdue = getOverdueQuotes();
     if (!overdue.length) { banner.style.display = "none"; return; }
 
+    const now = Date.now();
     banner.style.display = "block";
     banner.innerHTML = `
         <div style="background:#78350f;border-radius:10px;padding:12px 14px;">
@@ -2159,6 +2164,103 @@ function renderReminders() {
                 </div>`;
             }).join("")}
         </div>`;
+}
+
+function renderHomeDashboard() {
+    const el = document.getElementById("home-dashboard");
+    if (!el) return;
+    if (isLoadingJobs && jobs.length === 0) { el.innerHTML = ""; return; }
+
+    const now          = new Date();
+    const startOfWeek  = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const todayStr     = now.toISOString().split("T")[0];
+
+    let weekAccepted = 0, monthAccepted = 0, needInvoicing = 0;
+    const newRequests   = [];
+    const scheduleToday = [];
+
+    jobs.forEach(j => {
+        if (j.jobArchived) return;
+        const grand = (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
+        if (j.quoteStatus === "accepted" && j.quoteRespondedAt) {
+            const d = new Date(j.quoteRespondedAt);
+            if (d >= startOfMonth) monthAccepted += grand;
+            if (d >= startOfWeek)  weekAccepted += grand;
+        }
+        if ((j.status || "enquiry") === "complete" && !j.invoicedAt) needInvoicing++;
+        if ((j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry") newRequests.push(j);
+        if (j.jobStartDate) {
+            const start = j.jobStartDate.split("T")[0];
+            const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
+            if (todayStr >= start && todayStr <= end) scheduleToday.push(j);
+        }
+    });
+    scheduleToday.sort((a, b) => new Date(a.jobStartDate) - new Date(b.jobStartDate));
+
+    const overdue = getOverdueQuotes();
+    const fmt = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In Progress", complete: "Complete" };
+
+    let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="background:#065f46;border-radius:12px;padding:12px;">
+            <div style="font-size:11px;color:#6ee7b7;font-weight:600;">Accepted this week</div>
+            <div style="font-size:19px;font-weight:800;color:#fff;margin-top:2px;">${fmt(weekAccepted)}</div>
+        </div>
+        <div style="background:${needInvoicing > 0 ? "#78350f" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:12px;">
+            <div style="font-size:11px;color:${needInvoicing > 0 ? "#fde68a" : "var(--text-muted)"};font-weight:600;">Need invoicing</div>
+            <div style="font-size:19px;font-weight:800;color:${needInvoicing > 0 ? "#fff" : "var(--text)"};margin-top:2px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
+        </div>
+    </div>`;
+
+    html += `<div onclick="goDashboard()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div>
+            <div style="font-size:11px;color:var(--text-muted);">This month, accepted total</div>
+            <div style="font-size:17px;font-weight:800;color:var(--text);margin-top:2px;">${fmt(monthAccepted)}</div>
+        </div>
+        <span style="color:var(--text-muted);">→</span>
+    </div>`;
+
+    if (newRequests.length) {
+        html += `<div onclick="goDashboard()" style="background:#1e3a5f;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+            <span style="font-size:18px;">📥</span>
+            <div style="font-size:13px;color:#93c5fd;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
+        </div>`;
+    }
+
+    if (overdue.length) {
+        const now2 = Date.now();
+        html += `<div style="background:#78350f;border-radius:12px;padding:12px 14px;">
+            <div style="font-size:13px;font-weight:700;color:#fde68a;margin-bottom:8px;">⏰ Chase up · ${overdue.length} quote${overdue.length !== 1 ? "s" : ""}</div>
+            ${overdue.slice(0, 3).map(j => {
+                const sentAt  = new Date(j.quoteSentAt);
+                const daysAgo = Math.floor((now2 - sentAt.getTime()) / 86400000);
+                return `<div onclick="goJob('${j.id}')" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;cursor:pointer;">
+                    <span style="color:#fef3c7;font-size:13px;font-weight:600;">${esc(j.customerName)}</span>
+                    <span style="color:#d97706;font-size:12px;">${daysAgo} day${daysAgo !== 1 ? "s" : ""} ago</span>
+                </div>`;
+            }).join("")}
+        </div>`;
+    }
+
+    if (scheduleToday.length) {
+        html += `<div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">Today's schedule · ${scheduleToday.length}</div>
+            ${scheduleToday.map(j => {
+                const addr  = [j.address, j.city].filter(Boolean).join(", ");
+                const total = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
+                return `<div onclick="goJob('${j.id}')" style="background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;">
+                    <div style="display:flex;justify-content:space-between;">
+                        <span style="font-size:13px;font-weight:700;color:var(--text);">${esc(j.customerName)}</span>
+                        <span style="font-size:11px;font-weight:700;color:var(--text-muted);">${STATUS_LABEL[j.status] || "Enquiry"}</span>
+                    </div>
+                    ${addr ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(addr)}${total ? " · £" + total.toLocaleString("en-GB", { maximumFractionDigits: 0 }) : ""}</div>` : ""}
+                </div>`;
+            }).join("")}
+        </div>`;
+    }
+
+    el.innerHTML = html;
 }
 
 
@@ -2261,6 +2363,7 @@ async function backgroundSync() {
             renderDashboard();
             const activeScreen = document.querySelector(".screen:not(.hidden)")?.id;
             if (activeScreen === "screen-dashboard") renderDashboard();
+            if (activeScreen === "screen-home") renderHomeDashboard();
         }
     } catch(e) {
         console.warn("Background sync error:", e.message);
@@ -8608,7 +8711,11 @@ async function sendInvoiceByEmail(jobId) {
                     pdfBase64: pdf.base64, pdfFileName: fileName, isInvoice: true
                 })
             });
-            if (resp.ok) { alert("\u2705 Invoice sent to " + j.email); return; }
+            if (resp.ok) {
+                markJobInvoiced(jobId);
+                alert("\u2705 Invoice sent to " + j.email);
+                return;
+            }
         } catch(e) { console.error(e); }
     }
     const go = confirm("Could not send automatically.\n\nThis will open your device email app \u2014 make sure you are signed in with the correct account.\n\nTap OK to open.");
@@ -8616,6 +8723,15 @@ async function sendInvoiceByEmail(jobId) {
     const subject = encodeURIComponent(`Invoice \u2013 ${j.customerName}`);
     const body = encodeURIComponent(`Hi ${j.customerName},\n\nPlease find your invoice attached.\n\nKind regards,\n${settings.companyName || ""}`);
     window.open(`mailto:${j.email ? encodeURIComponent(j.email) : ""}?subject=${subject}&body=${body}`, "_system");
+    markJobInvoiced(jobId);
+}
+
+function markJobInvoiced(jobId) {
+    const j = jobs.find(x => x.id === jobId);
+    if (!j || j.invoicedAt) return;
+    j.invoicedAt = new Date().toISOString();
+    saveAll();
+    renderHomeDashboard();
 }
 
 async function sendInvoiceShare() {
@@ -8631,10 +8747,12 @@ async function sendInvoiceShare() {
             await Filesystem.writeFile({ path: fileName, data: pdf.base64, directory: "CACHE" });
             const { uri } = await Filesystem.getUri({ path: fileName, directory: "CACHE" });
             await Share.share({ title: `Invoice – ${pdf.customerName}`, text: "Please find your invoice attached.", files: [uri], dialogTitle: "Share Invoice" });
+            if (currentJobId) markJobInvoiced(currentJobId);
             return;
         } catch(e) { console.error(e); }
     }
     downloadPDF();
+    if (currentJobId) markJobInvoiced(currentJobId);
 }
 
 function previewQuote() {
