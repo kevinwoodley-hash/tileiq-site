@@ -311,17 +311,16 @@
             <button onclick="authSignOut()" class="btn-icon" title="Sign out">⎋</button>
         </div>
     </header>
-    <div class="page-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:20px;padding:32px 24px;">
-        <div style="text-align:center;margin-bottom:16px;">
-            <div id="home-greeting" style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:8px;"></div>
-            <div id="home-tier-badge" style="display:inline-block;margin-bottom:10px;"></div>
-            <div style="font-size:14px;color:var(--text-muted);" onclick="devProOverride()">What would you like to do?</div>
+    <div class="page-body" style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:14px 18px 24px;">
+        <div style="text-align:center;">
+            <div id="home-greeting" style="font-size:19px;font-weight:800;color:var(--text);margin-bottom:4px;"></div>
+            <div id="home-tier-badge" style="display:inline-block;margin-bottom:2px;"></div>
         </div>
 
-        <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:10px;">
-            <div onclick="goNewJob()" style="background:#065f46;border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+        <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:8px;">
+            <div onclick="goNewJob()" style="background:#065f46;border-radius:12px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="font-size:18px;">➕</span>
+                    <span style="font-size:16px;">➕</span>
                     <div>
                         <div style="font-size:13px;font-weight:800;color:#fff;">New Job</div>
                         <div style="font-size:11px;color:#6ee7b7;margin-top:1px;">Create a new tiling job</div>
@@ -330,9 +329,9 @@
                 <span style="color:#6ee7b7;">→</span>
             </div>
 
-            <div onclick="goDashboard()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+            <div onclick="goDashboard()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="font-size:18px;">📋</span>
+                    <span style="font-size:16px;">📋</span>
                     <div>
                         <div style="font-size:13px;font-weight:800;color:var(--text);">View Jobs</div>
                         <div id="home-job-count" style="font-size:11px;color:var(--text-muted);margin-top:1px;">Loading…</div>
@@ -341,9 +340,9 @@
                 <span style="color:var(--text-muted);">→</span>
             </div>
 
-            <div onclick="goCustomers()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+            <div onclick="goCustomers()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="font-size:18px;">👤</span>
+                    <span style="font-size:16px;">👤</span>
                     <div>
                         <div style="font-size:13px;font-weight:800;color:var(--text);">Customers</div>
                         <div style="font-size:11px;color:var(--text-muted);margin-top:1px;">Manage saved customers</div>
@@ -352,9 +351,9 @@
                 <span style="color:var(--text-muted);">→</span>
             </div>
 
-            <div onclick="goVoicemails()" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;justify-content:space-between;align-items:center;cursor:pointer;">
+            <div onclick="goVoicemails()" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 12px;justify-content:space-between;align-items:center;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="font-size:18px;">📞</span>
+                    <span style="font-size:16px;">📞</span>
                     <div>
                         <div style="font-size:13px;font-weight:800;color:var(--text);">Voicemails</div>
                         <div id="home-voicemail-count" style="font-size:11px;color:var(--text-muted);margin-top:1px;">Customer messages</div>
@@ -364,7 +363,7 @@
             </div>
         </div>
 
-        <div id="home-dashboard" style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:10px;"></div>
+        <div id="home-dashboard" style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 </div>
 
