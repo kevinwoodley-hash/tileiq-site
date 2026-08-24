@@ -2170,7 +2170,9 @@ function renderReminders() {
         </div>`;
 }
 
+let _dashNotifSeq = 0;
 function renderHomeDashboard() {
+    const notifSeq = ++_dashNotifSeq;
     const el = document.getElementById("home-dashboard");
     if (!el) return;
     if (isLoadingJobs && jobs.length === 0) { el.innerHTML = ""; return; }
@@ -2280,6 +2282,7 @@ function renderHomeDashboard() {
 
     // Patch in the live notification count (includes unread customer messages, not just local enquiry jobs)
     computeNotificationBadge().then(count => {
+        if (notifSeq !== _dashNotifSeq) return; // a newer render has already superseded this one — ignore stale result
         const countEl = document.getElementById("dash-notif-count");
         const cardEl  = document.getElementById("dash-notif-card");
         if (!countEl || !cardEl) return;
