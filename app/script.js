@@ -2208,22 +2208,22 @@ function renderHomeDashboard() {
     const STATUS_TEXT  = { enquiry: "#2563eb", surveyed: "#7c3aed", quoted: "#0891b2", accepted: "#059669", scheduled: "#ea580c", in_progress: "#2563eb", complete: "#059669" };
 
     let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div onclick="document.getElementById('jobs-quote-filter').value='accepted_week';goDashboard();" style="background:#ecfdf5;border-radius:12px;padding:9px 10px;cursor:pointer;">
+        <div onclick="document.getElementById('jobs-quote-filter').value='accepted_week';goDashboard();" style="background:#ecfdf5;border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
             <div style="font-size:11px;color:#059669;font-weight:600;">Accepted this week</div>
             <div style="font-size:18px;font-weight:800;color:#047857;margin-top:1px;">${fmt(weekAccepted)}</div>
         </div>
-        <div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#fff7ed" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:9px 10px;cursor:pointer;">
-            <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--text-muted)"};font-weight:600;">Need invoicing</div>
-            <div style="font-size:18px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--text)"};margin-top:1px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
+        <div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#fff7ed" : "var(--surface)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--muted)"};font-weight:600;">Need invoicing</div>
+            <div style="font-size:18px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--ink)"};margin-top:1px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
         </div>
     </div>`;
 
-    html += `<div onclick="goDashboard()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+    html += `<div onclick="goDashboard()" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
         <div>
-            <div style="font-size:11px;color:var(--text-muted);">This month, accepted total</div>
-            <div style="font-size:16px;font-weight:800;color:var(--text);margin-top:1px;">${fmt(monthAccepted)}</div>
+            <div style="font-size:11px;color:var(--muted);">This month, accepted total</div>
+            <div style="font-size:16px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
         </div>
-        <span style="color:var(--text-muted);">→</span>
+        <span style="color:var(--muted);">→</span>
     </div>`;
 
     if (newRequests.length) {
@@ -2249,22 +2249,22 @@ function renderHomeDashboard() {
     }
 
     html += `<div>
-        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">Today's schedule${scheduleToday.length ? " · " + scheduleToday.length : ""}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;">Today's schedule${scheduleToday.length ? " · " + scheduleToday.length : ""}</div>
         ${scheduleToday.length ? scheduleToday.map(j => {
             const addr    = [j.address, j.city].filter(Boolean).join(", ");
             const total   = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
             const statusColor = STATUS_TEXT[j.status] || "#2563eb";
             const statusText  = STATUS_LABEL[j.status] || j.status || "";
-            return `<div onclick="goJob('${j.id}')" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px;cursor:pointer;">
+            return `<div onclick="goJob('${j.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;margin-bottom:6px;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
-                    <span style="font-size:14px;font-weight:700;color:var(--text);">${esc(j.customerName)}</span>
+                    <span style="font-size:14px;font-weight:700;color:var(--ink);">${esc(j.customerName)}</span>
                     <span style="font-size:12px;font-weight:700;color:${statusColor};">${statusText}</span>
                 </div>
-                ${addr ? `<div style="font-size:12px;color:var(--text-muted);">📍 ${esc(addr)}</div>` : ""}
-                ${j.phone ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📞 ${esc(j.phone)}</div>` : ""}
-                ${total ? `<div style="font-size:14px;font-weight:800;color:var(--text);margin-top:4px;">£${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
+                ${addr ? `<div style="font-size:12px;color:var(--muted);">📍 ${esc(addr)}</div>` : ""}
+                ${j.phone ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">📞 ${esc(j.phone)}</div>` : ""}
+                ${total ? `<div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:4px;">£${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
             </div>`;
-        }).join("") : `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">☀️ No jobs scheduled today</div>`}
+        }).join("") : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;font-size:13px;color:var(--muted);text-align:center;">☀️ No jobs scheduled today</div>`}
     </div>`;
 
     el.innerHTML = html;
