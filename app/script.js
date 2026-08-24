@@ -2188,6 +2188,7 @@ function renderHomeDashboard() {
     const newRequests  = [];
     const notifJobs    = [];
     const scheduleWeek = [];
+    const sourceCounts = {};
 
     jobs.forEach(j => {
         if (j.jobArchived) return;
@@ -2200,6 +2201,8 @@ function renderHomeDashboard() {
         if ((j.status || "enquiry") === "complete" && !j.invoicedAt) needInvoicing++;
         if ((j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry") newRequests.push(j);
         if (["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) && (j.status || "enquiry") === "enquiry") notifJobs.push(j);
+        const srcKey = j.source || "manual";
+        sourceCounts[srcKey] = (sourceCounts[srcKey] || 0) + 1;
         if (j.jobStartDate) {
             const start = j.jobStartDate.split("T")[0];
             const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
@@ -2277,6 +2280,40 @@ function renderHomeDashboard() {
             </div>`;
         }).join("") : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;font-size:13px;color:var(--muted);text-align:center;">☀️ No jobs scheduled this week</div>`}
     </div>`;
+
+    const SOURCE_META = {
+        web_form:        { icon: "🌐", label: "Web Form",        color: "#2563eb" },
+        ai_receptionist: { icon: "📞", label: "AI Receptionist", color: "#7c3aed" },
+        voicemail:       { icon: "🎙",  label: "Voicemail",       color: "#0891b2" },
+        missed_call:     { icon: "📵", label: "Missed Call",     color: "#ea580c" },
+        call:            { icon: "📱", label: "Phone Call",      color: "#059669" },
+        manual:          { icon: "✍️", label: "Manual / Direct", color: "#64748b" }
+    };
+    const sourceTotal = Object.values(sourceCounts).reduce((a, b) => a + b, 0);
+    if (sourceTotal > 0) {
+        const sourceRows = Object.entries(sourceCounts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([key, count]) => {
+                const meta = SOURCE_META[key] || { icon: "❔", label: key, color: "#64748b" };
+                const pct  = Math.round(count / sourceTotal * 100);
+                return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <span style="font-size:14px;width:20px;text-align:center;flex-shrink:0;">${meta.icon}</span>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                            <span style="color:var(--ink);font-weight:600;">${meta.label}</span>
+                            <span style="color:var(--muted);">${count} (${pct}%)</span>
+                        </div>
+                        <div style="background:var(--bg);border-radius:99px;height:6px;overflow:hidden;">
+                            <div style="width:${pct}%;height:100%;background:${meta.color};"></div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join("");
+        html += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px;">
+            <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px;">Lead sources · ${sourceTotal} job${sourceTotal !== 1 ? "s" : ""}</div>
+            ${sourceRows}
+        </div>`;
+    }
 
     el.innerHTML = html;
 
