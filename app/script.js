@@ -2203,11 +2203,11 @@ function renderHomeDashboard() {
     const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In Progress", complete: "Complete" };
 
     let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div style="background:#065f46;border-radius:12px;padding:12px;">
+        <div onclick="goDashboard()" style="background:#065f46;border-radius:12px;padding:12px;cursor:pointer;">
             <div style="font-size:11px;color:#6ee7b7;font-weight:600;">Accepted this week</div>
             <div style="font-size:19px;font-weight:800;color:#fff;margin-top:2px;">${fmt(weekAccepted)}</div>
         </div>
-        <div style="background:${needInvoicing > 0 ? "#78350f" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:12px;">
+        <div onclick="goDashboard()" style="background:${needInvoicing > 0 ? "#78350f" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:12px;cursor:pointer;">
             <div style="font-size:11px;color:${needInvoicing > 0 ? "#fde68a" : "var(--text-muted)"};font-weight:600;">Need invoicing</div>
             <div style="font-size:19px;font-weight:800;color:${needInvoicing > 0 ? "#fff" : "var(--text)"};margin-top:2px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
         </div>
