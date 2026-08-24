@@ -2253,7 +2253,10 @@ function renderHomeDashboard() {
     }
 
     html += `<div>
-        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;">This week's schedule${scheduleWeek.length ? " · " + scheduleWeek.length : ""}</div>
+        <div onclick="goCalendar()" style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+            <span>This week's schedule${scheduleWeek.length ? " · " + scheduleWeek.length : ""}</span>
+            <span style="font-size:12px;color:var(--muted);font-weight:600;">📅 Calendar →</span>
+        </div>
         ${scheduleWeek.length ? scheduleWeek.map(j => {
             const addr    = [j.address, j.city].filter(Boolean).join(", ");
             const total   = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
