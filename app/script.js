@@ -769,6 +769,7 @@ async function authSignIn() {
             setTimeout(checkJobReminders, 2000);
             setTimeout(initRevenueCat, 1500);
             setTimeout(startBackgroundSync, 3000);
+            setTimeout(updateNotificationBadge, 2500);
         }).catch(e => { isLoadingJobs = false; renderHomeScreen(); console.error(e); });
 
     } catch(e) {
@@ -2222,7 +2223,7 @@ function renderHomeDashboard() {
     </div>`;
 
     if (newRequests.length) {
-        html += `<div onclick="goDashboard()" style="background:#1e3a5f;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+        html += `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#1e3a5f;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;">
             <span style="font-size:18px;">📥</span>
             <div style="font-size:13px;color:#93c5fd;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
         </div>`;
@@ -2278,8 +2279,45 @@ function stopBackgroundSync() {
     if (bgSyncInterval) { clearInterval(bgSyncInterval); bgSyncInterval = null; }
 }
 
+async function computeNotificationBadge() {
+    const enquiryJobs = jobs.filter(j => !j.jobArchived &&
+        ["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) &&
+        (j.status || "enquiry") === "enquiry"
+    );
+
+    let unreadMsgCount = 0;
+    try {
+        const tokens = [...new Set(jobs.filter(j => j.quoteToken).map(j => j.quoteToken))];
+        if (tokens.length && currentUser) {
+            let accessToken = "";
+            try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) accessToken = JSON.parse(s).access_token || ""; } catch(e) {}
+            const tokenList = tokens.map(t => `"${t}"`).join(",");
+            const resp = await fetch(`${SB_URL}/rest/v1/customer_messages?token=in.(${tokenList})&sender=neq.tiler&read=eq.false&select=token`, {
+                headers: { "apikey": SB_KEY, "Authorization": `Bearer ${accessToken || SB_KEY}` }
+            });
+            const rows = await resp.json();
+            if (Array.isArray(rows)) unreadMsgCount = rows.length;
+        }
+    } catch(e) { console.warn("Notification badge fetch failed:", e.message); }
+
+    return enquiryJobs.length + unreadMsgCount;
+}
+
+async function updateNotificationBadge() {
+    const badge = document.getElementById("notif-badge");
+    if (!badge) return;
+    const count = await computeNotificationBadge();
+    if (count > 0) {
+        badge.textContent = count > 99 ? "99+" : count;
+        badge.style.display = "flex";
+    } else {
+        badge.style.display = "none";
+    }
+}
+
 async function backgroundSync() {
     if (!currentUser?.id || !navigator.onLine) return;
+    updateNotificationBadge();
     try {
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
@@ -2412,6 +2450,7 @@ function renderDashboard() {
     if (quoteFilter === "declined") filtered = filtered.filter(j => j.quoteStatus === "declined");
     if (quoteFilter === "none")     filtered = filtered.filter(j => !j.quoteToken);
     if (quoteFilter === "needs_invoicing") filtered = filtered.filter(j => (j.status || "enquiry") === "complete" && !j.invoicedAt);
+    if (quoteFilter === "new_requests")    filtered = filtered.filter(j => (j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry");
 
     const sort = document.getElementById("jobs-sort")?.value || "updated";
     const jobTotal = j => (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
@@ -9610,27 +9649,58 @@ async function loadVoicemails() {
 
     const headers = { "apikey": SB_KEY, "Authorization": "Bearer " + token };
 
-    // Load from jobs table — voicemail, ai_receptionist, and missed_call sources
+    // Load from jobs table — voicemail, ai_receptionist, missed_call, and web_form sources
     const resp = await fetch(
-      `${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&source=in.(voicemail,ai_receptionist,missed_call)&select=data,source,updated_at&order=updated_at.desc&limit=50`,
+      `${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&source=in.(voicemail,ai_receptionist,missed_call,web_form)&select=data,source,updated_at&order=updated_at.desc&limit=50`,
       { headers }
     );
     const rows = await resp.json();
 
-    if (!rows || !rows.length) {
-      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">No messages yet</div><div style=\"font-size:13px;\">Voicemails and AI receptionist enquiries appear here.</div></div>';
+    // Unread customer messages, across every quoted job — read-only, does not mark as read
+    let unreadSectionHtml = "";
+    try {
+      const msgTokens = [...new Set(jobs.filter(j => j.quoteToken).map(j => j.quoteToken))];
+      if (msgTokens.length) {
+        const tokenList = msgTokens.map(t => `"${t}"`).join(",");
+        const msgResp = await fetch(`${SB_URL}/rest/v1/customer_messages?token=in.(${tokenList})&sender=neq.tiler&read=eq.false&select=token,message,created_at&order=created_at.desc`, { headers });
+        const msgRows = await msgResp.json();
+        if (Array.isArray(msgRows) && msgRows.length) {
+          const byToken = {};
+          msgRows.forEach(m => { if (!byToken[m.token]) byToken[m.token] = m; });
+          const items = Object.values(byToken).map(m => {
+            const j = jobs.find(x => x.quoteToken === m.token);
+            if (!j) return "";
+            const dateStr = new Date(m.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+            return `<div onclick="currentJobId='${j.id}';goMessages()" style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;cursor:pointer;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:24px;">💬</span>
+      <div style="font-weight:700;font-size:15px;">${esc(j.customerName || "Customer")}</div>
+    </div>
+    <span style="font-size:12px;color:var(--text-muted);">${dateStr}</span>
+  </div>
+  <div style="font-size:13px;color:var(--text-muted);line-height:1.4;">${esc((m.message || "").slice(0, 100))}</div>
+</div>`;
+          }).filter(Boolean).join("");
+          if (items) unreadSectionHtml = `<div style="font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:4px 0 -4px;">Unread Messages</div>${items}`;
+        }
+      }
+    } catch(e) { console.warn("Unread messages load failed:", e.message); }
+
+    if ((!rows || !rows.length) && !unreadSectionHtml) {
+      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">Nothing new</div><div style=\"font-size:13px;\">Enquiries, voicemails and customer messages appear here.</div></div>';
       return;
     }
 
-    list.innerHTML = rows.map(row => {
+    const enquiriesHtml = (rows || []).map(row => {
       const v = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
       if (!v) return "";
       const source = row.source || v.source || "voicemail";
       const date = new Date(row.updated_at || v.createdAt);
       const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-      const sourceIcon = source === "ai_receptionist" ? "📞" : source === "missed_call" ? "📵" : "🎙";
-      const sourceLabel = source === "ai_receptionist" ? "AI Enquiry" : source === "missed_call" ? "Missed Call" : "Voicemail";
+      const sourceIcon = source === "ai_receptionist" ? "📞" : source === "missed_call" ? "📵" : source === "web_form" ? "🌐" : "🎙";
+      const sourceLabel = source === "ai_receptionist" ? "AI Enquiry" : source === "missed_call" ? "Missed Call" : source === "web_form" ? "Web Enquiry" : "Voicemail";
       const callerName = v.customerName && v.customerName !== "Unknown Caller" && v.customerName !== "Missed Call" ? v.customerName : "";
       const callerPhone = v.phone || v.customerPhone || "";
       const description = v.description || v.voicemailTranscript?.slice(0, 80) || "";
@@ -9654,6 +9724,9 @@ async function loadVoicemails() {
   </div>
 </div>`;
     }).filter(Boolean).join("");
+
+    list.innerHTML = unreadSectionHtml + enquiriesHtml;
+    updateNotificationBadge();
 
   } catch(e) {
     list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Failed to load</div>';
