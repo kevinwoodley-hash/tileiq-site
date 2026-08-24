@@ -122,7 +122,8 @@ let settings = {
     vatNumber:     "",
     quoteReminderDays: 3,  // days before chasing a pending quote
     terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.",
-    quotesCreatedLifetime: 0  // free-tier counter: total quotes ever created (never decrements, syncs via settings)
+    quotesCreatedLifetime: 0,  // free-tier counter: total quotes ever created (never decrements, syncs via settings)
+    dashboardWidgets: null  // ordered list of visible home-dashboard widget ids; null = use default order/visibility
 };
 const DEFAULT_SETTINGS = { ...settings }; // snapshot of defaults for reset on sign out
 
@@ -2170,6 +2171,25 @@ function renderReminders() {
         </div>`;
 }
 
+const DASHBOARD_WIDGET_DEFS = [
+    { id: "accepted_week",  title: "Accepted this week",      icon: "✅", type: "small" },
+    { id: "need_invoicing", title: "Need invoicing",          icon: "🧾", type: "small" },
+    { id: "notifications",  title: "Notifications",           icon: "🔔", type: "small" },
+    { id: "month_total",    title: "This month, accepted",    icon: "📈", type: "small" },
+    { id: "new_requests",   title: "New job requests banner", icon: "📥", type: "wide"  },
+    { id: "chase_up",       title: "Chase up overdue quotes", icon: "⏰", type: "wide"  },
+    { id: "schedule",       title: "This week's schedule",    icon: "🗓", type: "wide"  },
+    { id: "lead_sources",   title: "Lead sources",            icon: "🌐", type: "wide"  }
+];
+
+function getDashboardWidgetOrder() {
+    const saved = settings.dashboardWidgets;
+    if (Array.isArray(saved)) {
+        return saved.filter(id => DASHBOARD_WIDGET_DEFS.some(w => w.id === id));
+    }
+    return DASHBOARD_WIDGET_DEFS.map(w => w.id);
+}
+
 let _dashNotifSeq = 0;
 function renderHomeDashboard() {
     const notifSeq = ++_dashNotifSeq;
@@ -2216,35 +2236,36 @@ function renderHomeDashboard() {
     const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In progress", complete: "Complete" };
     const STATUS_TEXT  = { enquiry: "#2563eb", surveyed: "#7c3aed", quoted: "#0891b2", accepted: "#059669", scheduled: "#ea580c", in_progress: "#2563eb", complete: "#059669" };
 
-    let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div onclick="document.getElementById('jobs-quote-filter').value='accepted_week';goDashboard();" style="background:#ecfdf5;border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
-            <div style="font-size:11px;color:#059669;font-weight:600;">Accepted this week</div>
-            <div style="font-size:18px;font-weight:800;color:#047857;margin-top:1px;">${fmt(weekAccepted)}</div>
-        </div>
-        <div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#fff7ed" : "var(--surface)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
-            <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--muted)"};font-weight:600;">Need invoicing</div>
-            <div style="font-size:18px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--ink)"};margin-top:1px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
-        </div>
-        <div id="dash-notif-card" onclick="goVoicemails()" style="background:${notifJobs.length > 0 ? "#f5f3ff" : "var(--surface)"};border:1px solid ${notifJobs.length > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
-            <div style="font-size:11px;color:${notifJobs.length > 0 ? "#7c3aed" : "var(--muted)"};font-weight:600;">🔔 Notifications</div>
-            <div id="dash-notif-count" style="font-size:18px;font-weight:800;color:${notifJobs.length > 0 ? "#6d28d9" : "var(--ink)"};margin-top:1px;">${notifJobs.length}</div>
-        </div>
-        <div onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
-            <div style="font-size:11px;color:var(--muted);">This month, accepted</div>
-            <div style="font-size:18px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
-        </div>
+    const w = {}; // widget id -> html fragment ("" = enabled but nothing to show right now)
+
+    w.accepted_week = `<div onclick="document.getElementById('jobs-quote-filter').value='accepted_week';goDashboard();" style="background:#ecfdf5;border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:#059669;font-weight:600;">Accepted this week</div>
+        <div style="font-size:18px;font-weight:800;color:#047857;margin-top:1px;">${fmt(weekAccepted)}</div>
     </div>`;
 
-    if (newRequests.length) {
-        html += `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#eff6ff;border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:9px;cursor:pointer;">
-            <span style="font-size:16px;">📥</span>
-            <div style="font-size:13px;color:#1d4ed8;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
-        </div>`;
-    }
+    w.need_invoicing = `<div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#fff7ed" : "var(--surface)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--muted)"};font-weight:600;">Need invoicing</div>
+        <div style="font-size:18px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--ink)"};margin-top:1px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
+    </div>`;
+
+    w.notifications = `<div id="dash-notif-card" onclick="goVoicemails()" style="background:${notifJobs.length > 0 ? "#f5f3ff" : "var(--surface)"};border:1px solid ${notifJobs.length > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:${notifJobs.length > 0 ? "#7c3aed" : "var(--muted)"};font-weight:600;">🔔 Notifications</div>
+        <div id="dash-notif-count" style="font-size:18px;font-weight:800;color:${notifJobs.length > 0 ? "#6d28d9" : "var(--ink)"};margin-top:1px;">${notifJobs.length}</div>
+    </div>`;
+
+    w.month_total = `<div onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:var(--muted);">This month, accepted</div>
+        <div style="font-size:18px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
+    </div>`;
+
+    w.new_requests = newRequests.length ? `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#eff6ff;border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:9px;cursor:pointer;">
+        <span style="font-size:16px;">📥</span>
+        <div style="font-size:13px;color:#1d4ed8;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
+    </div>` : "";
 
     if (overdue.length) {
         const now2 = Date.now();
-        html += `<div style="background:#fff7ed;border-radius:12px;padding:9px 12px;">
+        w.chase_up = `<div style="background:#fff7ed;border-radius:12px;padding:9px 12px;">
             <div style="font-size:13px;font-weight:700;color:#c2410c;margin-bottom:4px;">⏰ Chase up · ${overdue.length} quote${overdue.length !== 1 ? "s" : ""}</div>
             ${overdue.slice(0, 3).map(j => {
                 const sentAt  = new Date(j.quoteSentAt);
@@ -2255,9 +2276,11 @@ function renderHomeDashboard() {
                 </div>`;
             }).join("")}
         </div>`;
+    } else {
+        w.chase_up = "";
     }
 
-    html += `<div>
+    w.schedule = `<div>
         <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:13px;font-weight:700;color:var(--ink);">This week's schedule${scheduleWeek.length ? " · " + scheduleWeek.length : ""}</span>
             <span onclick="goCalendar()" style="font-size:14px;color:#8a6000;font-weight:700;background:var(--amber-lt);padding:6px 12px;border-radius:99px;cursor:pointer;white-space:nowrap;">📅 Calendar →</span>
@@ -2309,11 +2332,49 @@ function renderHomeDashboard() {
                     </div>
                 </div>`;
             }).join("");
-        html += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px;">
+        w.lead_sources = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px;">
             <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px;">Lead sources · ${sourceTotal} job${sourceTotal !== 1 ? "s" : ""}</div>
             ${sourceRows}
         </div>`;
+    } else {
+        w.lead_sources = "";
     }
+
+    // Lay out widgets per the tiler's saved order/visibility. Consecutive "small" (stat-tile)
+    // widgets pair up into a 2-column row, exactly like the fixed layout used to look;
+    // "wide" widgets always take the full row. Widgets with no content right now (e.g. no
+    // overdue quotes) are skipped without leaving a gap.
+    const order   = getDashboardWidgetOrder();
+    const defById = {};
+    DASHBOARD_WIDGET_DEFS.forEach(d => { defById[d.id] = d; });
+
+    let html = "";
+    let i = 0;
+    while (i < order.length) {
+        const id = order[i];
+        const frag = w[id];
+        if (!frag) { i++; continue; }
+        const def = defById[id];
+        if (def.type === "small") {
+            let j = i + 1;
+            while (j < order.length && !w[order[j]]) j++;
+            const nextDef = j < order.length ? defById[order[j]] : null;
+            if (nextDef && nextDef.type === "small") {
+                html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${frag}${w[order[j]]}</div>`;
+                i = j + 1;
+            } else {
+                html += `<div style="display:grid;grid-template-columns:1fr;gap:8px;">${frag}</div>`;
+                i++;
+            }
+        } else {
+            html += frag;
+            i++;
+        }
+    }
+
+    html += `<div style="text-align:center;padding-top:2px;">
+        <span onclick="goDashboardCustomize()" style="font-size:12px;color:var(--muted);font-weight:600;cursor:pointer;">⚙ Customize dashboard</span>
+    </div>`;
 
     el.innerHTML = html;
 
@@ -2331,6 +2392,89 @@ function renderHomeDashboard() {
         const labelEl = cardEl.querySelector("div");
         if (labelEl) labelEl.style.color = active ? "#7c3aed" : "var(--muted)";
     }).catch(() => {});
+}
+
+function goDashboardCustomize() {
+    show("screen-dashboard-customize");
+    renderDashboardCustomizeList();
+}
+
+function renderDashboardCustomizeList() {
+    const container = document.getElementById("dashboard-customize-list");
+    if (!container) return;
+
+    const visibleOrder = getDashboardWidgetOrder();
+    const hiddenIds     = DASHBOARD_WIDGET_DEFS.map(d => d.id).filter(id => !visibleOrder.includes(id));
+    const defById = {};
+    DASHBOARD_WIDGET_DEFS.forEach(d => { defById[d.id] = d; });
+
+    let html = `<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin:4px 0 8px;">Visible on dashboard</div>`;
+
+    if (!visibleOrder.length) {
+        html += `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">Nothing visible — turn some widgets back on below.</div>`;
+    } else {
+        html += visibleOrder.map((id, idx) => {
+            const def = defById[id];
+            if (!def) return "";
+            return `<div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 12px;margin-bottom:8px;">
+                <span style="font-size:18px;flex-shrink:0;">${def.icon}</span>
+                <span style="flex:1;font-size:14px;font-weight:600;color:var(--ink);min-width:0;">${def.title}</span>
+                <button onclick="moveDashboardWidget('${id}',-1)" ${idx === 0 ? "disabled" : ""} class="btn-icon" style="${idx === 0 ? "opacity:0.3;" : ""}" title="Move up">⬆</button>
+                <button onclick="moveDashboardWidget('${id}',1)" ${idx === visibleOrder.length - 1 ? "disabled" : ""} class="btn-icon" style="${idx === visibleOrder.length - 1 ? "opacity:0.3;" : ""}" title="Move down">⬇</button>
+                <button onclick="toggleDashboardWidget('${id}')" class="btn-icon" title="Hide">🚫</button>
+            </div>`;
+        }).join("");
+    }
+
+    if (hiddenIds.length) {
+        html += `<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px;">Hidden</div>`;
+        html += hiddenIds.map(id => {
+            const def = defById[id];
+            return `<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;">
+                <span style="font-size:18px;flex-shrink:0;opacity:0.5;">${def.icon}</span>
+                <span style="flex:1;font-size:14px;font-weight:600;color:var(--muted);min-width:0;">${def.title}</span>
+                <button onclick="toggleDashboardWidget('${id}')" class="btn-secondary btn-sm">+ Show</button>
+            </div>`;
+        }).join("");
+    }
+
+    html += `<div style="text-align:center;margin-top:16px;">
+        <span onclick="resetDashboardWidgets()" style="font-size:13px;color:var(--muted);font-weight:600;cursor:pointer;text-decoration:underline;">↺ Reset to default</span>
+    </div>`;
+
+    container.innerHTML = html;
+}
+
+function toggleDashboardWidget(id) {
+    let order = getDashboardWidgetOrder();
+    if (order.includes(id)) {
+        order = order.filter(w => w !== id);
+    } else {
+        order = [...order, id];
+    }
+    settings.dashboardWidgets = order;
+    saveAll();
+    renderDashboardCustomizeList();
+    renderHomeDashboard();
+}
+
+function moveDashboardWidget(id, dir) {
+    const order = getDashboardWidgetOrder();
+    const idx = order.indexOf(id);
+    const newIdx = idx + dir;
+    if (idx === -1 || newIdx < 0 || newIdx >= order.length) return;
+    [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
+    settings.dashboardWidgets = order;
+    saveAll();
+    renderDashboardCustomizeList();
+    renderHomeDashboard();
+}
+
+function resetDashboardWidgets() {
+    settings.dashboardWidgets = null;
+    saveAll();
+    renderDashboardCustomizeList();
+    renderHomeDashboard();
 }
 
 
