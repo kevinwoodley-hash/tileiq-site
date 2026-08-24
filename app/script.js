@@ -2207,7 +2207,7 @@ function renderHomeDashboard() {
             <div style="font-size:11px;color:#6ee7b7;font-weight:600;">Accepted this week</div>
             <div style="font-size:19px;font-weight:800;color:#fff;margin-top:2px;">${fmt(weekAccepted)}</div>
         </div>
-        <div onclick="goDashboard()" style="background:${needInvoicing > 0 ? "#78350f" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:12px;cursor:pointer;">
+        <div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#78350f" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:12px;cursor:pointer;">
             <div style="font-size:11px;color:${needInvoicing > 0 ? "#fde68a" : "var(--text-muted)"};font-weight:600;">Need invoicing</div>
             <div style="font-size:19px;font-weight:800;color:${needInvoicing > 0 ? "#fff" : "var(--text)"};margin-top:2px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
         </div>
@@ -2411,6 +2411,7 @@ function renderDashboard() {
     if (quoteFilter === "accepted") filtered = filtered.filter(j => j.quoteStatus === "accepted");
     if (quoteFilter === "declined") filtered = filtered.filter(j => j.quoteStatus === "declined");
     if (quoteFilter === "none")     filtered = filtered.filter(j => !j.quoteToken);
+    if (quoteFilter === "needs_invoicing") filtered = filtered.filter(j => (j.status || "enquiry") === "complete" && !j.invoicedAt);
 
     const sort = document.getElementById("jobs-sort")?.value || "updated";
     const jobTotal = j => (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
