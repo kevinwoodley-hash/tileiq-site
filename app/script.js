@@ -203,7 +203,10 @@ function getDirections(jobId) {
     var parts = [job.address, job.city, job.postcode].filter(Boolean);
     if (!parts.length) { alert("No address saved for this job."); return; }
     var query = encodeURIComponent(parts.join(", "));
-    var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent); window.open(isIos ? "maps://?q=" + query : "geo:0,0?q=" + query, "_system");
+    // Universal Google Maps link: opens the Maps app via deep link where installed,
+    // falls back to the Google Maps website otherwise. geo:/maps:// custom schemes
+    // don't work outside the native app shell, so avoid them.
+    window.open("https://www.google.com/maps/search/?api=1&query=" + query, "_system");
 }
 
 
