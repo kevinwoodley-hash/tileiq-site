@@ -122,7 +122,9 @@ let settings = {
     vatNumber:     "",
     quoteReminderDays: 3,  // days before chasing a pending quote
     terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.",
-    quotesCreatedLifetime: 0,  // free-tier counter: total quotes ever created (never decrements, syncs via settings)
+    quotesCreatedLifetime: 0,  // lifetime counter, kept for reference/analytics — no longer used to enforce the free-tier limit
+    quotesMonthKey: null,      // "YYYY-M" the quotesThisMonth counter applies to
+    quotesThisMonth: 0,        // free-tier counter: quotes created in the current calendar month, resets monthly
     dashboardWidgets: null  // ordered list of visible home-dashboard widget ids; null = use default order/visibility
 };
 const DEFAULT_SETTINGS = { ...settings }; // snapshot of defaults for reset on sign out
@@ -2026,11 +2028,11 @@ function renderHomeScreen() {
                 ? `<span style="background:#7c3aed;color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">✨ PRO (Access Code)</span>`
                 : `<span style="background:#f59e0b;color:#000;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">⭐ PRO</span>`;
         } else {
-            const used = settings.quotesCreatedLifetime || 0;
+            const used = getQuotesUsedThisMonth();
             const left = Math.max(0, FREE_JOB_LIMIT - used);
             const quotaText = left > 0
-                ? `${left} of ${FREE_JOB_LIMIT} free quotes left`
-                : `Free quote limit reached`;
+                ? `${left} of ${FREE_JOB_LIMIT} free quotes left this month`
+                : `Free quote limit reached this month`;
             tierEl.innerHTML = `<span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Free Plan</span>
                 <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${quotaText}</div>`;
         }
@@ -3031,7 +3033,7 @@ function createJob() {
     };
 
     jobs.unshift(job);
-    settings.quotesCreatedLifetime = (settings.quotesCreatedLifetime || 0) + 1;
+    incrementMonthlyQuoteCount();
     saveAll();
     currentJobId = job.id;
     renderJobView();
@@ -9281,7 +9283,8 @@ async function syncAllQuoteStatuses() {
 ═══════════════════════════════════════════════════════════════ */
 const FREE_JOB_LIMIT = 3;
 
-let _proStatus    = null;
+let _proStatus     = null;
+let _proPeriodType = null; // "trial" | "intro" | "normal" | null — normal/access-code = a genuinely paying Pro
 let _rcAppUserId  = null;
 
 async function initRevenueCat() {
@@ -9302,27 +9305,42 @@ async function initRevenueCat() {
 async function refreshProStatus() {
     try {
         // Check access code first
-        if (checkAccessCodePro()) { _proStatus = true; updateProBadge(); return true; }
-        if (!_rcAppUserId) { _proStatus = false; updateProBadge(); return false; }
+        if (checkAccessCodePro()) { _proStatus = true; _proPeriodType = "normal"; updateProBadge(); return true; }
+        if (!_rcAppUserId) { _proStatus = false; _proPeriodType = null; updateProBadge(); return false; }
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "rc_check", user_id: _rcAppUserId })
         });
-        if (!resp.ok) { _proStatus = false; updateProBadge(); return false; }
+        if (!resp.ok) { _proStatus = false; _proPeriodType = null; updateProBadge(); return false; }
         const data = await resp.json();
         _proStatus = !!data.pro;
+        _proPeriodType = data.periodType || null;
         updateProBadge();
         return _proStatus;
     } catch(e) {
         console.warn("RC status check failed:", e.message);
         _proStatus = false;
+        _proPeriodType = null;
         updateProBadge();
         return false;
     }
 }
 
 function isPro() { return _proStatus === true || checkAccessCodePro(); }
+
+// A genuinely paying Pro — true subscribers and access-code holders, but NOT someone currently
+// inside a store free-trial/intro period. Use this (not isPro()) to gate anything with a real
+// per-use running cost, like the AI Receptionist, so trial users get the full quoting/job-management
+// experience without exposing paid API usage before the subscription has actually converted.
+function isPaidPro() { return isPro() && _proPeriodType !== "trial" && _proPeriodType !== "intro"; }
+
+function onAiReceptionistToggle(checkbox) {
+    if (checkbox.checked && !isPaidPro()) {
+        checkbox.checked = false;
+        showPaywall("ai_receptionist");
+    }
+}
 
 function updateProBadge() {
     // Also refresh the home screen tier badge whenever Pro status changes
@@ -9709,9 +9727,29 @@ async function restorePurchases() {
     }
 }
 
+function currentMonthKey() {
+    const d = new Date();
+    return d.getFullYear() + "-" + (d.getMonth() + 1);
+}
+
+function getQuotesUsedThisMonth() {
+    if (settings.quotesMonthKey !== currentMonthKey()) return 0; // new month — not reset in storage yet, but counts as 0
+    return settings.quotesThisMonth || 0;
+}
+
+function incrementMonthlyQuoteCount() {
+    const key = currentMonthKey();
+    if (settings.quotesMonthKey !== key) {
+        settings.quotesMonthKey = key;
+        settings.quotesThisMonth = 0;
+    }
+    settings.quotesThisMonth = (settings.quotesThisMonth || 0) + 1;
+    settings.quotesCreatedLifetime = (settings.quotesCreatedLifetime || 0) + 1;
+}
+
 function checkJobLimit() {
     if (isPro()) return true;
-    if ((settings.quotesCreatedLifetime || 0) < FREE_JOB_LIMIT) return true;
+    if (getQuotesUsedThisMonth() < FREE_JOB_LIMIT) return true;
     showPaywall("job_limit");
     return false;
 }
