@@ -46,7 +46,7 @@ radial-gradient(circle at 70% 25%,#333 0,#181b1e 35%,#080a0b 70%)}
 .workflow-wrap{margin-top:-38px;position:relative;z-index:5}
 .workflow-card{background:linear-gradient(180deg,#121518,#0d1012);border:1px solid #343a40;border-radius:18px;padding:24px 30px;box-shadow:0 18px 60px rgba(0,0,0,.35)}
 .workflow-card h2{font:700 22px 'Manrope';margin:0 0 24px}
-.workflow-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.workflow-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 24px;row-gap:26px}
 .workflow-grid article{display:grid;grid-template-columns:48px 1fr auto;gap:13px;align-items:center}
 .step-icon,.feature-icon{width:45px;height:45px;border:2px solid var(--yellow);border-radius:11px;display:grid;place-items:center;color:var(--yellow);font-size:22px;font-weight:800}
 .workflow-grid b{display:block;font-size:15px}.workflow-grid p{font-size:12px;color:#ddd;line-height:1.5;margin:5px 0 0}.workflow-grid em{font-style:normal;color:#bbb;font-size:26px}
