@@ -2177,12 +2177,14 @@ function renderHomeDashboard() {
 
     const now          = new Date();
     const startOfWeek  = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek    = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const todayStr     = now.toISOString().split("T")[0];
+    const weekStartStr = startOfWeek.toISOString().split("T")[0];
+    const weekEndStr   = endOfWeek.toISOString().split("T")[0];
 
     let weekAccepted = 0, monthAccepted = 0, needInvoicing = 0;
-    const newRequests   = [];
-    const scheduleToday = [];
+    const newRequests  = [];
+    const scheduleWeek = [];
 
     jobs.forEach(j => {
         if (j.jobArchived) return;
@@ -2197,10 +2199,10 @@ function renderHomeDashboard() {
         if (j.jobStartDate) {
             const start = j.jobStartDate.split("T")[0];
             const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
-            if (todayStr >= start && todayStr <= end) scheduleToday.push(j);
+            if (start <= weekEndStr && end >= weekStartStr) scheduleWeek.push(j);
         }
     });
-    scheduleToday.sort((a, b) => new Date(a.jobStartDate) - new Date(b.jobStartDate));
+    scheduleWeek.sort((a, b) => new Date(a.jobStartDate) - new Date(b.jobStartDate));
 
     const overdue = getOverdueQuotes();
     const fmt = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -2249,22 +2251,24 @@ function renderHomeDashboard() {
     }
 
     html += `<div>
-        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;">Today's schedule${scheduleToday.length ? " · " + scheduleToday.length : ""}</div>
-        ${scheduleToday.length ? scheduleToday.map(j => {
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;">This week's schedule${scheduleWeek.length ? " · " + scheduleWeek.length : ""}</div>
+        ${scheduleWeek.length ? scheduleWeek.map(j => {
             const addr    = [j.address, j.city].filter(Boolean).join(", ");
             const total   = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
             const statusColor = STATUS_TEXT[j.status] || "#2563eb";
             const statusText  = STATUS_LABEL[j.status] || j.status || "";
+            const dateLabel   = new Date(j.jobStartDate).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
             return `<div onclick="goJob('${j.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;margin-bottom:6px;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
                     <span style="font-size:14px;font-weight:700;color:var(--ink);">${esc(j.customerName)}</span>
                     <span style="font-size:12px;font-weight:700;color:${statusColor};">${statusText}</span>
                 </div>
+                <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:2px;">🗓 ${dateLabel}</div>
                 ${addr ? `<div style="font-size:12px;color:var(--muted);">📍 ${esc(addr)}</div>` : ""}
                 ${j.phone ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">📞 ${esc(j.phone)}</div>` : ""}
                 ${total ? `<div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:4px;">£${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
             </div>`;
-        }).join("") : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;font-size:13px;color:var(--muted);text-align:center;">☀️ No jobs scheduled today</div>`}
+        }).join("") : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;font-size:13px;color:var(--muted);text-align:center;">☀️ No jobs scheduled this week</div>`}
     </div>`;
 
     el.innerHTML = html;
