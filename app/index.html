@@ -315,38 +315,53 @@
             <div style="font-size:14px;color:var(--text-muted);" onclick="devProOverride()">What would you like to do?</div>
         </div>
 
+        <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:10px;">
+            <div onclick="goNewJob()" style="background:#065f46;border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:18px;">➕</span>
+                    <div>
+                        <div style="font-size:13px;font-weight:800;color:#fff;">New Job</div>
+                        <div style="font-size:11px;color:#6ee7b7;margin-top:1px;">Create a new tiling job</div>
+                    </div>
+                </div>
+                <span style="color:#6ee7b7;">→</span>
+            </div>
+
+            <div onclick="goDashboard()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:18px;">📋</span>
+                    <div>
+                        <div style="font-size:13px;font-weight:800;color:var(--text);">View Jobs</div>
+                        <div id="home-job-count" style="font-size:11px;color:var(--text-muted);margin-top:1px;">Loading…</div>
+                    </div>
+                </div>
+                <span style="color:var(--text-muted);">→</span>
+            </div>
+
+            <div onclick="goCustomers()" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:18px;">👤</span>
+                    <div>
+                        <div style="font-size:13px;font-weight:800;color:var(--text);">Customers</div>
+                        <div style="font-size:11px;color:var(--text-muted);margin-top:1px;">Manage saved customers</div>
+                    </div>
+                </div>
+                <span style="color:var(--text-muted);">→</span>
+            </div>
+
+            <div onclick="goVoicemails()" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;justify-content:space-between;align-items:center;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:18px;">📞</span>
+                    <div>
+                        <div style="font-size:13px;font-weight:800;color:var(--text);">Voicemails</div>
+                        <div id="home-voicemail-count" style="font-size:11px;color:var(--text-muted);margin-top:1px;">Customer messages</div>
+                    </div>
+                </div>
+                <span style="color:var(--text-muted);">→</span>
+            </div>
+        </div>
+
         <div id="home-dashboard" style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:10px;"></div>
-
-        <button onclick="goNewJob()" style="width:100%;max-width:320px;background:var(--accent);color:#000;border:none;border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;">
-            <span style="font-size:36px;">➕</span>
-            <div>
-                <div>New Job</div>
-                <div style="font-size:13px;font-weight:500;opacity:0.7;margin-top:2px;">Create a new tiling job</div>
-            </div>
-        </button>
-
-        <button onclick="goDashboard()" style="width:100%;max-width:320px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;">
-            <span style="font-size:36px;">📋</span>
-            <div>
-                <div>View Jobs</div>
-                <div id="home-job-count" style="font-size:13px;font-weight:500;color:var(--text-muted);margin-top:2px;">Loading…</div>
-            </div>
-        </button>
-
-        <button onclick="goCustomers()" style="width:100%;max-width:320px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:16px;text-align:left;">
-            <span style="font-size:36px;">👤</span>
-            <div>
-                <div>Customers</div>
-                <div style="font-size:13px;font-weight:500;color:var(--text-muted);margin-top:2px;">Manage saved customers</div>
-            </div>
-        </button>
-<button onclick="goVoicemails()" style="display:none;width:100%;max-width:320px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:24px 20px;font-size:18px;font-weight:800;cursor:pointer;align-items:center;gap:16px;text-align:left;">
-    <span style="font-size:36px;">📞</span>
-    <div>
-        <div>Voicemails</div>
-        <div id="home-voicemail-count" style="font-size:13px;font-weight:500;color:var(--text-muted);margin-top:2px;">Customer messages</div>
-    </div>
-</button>
     </div>
 </div>
 
