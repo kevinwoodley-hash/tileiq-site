@@ -203,7 +203,10 @@ function getDirections(jobId) {
     var parts = [job.address, job.city, job.postcode].filter(Boolean);
     if (!parts.length) { alert("No address saved for this job."); return; }
     var query = encodeURIComponent(parts.join(", "));
-    var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent); window.open(isIos ? "maps://?q=" + query : "geo:0,0?q=" + query, "_system");
+    // Universal Google Maps link: opens the Maps app via deep link where installed,
+    // falls back to the Google Maps website otherwise. geo:/maps:// custom schemes
+    // don't work outside the native app shell, so avoid them.
+    window.open("https://www.google.com/maps/search/?api=1&query=" + query, "_system");
 }
 
 
@@ -769,6 +772,7 @@ async function authSignIn() {
             setTimeout(checkJobReminders, 2000);
             setTimeout(initRevenueCat, 1500);
             setTimeout(startBackgroundSync, 3000);
+            setTimeout(updateNotificationBadge, 2500);
         }).catch(e => { isLoadingJobs = false; renderHomeScreen(); console.error(e); });
 
     } catch(e) {
@@ -2045,6 +2049,8 @@ function renderHomeScreen() {
     const badge = document.getElementById("offline-badge-home");
     const mainBadge = document.getElementById("offline-badge");
     if (badge && mainBadge) badge.style.display = mainBadge.style.display;
+
+    renderHomeDashboard();
 }
 
 function goDashboard() {
@@ -2121,24 +2127,27 @@ function renderQuoteTotals() {
         </div>` : ""}`;
 }
 
-function renderReminders() {
-    const banner = document.getElementById("reminder-banner");
-    if (!banner) return;
-
+function getOverdueQuotes() {
     const days = parseInt(settings.quoteReminderDays) || 0;
-    if (!days) { banner.style.display = "none"; return; }
-
-    const now      = Date.now();
-    const cutoff   = days * 24 * 60 * 60 * 1000;
-    const overdue  = jobs.filter(j => {
-        if (!j.quoteToken || j.quoteStatus) return false; // no quote sent, or already responded
+    if (!days) return [];
+    const now    = Date.now();
+    const cutoff = days * 24 * 60 * 60 * 1000;
+    return jobs.filter(j => {
+        if (j.jobArchived || !j.quoteToken || j.quoteStatus) return false; // no quote sent, or already responded
         const sentAt = j.quoteSentAt ? new Date(j.quoteSentAt).getTime() : null;
         if (!sentAt) return false;
         return (now - sentAt) >= cutoff;
     });
+}
 
+function renderReminders() {
+    const banner = document.getElementById("reminder-banner");
+    if (!banner) return;
+
+    const overdue = getOverdueQuotes();
     if (!overdue.length) { banner.style.display = "none"; return; }
 
+    const now = Date.now();
     banner.style.display = "block";
     banner.innerHTML = `
         <div style="background:#78350f;border-radius:10px;padding:12px 14px;">
@@ -2161,6 +2170,132 @@ function renderReminders() {
         </div>`;
 }
 
+let _dashNotifSeq = 0;
+function renderHomeDashboard() {
+    const notifSeq = ++_dashNotifSeq;
+    const el = document.getElementById("home-dashboard");
+    if (!el) return;
+    if (isLoadingJobs && jobs.length === 0) { el.innerHTML = ""; return; }
+
+    const now          = new Date();
+    const startOfWeek  = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek    = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const weekStartStr = startOfWeek.toISOString().split("T")[0];
+    const weekEndStr   = endOfWeek.toISOString().split("T")[0];
+
+    let weekAccepted = 0, monthAccepted = 0, needInvoicing = 0;
+    const newRequests  = [];
+    const notifJobs    = [];
+    const scheduleWeek = [];
+
+    jobs.forEach(j => {
+        if (j.jobArchived) return;
+        const grand = (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
+        if (j.quoteStatus === "accepted" && j.quoteRespondedAt) {
+            const d = new Date(j.quoteRespondedAt);
+            if (d >= startOfMonth) monthAccepted += grand;
+            if (d >= startOfWeek)  weekAccepted += grand;
+        }
+        if ((j.status || "enquiry") === "complete" && !j.invoicedAt) needInvoicing++;
+        if ((j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry") newRequests.push(j);
+        if (["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) && (j.status || "enquiry") === "enquiry") notifJobs.push(j);
+        if (j.jobStartDate) {
+            const start = j.jobStartDate.split("T")[0];
+            const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
+            if (start <= weekEndStr && end >= weekStartStr) scheduleWeek.push(j);
+        }
+    });
+    scheduleWeek.sort((a, b) => new Date(a.jobStartDate) - new Date(b.jobStartDate));
+
+    const overdue = getOverdueQuotes();
+    const fmt = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In progress", complete: "Complete" };
+    const STATUS_TEXT  = { enquiry: "#2563eb", surveyed: "#7c3aed", quoted: "#0891b2", accepted: "#059669", scheduled: "#ea580c", in_progress: "#2563eb", complete: "#059669" };
+
+    let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div onclick="document.getElementById('jobs-quote-filter').value='accepted_week';goDashboard();" style="background:#ecfdf5;border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:#059669;font-weight:600;">Accepted this week</div>
+            <div style="font-size:18px;font-weight:800;color:#047857;margin-top:1px;">${fmt(weekAccepted)}</div>
+        </div>
+        <div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#fff7ed" : "var(--surface)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--muted)"};font-weight:600;">Need invoicing</div>
+            <div style="font-size:18px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--ink)"};margin-top:1px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
+        </div>
+        <div id="dash-notif-card" onclick="goVoicemails()" style="background:${notifJobs.length > 0 ? "#f5f3ff" : "var(--surface)"};border:1px solid ${notifJobs.length > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:${notifJobs.length > 0 ? "#7c3aed" : "var(--muted)"};font-weight:600;">🔔 Notifications</div>
+            <div id="dash-notif-count" style="font-size:18px;font-weight:800;color:${notifJobs.length > 0 ? "#6d28d9" : "var(--ink)"};margin-top:1px;">${notifJobs.length}</div>
+        </div>
+        <div onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:var(--muted);">This month, accepted</div>
+            <div style="font-size:18px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
+        </div>
+    </div>`;
+
+    if (newRequests.length) {
+        html += `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#eff6ff;border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:9px;cursor:pointer;">
+            <span style="font-size:16px;">📥</span>
+            <div style="font-size:13px;color:#1d4ed8;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
+        </div>`;
+    }
+
+    if (overdue.length) {
+        const now2 = Date.now();
+        html += `<div style="background:#fff7ed;border-radius:12px;padding:9px 12px;">
+            <div style="font-size:13px;font-weight:700;color:#c2410c;margin-bottom:4px;">⏰ Chase up · ${overdue.length} quote${overdue.length !== 1 ? "s" : ""}</div>
+            ${overdue.slice(0, 3).map(j => {
+                const sentAt  = new Date(j.quoteSentAt);
+                const daysAgo = Math.floor((now2 - sentAt.getTime()) / 86400000);
+                return `<div onclick="goJob('${j.id}')" style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;cursor:pointer;">
+                    <span style="color:#9a3412;font-size:13px;font-weight:600;">${esc(j.customerName)}</span>
+                    <span style="color:#ea580c;font-size:12px;">${daysAgo} day${daysAgo !== 1 ? "s" : ""} ago</span>
+                </div>`;
+            }).join("")}
+        </div>`;
+    }
+
+    html += `<div>
+        <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:700;color:var(--ink);">This week's schedule${scheduleWeek.length ? " · " + scheduleWeek.length : ""}</span>
+            <span onclick="goCalendar()" style="font-size:14px;color:#8a6000;font-weight:700;background:var(--amber-lt);padding:6px 12px;border-radius:99px;cursor:pointer;white-space:nowrap;">📅 Calendar →</span>
+        </div>
+        ${scheduleWeek.length ? scheduleWeek.map(j => {
+            const addr    = [j.address, j.city].filter(Boolean).join(", ");
+            const total   = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
+            const statusColor = STATUS_TEXT[j.status] || "#2563eb";
+            const statusText  = STATUS_LABEL[j.status] || j.status || "";
+            const dateLabel   = new Date(j.jobStartDate).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+            return `<div onclick="goJob('${j.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;margin-bottom:6px;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+                    <span style="font-size:14px;font-weight:700;color:var(--ink);">${esc(j.customerName)}</span>
+                    <span style="font-size:12px;font-weight:700;color:${statusColor};">${statusText}</span>
+                </div>
+                <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:2px;">🗓 ${dateLabel}</div>
+                ${addr ? `<div style="font-size:12px;color:var(--muted);">📍 ${esc(addr)}</div>` : ""}
+                ${j.phone ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">📞 ${esc(j.phone)}</div>` : ""}
+                ${total ? `<div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:4px;">£${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
+            </div>`;
+        }).join("") : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;font-size:13px;color:var(--muted);text-align:center;">☀️ No jobs scheduled this week</div>`}
+    </div>`;
+
+    el.innerHTML = html;
+
+    // Patch in the live notification count (includes unread customer messages, not just local enquiry jobs)
+    computeNotificationBadge().then(count => {
+        if (notifSeq !== _dashNotifSeq) return; // a newer render has already superseded this one — ignore stale result
+        const countEl = document.getElementById("dash-notif-count");
+        const cardEl  = document.getElementById("dash-notif-card");
+        if (!countEl || !cardEl) return;
+        countEl.textContent = count;
+        const active = count > 0;
+        cardEl.style.background = active ? "#f5f3ff" : "var(--surface)";
+        cardEl.style.border = active ? "1px solid transparent" : "1px solid var(--border)";
+        countEl.style.color = active ? "#6d28d9" : "var(--ink)";
+        const labelEl = cardEl.querySelector("div");
+        if (labelEl) labelEl.style.color = active ? "#7c3aed" : "var(--muted)";
+    }).catch(() => {});
+}
+
 
 /* ═══════════════════════════════════════════════════════════════
    BACKGROUND AUTO-SYNC
@@ -2178,8 +2313,45 @@ function stopBackgroundSync() {
     if (bgSyncInterval) { clearInterval(bgSyncInterval); bgSyncInterval = null; }
 }
 
+async function computeNotificationBadge() {
+    const enquiryJobs = jobs.filter(j => !j.jobArchived &&
+        ["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) &&
+        (j.status || "enquiry") === "enquiry"
+    );
+
+    let unreadMsgCount = 0;
+    try {
+        const tokens = [...new Set(jobs.filter(j => j.quoteToken).map(j => j.quoteToken))];
+        if (tokens.length && currentUser) {
+            let accessToken = "";
+            try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) accessToken = JSON.parse(s).access_token || ""; } catch(e) {}
+            const tokenList = tokens.map(t => `"${t}"`).join(",");
+            const resp = await fetch(`${SB_URL}/rest/v1/customer_messages?token=in.(${tokenList})&sender=neq.tiler&read=eq.false&select=token`, {
+                headers: { "apikey": SB_KEY, "Authorization": `Bearer ${accessToken || SB_KEY}` }
+            });
+            const rows = await resp.json();
+            if (Array.isArray(rows)) unreadMsgCount = rows.length;
+        }
+    } catch(e) { console.warn("Notification badge fetch failed:", e.message); }
+
+    return enquiryJobs.length + unreadMsgCount;
+}
+
+async function updateNotificationBadge() {
+    const badge = document.getElementById("notif-badge");
+    if (!badge) return;
+    const count = await computeNotificationBadge();
+    if (count > 0) {
+        badge.textContent = count > 99 ? "99+" : count;
+        badge.style.display = "flex";
+    } else {
+        badge.style.display = "none";
+    }
+}
+
 async function backgroundSync() {
     if (!currentUser?.id || !navigator.onLine) return;
+    updateNotificationBadge();
     try {
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
@@ -2261,6 +2433,7 @@ async function backgroundSync() {
             renderDashboard();
             const activeScreen = document.querySelector(".screen:not(.hidden)")?.id;
             if (activeScreen === "screen-dashboard") renderDashboard();
+            if (activeScreen === "screen-home") renderHomeDashboard();
         }
     } catch(e) {
         console.warn("Background sync error:", e.message);
@@ -2310,6 +2483,12 @@ function renderDashboard() {
     if (quoteFilter === "accepted") filtered = filtered.filter(j => j.quoteStatus === "accepted");
     if (quoteFilter === "declined") filtered = filtered.filter(j => j.quoteStatus === "declined");
     if (quoteFilter === "none")     filtered = filtered.filter(j => !j.quoteToken);
+    if (quoteFilter === "needs_invoicing") filtered = filtered.filter(j => (j.status || "enquiry") === "complete" && !j.invoicedAt);
+    if (quoteFilter === "new_requests")    filtered = filtered.filter(j => (j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry");
+    if (quoteFilter === "accepted_week") {
+        const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+        filtered = filtered.filter(j => j.quoteStatus === "accepted" && j.quoteRespondedAt && new Date(j.quoteRespondedAt) >= startOfWeek);
+    }
 
     const sort = document.getElementById("jobs-sort")?.value || "updated";
     const jobTotal = j => (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
@@ -8608,7 +8787,11 @@ async function sendInvoiceByEmail(jobId) {
                     pdfBase64: pdf.base64, pdfFileName: fileName, isInvoice: true
                 })
             });
-            if (resp.ok) { alert("\u2705 Invoice sent to " + j.email); return; }
+            if (resp.ok) {
+                markJobInvoiced(jobId);
+                alert("\u2705 Invoice sent to " + j.email);
+                return;
+            }
         } catch(e) { console.error(e); }
     }
     const go = confirm("Could not send automatically.\n\nThis will open your device email app \u2014 make sure you are signed in with the correct account.\n\nTap OK to open.");
@@ -8616,6 +8799,15 @@ async function sendInvoiceByEmail(jobId) {
     const subject = encodeURIComponent(`Invoice \u2013 ${j.customerName}`);
     const body = encodeURIComponent(`Hi ${j.customerName},\n\nPlease find your invoice attached.\n\nKind regards,\n${settings.companyName || ""}`);
     window.open(`mailto:${j.email ? encodeURIComponent(j.email) : ""}?subject=${subject}&body=${body}`, "_system");
+    markJobInvoiced(jobId);
+}
+
+function markJobInvoiced(jobId) {
+    const j = jobs.find(x => x.id === jobId);
+    if (!j || j.invoicedAt) return;
+    j.invoicedAt = new Date().toISOString();
+    saveAll();
+    renderHomeDashboard();
 }
 
 async function sendInvoiceShare() {
@@ -8631,10 +8823,12 @@ async function sendInvoiceShare() {
             await Filesystem.writeFile({ path: fileName, data: pdf.base64, directory: "CACHE" });
             const { uri } = await Filesystem.getUri({ path: fileName, directory: "CACHE" });
             await Share.share({ title: `Invoice – ${pdf.customerName}`, text: "Please find your invoice attached.", files: [uri], dialogTitle: "Share Invoice" });
+            if (currentJobId) markJobInvoiced(currentJobId);
             return;
         } catch(e) { console.error(e); }
     }
     downloadPDF();
+    if (currentJobId) markJobInvoiced(currentJobId);
 }
 
 function previewQuote() {
@@ -9493,27 +9687,58 @@ async function loadVoicemails() {
 
     const headers = { "apikey": SB_KEY, "Authorization": "Bearer " + token };
 
-    // Load from jobs table — voicemail, ai_receptionist, and missed_call sources
+    // Load from jobs table — voicemail, ai_receptionist, missed_call, and web_form sources
     const resp = await fetch(
-      `${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&source=in.(voicemail,ai_receptionist,missed_call)&select=data,source,updated_at&order=updated_at.desc&limit=50`,
+      `${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&source=in.(voicemail,ai_receptionist,missed_call,web_form)&select=data,source,updated_at&order=updated_at.desc&limit=50`,
       { headers }
     );
     const rows = await resp.json();
 
-    if (!rows || !rows.length) {
-      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">No messages yet</div><div style=\"font-size:13px;\">Voicemails and AI receptionist enquiries appear here.</div></div>';
+    // Unread customer messages, across every quoted job — read-only, does not mark as read
+    let unreadSectionHtml = "";
+    try {
+      const msgTokens = [...new Set(jobs.filter(j => j.quoteToken).map(j => j.quoteToken))];
+      if (msgTokens.length) {
+        const tokenList = msgTokens.map(t => `"${t}"`).join(",");
+        const msgResp = await fetch(`${SB_URL}/rest/v1/customer_messages?token=in.(${tokenList})&sender=neq.tiler&read=eq.false&select=token,message,created_at&order=created_at.desc`, { headers });
+        const msgRows = await msgResp.json();
+        if (Array.isArray(msgRows) && msgRows.length) {
+          const byToken = {};
+          msgRows.forEach(m => { if (!byToken[m.token]) byToken[m.token] = m; });
+          const items = Object.values(byToken).map(m => {
+            const j = jobs.find(x => x.quoteToken === m.token);
+            if (!j) return "";
+            const dateStr = new Date(m.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+            return `<div onclick="currentJobId='${j.id}';goMessages()" style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;cursor:pointer;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:24px;">💬</span>
+      <div style="font-weight:700;font-size:15px;">${esc(j.customerName || "Customer")}</div>
+    </div>
+    <span style="font-size:12px;color:var(--text-muted);">${dateStr}</span>
+  </div>
+  <div style="font-size:13px;color:var(--text-muted);line-height:1.4;">${esc((m.message || "").slice(0, 100))}</div>
+</div>`;
+          }).filter(Boolean).join("");
+          if (items) unreadSectionHtml = `<div style="font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:4px 0 -4px;">Unread Messages</div>${items}`;
+        }
+      }
+    } catch(e) { console.warn("Unread messages load failed:", e.message); }
+
+    if ((!rows || !rows.length) && !unreadSectionHtml) {
+      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">Nothing new</div><div style=\"font-size:13px;\">Enquiries, voicemails and customer messages appear here.</div></div>';
       return;
     }
 
-    list.innerHTML = rows.map(row => {
+    const enquiriesHtml = (rows || []).map(row => {
       const v = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
       if (!v) return "";
       const source = row.source || v.source || "voicemail";
       const date = new Date(row.updated_at || v.createdAt);
       const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-      const sourceIcon = source === "ai_receptionist" ? "📞" : source === "missed_call" ? "📵" : "🎙";
-      const sourceLabel = source === "ai_receptionist" ? "AI Enquiry" : source === "missed_call" ? "Missed Call" : "Voicemail";
+      const sourceIcon = source === "ai_receptionist" ? "📞" : source === "missed_call" ? "📵" : source === "web_form" ? "🌐" : "🎙";
+      const sourceLabel = source === "ai_receptionist" ? "AI Enquiry" : source === "missed_call" ? "Missed Call" : source === "web_form" ? "Web Enquiry" : "Voicemail";
       const callerName = v.customerName && v.customerName !== "Unknown Caller" && v.customerName !== "Missed Call" ? v.customerName : "";
       const callerPhone = v.phone || v.customerPhone || "";
       const description = v.description || v.voicemailTranscript?.slice(0, 80) || "";
@@ -9537,6 +9762,9 @@ async function loadVoicemails() {
   </div>
 </div>`;
     }).filter(Boolean).join("");
+
+    list.innerHTML = unreadSectionHtml + enquiriesHtml;
+    updateNotificationBadge();
 
   } catch(e) {
     list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Failed to load</div>';
