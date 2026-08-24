@@ -950,3 +950,22 @@ footer{border-top-color:#173033}
 @media (max-width: 600px) {
   .google-play-link img { width: 125px; }
 }
+
+/* ── SEO/GUIDE CONTENT PAGES ─────────────────────────────── */
+.guide-faq{display:grid;gap:14px;max-width:820px}
+.guide-faq details{background:#0e1315;border:1px solid #222d31;border-radius:12px;padding:16px 20px}
+.guide-faq summary{cursor:pointer;font:700 15px 'Manrope',sans-serif;color:#fff;list-style:none}
+.guide-faq summary::-webkit-details-marker{display:none}
+.guide-faq summary:after{content:'+';float:right;color:var(--yellow);font-size:20px;line-height:1}
+.guide-faq details[open] summary:after{content:'\2013'}
+.guide-faq p{color:#96a0a5;font-size:13px;line-height:1.65;margin:12px 0 0}
+
+.calc-box{background:linear-gradient(155deg,#0e1315,#080b0d);border:1px solid #222d31;border-radius:18px;padding:26px 28px;max-width:640px}
+.calc-row{display:grid;grid-template-columns:1fr 150px;gap:14px;align-items:center;margin-bottom:14px}
+.calc-row label{font-size:13px;color:#c3ccd0}
+.calc-row input,.calc-row select{padding:10px 12px;border-radius:8px;border:1px solid #2a343a;background:#080b0d;color:#fff;font-size:14px;width:100%;font-family:inherit}
+.calc-results{margin-top:18px;padding-top:18px;border-top:1px solid #222d31;display:grid;gap:10px}
+.calc-results div{display:flex;justify-content:space-between;font-size:14px;color:#c3ccd0}
+.calc-results b{color:var(--yellow);font:800 17px 'Manrope',sans-serif}
+.calc-note{font-size:11px;color:#767e83;margin-top:16px;line-height:1.6}
+@media(max-width:580px){.calc-row{grid-template-columns:1fr}}
