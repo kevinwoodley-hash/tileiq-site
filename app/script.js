@@ -2416,12 +2416,14 @@ function renderDashboardCustomizeList() {
         html += visibleOrder.map((id, idx) => {
             const def = defById[id];
             if (!def) return "";
-            return `<div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 12px;margin-bottom:8px;">
+            const btnStyle = "background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;width:32px;height:32px;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;";
+            const disabledStyle = "opacity:0.3;cursor:default;";
+            return `<div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 12px;margin-bottom:8px;">
                 <span style="font-size:18px;flex-shrink:0;">${def.icon}</span>
                 <span style="flex:1;font-size:14px;font-weight:600;color:var(--ink);min-width:0;">${def.title}</span>
-                <button onclick="moveDashboardWidget('${id}',-1)" ${idx === 0 ? "disabled" : ""} class="btn-icon" style="${idx === 0 ? "opacity:0.3;" : ""}" title="Move up">⬆</button>
-                <button onclick="moveDashboardWidget('${id}',1)" ${idx === visibleOrder.length - 1 ? "disabled" : ""} class="btn-icon" style="${idx === visibleOrder.length - 1 ? "opacity:0.3;" : ""}" title="Move down">⬇</button>
-                <button onclick="toggleDashboardWidget('${id}')" class="btn-icon" title="Hide">🚫</button>
+                <button onclick="moveDashboardWidget('${id}',-1)" ${idx === 0 ? "disabled" : ""} style="${btnStyle}${idx === 0 ? disabledStyle : ""}" title="Move up">⬆</button>
+                <button onclick="moveDashboardWidget('${id}',1)" ${idx === visibleOrder.length - 1 ? "disabled" : ""} style="${btnStyle}${idx === visibleOrder.length - 1 ? disabledStyle : ""}" title="Move down">⬇</button>
+                <button onclick="toggleDashboardWidget('${id}')" style="${btnStyle}" title="Hide">🚫</button>
             </div>`;
         }).join("");
     }
