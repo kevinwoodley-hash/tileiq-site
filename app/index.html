@@ -329,7 +329,7 @@
                 <span style="color:#6ee7b7;">→</span>
             </div>
 
-            <div onclick="goDashboard()" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+            <div onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span style="font-size:16px;">📋</span>
                     <div>
@@ -3508,7 +3508,7 @@
     <button onclick="goHome()" id="bnav-home" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
         <span style="font-size:22px;">🏠</span>Home
     </button>
-    <button onclick="goDashboard()" id="bnav-jobs" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
+    <button onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" id="bnav-jobs" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
         <span style="font-size:22px;">📋</span>Jobs
     </button>
     <button onclick="goCustomers()" id="bnav-customers" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">

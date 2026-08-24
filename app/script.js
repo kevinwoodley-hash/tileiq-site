@@ -2184,6 +2184,7 @@ function renderHomeDashboard() {
 
     let weekAccepted = 0, monthAccepted = 0, needInvoicing = 0;
     const newRequests  = [];
+    const notifJobs    = [];
     const scheduleWeek = [];
 
     jobs.forEach(j => {
@@ -2196,6 +2197,7 @@ function renderHomeDashboard() {
         }
         if ((j.status || "enquiry") === "complete" && !j.invoicedAt) needInvoicing++;
         if ((j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry") newRequests.push(j);
+        if (["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) && (j.status || "enquiry") === "enquiry") notifJobs.push(j);
         if (j.jobStartDate) {
             const start = j.jobStartDate.split("T")[0];
             const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
@@ -2218,14 +2220,14 @@ function renderHomeDashboard() {
             <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--muted)"};font-weight:600;">Need invoicing</div>
             <div style="font-size:18px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--ink)"};margin-top:1px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
         </div>
-    </div>`;
-
-    html += `<div onclick="goDashboard()" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
-        <div>
-            <div style="font-size:11px;color:var(--muted);">This month, accepted total</div>
-            <div style="font-size:16px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
+        <div id="dash-notif-card" onclick="goVoicemails()" style="background:${notifJobs.length > 0 ? "#f5f3ff" : "var(--surface)"};border:1px solid ${notifJobs.length > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:${notifJobs.length > 0 ? "#7c3aed" : "var(--muted)"};font-weight:600;">🔔 Notifications</div>
+            <div id="dash-notif-count" style="font-size:18px;font-weight:800;color:${notifJobs.length > 0 ? "#6d28d9" : "var(--ink)"};margin-top:1px;">${notifJobs.length}</div>
         </div>
-        <span style="color:var(--muted);">→</span>
+        <div onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:var(--muted);">This month, accepted</div>
+            <div style="font-size:18px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
+        </div>
     </div>`;
 
     if (newRequests.length) {
@@ -2272,6 +2274,20 @@ function renderHomeDashboard() {
     </div>`;
 
     el.innerHTML = html;
+
+    // Patch in the live notification count (includes unread customer messages, not just local enquiry jobs)
+    computeNotificationBadge().then(count => {
+        const countEl = document.getElementById("dash-notif-count");
+        const cardEl  = document.getElementById("dash-notif-card");
+        if (!countEl || !cardEl) return;
+        countEl.textContent = count;
+        const active = count > 0;
+        cardEl.style.background = active ? "#f5f3ff" : "var(--surface)";
+        cardEl.style.border = active ? "1px solid transparent" : "1px solid var(--border)";
+        countEl.style.color = active ? "#6d28d9" : "var(--ink)";
+        const labelEl = cardEl.querySelector("div");
+        if (labelEl) labelEl.style.color = active ? "#7c3aed" : "var(--muted)";
+    }).catch(() => {});
 }
 
 
