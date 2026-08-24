@@ -2204,16 +2204,17 @@ function renderHomeDashboard() {
 
     const overdue = getOverdueQuotes();
     const fmt = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In Progress", complete: "Complete" };
+    const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In progress", complete: "Complete" };
+    const STATUS_TEXT  = { enquiry: "#2563eb", surveyed: "#7c3aed", quoted: "#0891b2", accepted: "#059669", scheduled: "#ea580c", in_progress: "#2563eb", complete: "#059669" };
 
     let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div onclick="goDashboard()" style="background:#065f46;border-radius:12px;padding:12px;cursor:pointer;">
-            <div style="font-size:11px;color:#6ee7b7;font-weight:600;">Accepted this week</div>
-            <div style="font-size:19px;font-weight:800;color:#fff;margin-top:2px;">${fmt(weekAccepted)}</div>
+        <div onclick="document.getElementById('jobs-quote-filter').value='accepted_week';goDashboard();" style="background:#ecfdf5;border-radius:12px;padding:12px;cursor:pointer;">
+            <div style="font-size:11px;color:#059669;font-weight:600;">Accepted this week</div>
+            <div style="font-size:19px;font-weight:800;color:#047857;margin-top:2px;">${fmt(weekAccepted)}</div>
         </div>
-        <div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#78350f" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:12px;cursor:pointer;">
-            <div style="font-size:11px;color:${needInvoicing > 0 ? "#fde68a" : "var(--text-muted)"};font-weight:600;">Need invoicing</div>
-            <div style="font-size:19px;font-weight:800;color:${needInvoicing > 0 ? "#fff" : "var(--text)"};margin-top:2px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
+        <div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#fff7ed" : "var(--card)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;padding:12px;cursor:pointer;">
+            <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--text-muted)"};font-weight:600;">Need invoicing</div>
+            <div style="font-size:19px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--text)"};margin-top:2px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
         </div>
     </div>`;
 
@@ -2226,22 +2227,22 @@ function renderHomeDashboard() {
     </div>`;
 
     if (newRequests.length) {
-        html += `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#1e3a5f;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+        html += `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#eff6ff;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;">
             <span style="font-size:18px;">📥</span>
-            <div style="font-size:13px;color:#93c5fd;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
+            <div style="font-size:13px;color:#1d4ed8;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
         </div>`;
     }
 
     if (overdue.length) {
         const now2 = Date.now();
-        html += `<div style="background:#78350f;border-radius:12px;padding:12px 14px;">
-            <div style="font-size:13px;font-weight:700;color:#fde68a;margin-bottom:8px;">⏰ Chase up · ${overdue.length} quote${overdue.length !== 1 ? "s" : ""}</div>
+        html += `<div style="background:#fff7ed;border-radius:12px;padding:12px 14px;">
+            <div style="font-size:13px;font-weight:700;color:#c2410c;margin-bottom:8px;">⏰ Chase up · ${overdue.length} quote${overdue.length !== 1 ? "s" : ""}</div>
             ${overdue.slice(0, 3).map(j => {
                 const sentAt  = new Date(j.quoteSentAt);
                 const daysAgo = Math.floor((now2 - sentAt.getTime()) / 86400000);
                 return `<div onclick="goJob('${j.id}')" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;cursor:pointer;">
-                    <span style="color:#fef3c7;font-size:13px;font-weight:600;">${esc(j.customerName)}</span>
-                    <span style="color:#d97706;font-size:12px;">${daysAgo} day${daysAgo !== 1 ? "s" : ""} ago</span>
+                    <span style="color:#9a3412;font-size:13px;font-weight:600;">${esc(j.customerName)}</span>
+                    <span style="color:#ea580c;font-size:12px;">${daysAgo} day${daysAgo !== 1 ? "s" : ""} ago</span>
                 </div>`;
             }).join("")}
         </div>`;
@@ -2250,16 +2251,20 @@ function renderHomeDashboard() {
     html += `<div>
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">Today's schedule${scheduleToday.length ? " · " + scheduleToday.length : ""}</div>
         ${scheduleToday.length ? scheduleToday.map(j => {
-            const addr  = [j.address, j.city].filter(Boolean).join(", ");
-            const total = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
-            return `<div onclick="goJob('${j.id}')" style="background:var(--card);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;">
-                <div style="display:flex;justify-content:space-between;">
-                    <span style="font-size:13px;font-weight:700;color:var(--text);">${esc(j.customerName)}</span>
-                    <span style="font-size:11px;font-weight:700;color:var(--text-muted);">${STATUS_LABEL[j.status] || "Enquiry"}</span>
+            const addr    = [j.address, j.city].filter(Boolean).join(", ");
+            const total   = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
+            const statusColor = STATUS_TEXT[j.status] || "#2563eb";
+            const statusText  = STATUS_LABEL[j.status] || j.status || "";
+            return `<div onclick="goJob('${j.id}')" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                    <span style="font-size:14px;font-weight:700;color:var(--text);">${esc(j.customerName)}</span>
+                    <span style="font-size:12px;font-weight:700;color:${statusColor};">${statusText}</span>
                 </div>
-                ${addr ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(addr)}${total ? " · £" + total.toLocaleString("en-GB", { maximumFractionDigits: 0 }) : ""}</div>` : ""}
+                ${addr ? `<div style="font-size:12px;color:var(--text-muted);">📍 ${esc(addr)}</div>` : ""}
+                ${j.phone ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📞 ${esc(j.phone)}</div>` : ""}
+                ${total ? `<div style="font-size:14px;font-weight:800;color:var(--text);margin-top:6px;">£${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
             </div>`;
-        }).join("") : `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;color:var(--text-muted);text-align:center;">No jobs scheduled today</div>`}
+        }).join("") : `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">☀️ No jobs scheduled today</div>`}
     </div>`;
 
     el.innerHTML = html;
@@ -2454,6 +2459,10 @@ function renderDashboard() {
     if (quoteFilter === "none")     filtered = filtered.filter(j => !j.quoteToken);
     if (quoteFilter === "needs_invoicing") filtered = filtered.filter(j => (j.status || "enquiry") === "complete" && !j.invoicedAt);
     if (quoteFilter === "new_requests")    filtered = filtered.filter(j => (j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry");
+    if (quoteFilter === "accepted_week") {
+        const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+        filtered = filtered.filter(j => j.quoteStatus === "accepted" && j.quoteRespondedAt && new Date(j.quoteRespondedAt) >= startOfWeek);
+    }
 
     const sort = document.getElementById("jobs-sort")?.value || "updated";
     const jobTotal = j => (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
