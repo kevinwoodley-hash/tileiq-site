@@ -338,6 +338,18 @@ footer{border-top-color:#173033}
   object-position:left center;
   filter:saturate(.94) contrast(1.04);
 }
+/* The default fade-mask/crop above is tuned for a tall hand+phone photo. This is a wide
+   composite graphic that needs to be seen in full, not cropped or faded at the edges. */
+.hero-device-art.hero-showcase-img{
+  mask-image:none;
+  -webkit-mask-image:none;
+}
+.hero-device-art.hero-showcase-img::before{display:none}
+.hero-device-art.hero-showcase-img img{
+  object-fit:contain;
+  object-position:center;
+  filter:none;
+}
 .hero-wide .hero-copy{
   position:relative;
   z-index:4;
