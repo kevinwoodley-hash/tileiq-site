@@ -291,7 +291,7 @@ footer{border-top-color:#173033}
   position:relative;
   z-index:2;
   display:grid;
-  grid-template-columns:410px minmax(500px,620px) minmax(175px,220px);
+  grid-template-columns:410px minmax(500px,1fr);
   gap:50px;
   align-items:center;
 }
@@ -343,6 +343,7 @@ footer{border-top-color:#173033}
 .hero-device-art.hero-showcase-img{
   mask-image:none;
   -webkit-mask-image:none;
+  width:460px;
 }
 .hero-device-art.hero-showcase-img::before{display:none}
 .hero-device-art.hero-showcase-img img{
