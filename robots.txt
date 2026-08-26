@@ -1,4 +1,17 @@
 User-agent: *
 Allow: /
 
+# Internal admin tool — not a public page
+Disallow: /admin/
+
+# Account-deletion instructions — required to be reachable, not useful in search
+Disallow: /delete-account/
+
+# OAuth connect/callback redirect stubs — no content, pure technical redirects
+Disallow: /fa-callback.html
+Disallow: /fa-callback/
+Disallow: /qbo-callback.html
+Disallow: /qbo-callback/
+Disallow: /xero-callback/
+
 Sitemap: https://tile-iq.com/sitemap.xml
