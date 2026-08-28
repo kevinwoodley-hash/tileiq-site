@@ -85,6 +85,7 @@ let settings = {
     wetRoomTrayRate: 150,  // £ flat rate for tiling a wet room tray
     nicheLabourRate: 30,   // £ flat rate per niche (confined space surcharge)
     applyVat:      true,
+    hideCostBreakdown: false, // when true, quotes show only the project price — no materials/labour split
     // tile type labour multipliers
     tileRates: {
         ceramic:      1.0,
@@ -121,7 +122,11 @@ let settings = {
     companyEmail:  "",
     vatNumber:     "",
     quoteReminderDays: 3,  // days before chasing a pending quote
-    terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship."
+    terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.",
+    quotesCreatedLifetime: 0,  // lifetime counter, kept for reference/analytics — no longer used to enforce the free-tier limit
+    quotesMonthKey: null,      // "YYYY-M" the quotesThisMonth counter applies to
+    quotesThisMonth: 0,        // free-tier counter: quotes created in the current calendar month, resets monthly
+    dashboardWidgets: null  // ordered list of visible home-dashboard widget ids; null = use default order/visibility
 };
 const DEFAULT_SETTINGS = { ...settings }; // snapshot of defaults for reset on sign out
 
@@ -202,7 +207,10 @@ function getDirections(jobId) {
     var parts = [job.address, job.city, job.postcode].filter(Boolean);
     if (!parts.length) { alert("No address saved for this job."); return; }
     var query = encodeURIComponent(parts.join(", "));
-    var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent); window.open(isIos ? "maps://?q=" + query : "geo:0,0?q=" + query, "_system");
+    // Universal Google Maps link: opens the Maps app via deep link where installed,
+    // falls back to the Google Maps website otherwise. geo:/maps:// custom schemes
+    // don't work outside the native app shell, so avoid them.
+    window.open("https://www.google.com/maps/search/?api=1&query=" + query, "_system");
 }
 
 
@@ -768,6 +776,7 @@ async function authSignIn() {
             setTimeout(checkJobReminders, 2000);
             setTimeout(initRevenueCat, 1500);
             setTimeout(startBackgroundSync, 3000);
+            setTimeout(updateNotificationBadge, 2500);
         }).catch(e => { isLoadingJobs = false; renderHomeScreen(); console.error(e); });
 
     } catch(e) {
@@ -1281,7 +1290,6 @@ function renderDnsRecords(records) {
 }
 
 async function startDomainVerification() {
-    if (!isPro()) { showPaywall("domain_verify"); return; }
     const domainInput = document.getElementById("set-custom-domain");
     const domain = (domainInput?.value || "").trim().toLowerCase().replace(/^https?:\/\//,"").replace(/\//g,"");
     const msgEl  = document.getElementById("domain-verify-msg");
@@ -2021,7 +2029,13 @@ function renderHomeScreen() {
                 ? `<span style="background:#7c3aed;color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">✨ PRO (Access Code)</span>`
                 : `<span style="background:#f59e0b;color:#000;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">⭐ PRO</span>`;
         } else {
-            tierEl.innerHTML = `<span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Free Plan</span>`;
+            const used = getQuotesUsedThisMonth();
+            const left = Math.max(0, FREE_JOB_LIMIT - used);
+            const quotaText = left > 0
+                ? `${left} of ${FREE_JOB_LIMIT} free quotes left this month`
+                : `Free quote limit reached this month`;
+            tierEl.innerHTML = `<span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Free Plan</span>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${quotaText}</div>`;
         }
     }
 
@@ -2039,6 +2053,8 @@ function renderHomeScreen() {
     const badge = document.getElementById("offline-badge-home");
     const mainBadge = document.getElementById("offline-badge");
     if (badge && mainBadge) badge.style.display = mainBadge.style.display;
+
+    renderHomeDashboard();
 }
 
 function goDashboard() {
@@ -2115,24 +2131,27 @@ function renderQuoteTotals() {
         </div>` : ""}`;
 }
 
-function renderReminders() {
-    const banner = document.getElementById("reminder-banner");
-    if (!banner) return;
-
+function getOverdueQuotes() {
     const days = parseInt(settings.quoteReminderDays) || 0;
-    if (!days) { banner.style.display = "none"; return; }
-
-    const now      = Date.now();
-    const cutoff   = days * 24 * 60 * 60 * 1000;
-    const overdue  = jobs.filter(j => {
-        if (!j.quoteToken || j.quoteStatus) return false; // no quote sent, or already responded
+    if (!days) return [];
+    const now    = Date.now();
+    const cutoff = days * 24 * 60 * 60 * 1000;
+    return jobs.filter(j => {
+        if (j.jobArchived || !j.quoteToken || j.quoteStatus) return false; // no quote sent, or already responded
         const sentAt = j.quoteSentAt ? new Date(j.quoteSentAt).getTime() : null;
         if (!sentAt) return false;
         return (now - sentAt) >= cutoff;
     });
+}
 
+function renderReminders() {
+    const banner = document.getElementById("reminder-banner");
+    if (!banner) return;
+
+    const overdue = getOverdueQuotes();
     if (!overdue.length) { banner.style.display = "none"; return; }
 
+    const now = Date.now();
     banner.style.display = "block";
     banner.innerHTML = `
         <div style="background:#78350f;border-radius:10px;padding:12px 14px;">
@@ -2155,6 +2174,314 @@ function renderReminders() {
         </div>`;
 }
 
+const DASHBOARD_WIDGET_DEFS = [
+    { id: "accepted_week",  title: "Accepted this week",      icon: "✅", type: "small" },
+    { id: "need_invoicing", title: "Need invoicing",          icon: "🧾", type: "small" },
+    { id: "notifications",  title: "Notifications",           icon: "🔔", type: "small" },
+    { id: "month_total",    title: "This month, accepted",    icon: "📈", type: "small" },
+    { id: "new_requests",   title: "New job requests banner", icon: "📥", type: "wide"  },
+    { id: "chase_up",       title: "Chase up overdue quotes", icon: "⏰", type: "wide"  },
+    { id: "schedule",       title: "This week's schedule",    icon: "🗓", type: "wide"  },
+    { id: "lead_sources",   title: "Lead sources",            icon: "🌐", type: "wide"  }
+];
+
+function getDashboardWidgetOrder() {
+    const saved = settings.dashboardWidgets;
+    if (Array.isArray(saved)) {
+        return saved.filter(id => DASHBOARD_WIDGET_DEFS.some(w => w.id === id));
+    }
+    return DASHBOARD_WIDGET_DEFS.map(w => w.id);
+}
+
+let _dashNotifSeq = 0;
+function renderHomeDashboard() {
+    const notifSeq = ++_dashNotifSeq;
+    const el = document.getElementById("home-dashboard");
+    if (!el) return;
+    if (isLoadingJobs && jobs.length === 0) { el.innerHTML = ""; return; }
+
+    const now          = new Date();
+    const startOfWeek  = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek    = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const weekStartStr = startOfWeek.toISOString().split("T")[0];
+    const weekEndStr   = endOfWeek.toISOString().split("T")[0];
+
+    let weekAccepted = 0, monthAccepted = 0, needInvoicing = 0;
+    const newRequests  = [];
+    const notifJobs    = [];
+    const scheduleWeek = [];
+    const sourceCounts = {};
+
+    jobs.forEach(j => {
+        if (j.jobArchived) return;
+        const grand = (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
+        if (j.quoteStatus === "accepted" && j.quoteRespondedAt) {
+            const d = new Date(j.quoteRespondedAt);
+            if (d >= startOfMonth) monthAccepted += grand;
+            if (d >= startOfWeek)  weekAccepted += grand;
+        }
+        if ((j.status || "enquiry") === "complete" && !j.invoicedAt) needInvoicing++;
+        if ((j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry") newRequests.push(j);
+        if (["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) && (j.status || "enquiry") === "enquiry") notifJobs.push(j);
+        const srcKey = j.source || "manual";
+        sourceCounts[srcKey] = (sourceCounts[srcKey] || 0) + 1;
+        if (j.jobStartDate) {
+            const start = j.jobStartDate.split("T")[0];
+            const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
+            if (start <= weekEndStr && end >= weekStartStr) scheduleWeek.push(j);
+        }
+    });
+    scheduleWeek.sort((a, b) => new Date(a.jobStartDate) - new Date(b.jobStartDate));
+
+    const overdue = getOverdueQuotes();
+    const fmt = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In progress", complete: "Complete" };
+    const STATUS_TEXT  = { enquiry: "#2563eb", surveyed: "#7c3aed", quoted: "#0891b2", accepted: "#059669", scheduled: "#ea580c", in_progress: "#2563eb", complete: "#059669" };
+
+    const w = {}; // widget id -> html fragment ("" = enabled but nothing to show right now)
+
+    w.accepted_week = `<div onclick="document.getElementById('jobs-quote-filter').value='accepted_week';goDashboard();" style="background:#ecfdf5;border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:#059669;font-weight:600;">Accepted this week</div>
+        <div style="font-size:18px;font-weight:800;color:#047857;margin-top:1px;">${fmt(weekAccepted)}</div>
+    </div>`;
+
+    w.need_invoicing = `<div onclick="document.getElementById('jobs-quote-filter').value='needs_invoicing';goDashboard();" style="background:${needInvoicing > 0 ? "#fff7ed" : "var(--surface)"};border:1px solid ${needInvoicing > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:${needInvoicing > 0 ? "#ea580c" : "var(--muted)"};font-weight:600;">Need invoicing</div>
+        <div style="font-size:18px;font-weight:800;color:${needInvoicing > 0 ? "#c2410c" : "var(--ink)"};margin-top:1px;">${needInvoicing} job${needInvoicing !== 1 ? "s" : ""}</div>
+    </div>`;
+
+    w.notifications = `<div id="dash-notif-card" onclick="goVoicemails()" style="background:${notifJobs.length > 0 ? "#f5f3ff" : "var(--surface)"};border:1px solid ${notifJobs.length > 0 ? "transparent" : "var(--border)"};border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:${notifJobs.length > 0 ? "#7c3aed" : "var(--muted)"};font-weight:600;">🔔 Notifications</div>
+        <div id="dash-notif-count" style="font-size:18px;font-weight:800;color:${notifJobs.length > 0 ? "#6d28d9" : "var(--ink)"};margin-top:1px;">${notifJobs.length}</div>
+    </div>`;
+
+    w.month_total = `<div onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+        <div style="font-size:11px;color:var(--muted);">This month, accepted</div>
+        <div style="font-size:18px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
+    </div>`;
+
+    w.new_requests = newRequests.length ? `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#eff6ff;border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:9px;cursor:pointer;">
+        <span style="font-size:16px;">📥</span>
+        <div style="font-size:13px;color:#1d4ed8;font-weight:700;">${newRequests.length} new job request${newRequests.length !== 1 ? "s" : ""} — tap to review</div>
+    </div>` : "";
+
+    if (overdue.length) {
+        const now2 = Date.now();
+        w.chase_up = `<div style="background:#fff7ed;border-radius:12px;padding:9px 12px;">
+            <div style="font-size:13px;font-weight:700;color:#c2410c;margin-bottom:4px;">⏰ Chase up · ${overdue.length} quote${overdue.length !== 1 ? "s" : ""}</div>
+            ${overdue.slice(0, 3).map(j => {
+                const sentAt  = new Date(j.quoteSentAt);
+                const daysAgo = Math.floor((now2 - sentAt.getTime()) / 86400000);
+                return `<div onclick="goJob('${j.id}')" style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;cursor:pointer;">
+                    <span style="color:#9a3412;font-size:13px;font-weight:600;">${esc(j.customerName)}</span>
+                    <span style="color:#ea580c;font-size:12px;">${daysAgo} day${daysAgo !== 1 ? "s" : ""} ago</span>
+                </div>`;
+            }).join("")}
+        </div>`;
+    } else {
+        w.chase_up = "";
+    }
+
+    w.schedule = `<div>
+        <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:700;color:var(--ink);">This week's schedule${scheduleWeek.length ? " · " + scheduleWeek.length : ""}</span>
+            <span onclick="goCalendar()" style="font-size:14px;color:#8a6000;font-weight:700;background:var(--amber-lt);padding:6px 12px;border-radius:99px;cursor:pointer;white-space:nowrap;">📅 Calendar →</span>
+        </div>
+        ${scheduleWeek.length ? scheduleWeek.map(j => {
+            const addr    = [j.address, j.city].filter(Boolean).join(", ");
+            const total   = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
+            const statusColor = STATUS_TEXT[j.status] || "#2563eb";
+            const statusText  = STATUS_LABEL[j.status] || j.status || "";
+            const dateLabel   = new Date(j.jobStartDate).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+            return `<div onclick="goJob('${j.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;margin-bottom:6px;cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+                    <span style="font-size:14px;font-weight:700;color:var(--ink);">${esc(j.customerName)}</span>
+                    <span style="font-size:12px;font-weight:700;color:${statusColor};">${statusText}</span>
+                </div>
+                <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:2px;">🗓 ${dateLabel}</div>
+                ${addr ? `<div style="font-size:12px;color:var(--muted);">📍 ${esc(addr)}</div>` : ""}
+                ${j.phone ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">📞 ${esc(j.phone)}</div>` : ""}
+                ${total ? `<div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:4px;">£${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
+            </div>`;
+        }).join("") : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;font-size:13px;color:var(--muted);text-align:center;">☀️ No jobs scheduled this week</div>`}
+    </div>`;
+
+    const SOURCE_META = {
+        web_form:        { icon: "🌐", label: "Web Form",        color: "#2563eb" },
+        ai_receptionist: { icon: "📞", label: "AI Receptionist", color: "#7c3aed" },
+        voicemail:       { icon: "🎙",  label: "Voicemail",       color: "#0891b2" },
+        missed_call:     { icon: "📵", label: "Missed Call",     color: "#ea580c" },
+        call:            { icon: "📱", label: "Phone Call",      color: "#059669" },
+        manual:          { icon: "✍️", label: "Manual / Direct", color: "#64748b" }
+    };
+    const sourceTotal = Object.values(sourceCounts).reduce((a, b) => a + b, 0);
+    if (sourceTotal > 0) {
+        const sourceRows = Object.entries(sourceCounts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([key, count]) => {
+                const meta = SOURCE_META[key] || { icon: "❔", label: key, color: "#64748b" };
+                const pct  = Math.round(count / sourceTotal * 100);
+                return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <span style="font-size:14px;width:20px;text-align:center;flex-shrink:0;">${meta.icon}</span>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                            <span style="color:var(--ink);font-weight:600;">${meta.label}</span>
+                            <span style="color:var(--muted);">${count} (${pct}%)</span>
+                        </div>
+                        <div style="background:var(--bg);border-radius:99px;height:6px;overflow:hidden;">
+                            <div style="width:${pct}%;height:100%;background:${meta.color};"></div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join("");
+        w.lead_sources = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px;">
+            <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px;">Lead sources · ${sourceTotal} job${sourceTotal !== 1 ? "s" : ""}</div>
+            ${sourceRows}
+        </div>`;
+    } else {
+        w.lead_sources = "";
+    }
+
+    // Lay out widgets per the tiler's saved order/visibility. Consecutive "small" (stat-tile)
+    // widgets pair up into a 2-column row, exactly like the fixed layout used to look;
+    // "wide" widgets always take the full row. Widgets with no content right now (e.g. no
+    // overdue quotes) are skipped without leaving a gap.
+    const order   = getDashboardWidgetOrder();
+    const defById = {};
+    DASHBOARD_WIDGET_DEFS.forEach(d => { defById[d.id] = d; });
+
+    let html = "";
+    let i = 0;
+    while (i < order.length) {
+        const id = order[i];
+        const frag = w[id];
+        if (!frag) { i++; continue; }
+        const def = defById[id];
+        if (def.type === "small") {
+            let j = i + 1;
+            while (j < order.length && !w[order[j]]) j++;
+            const nextDef = j < order.length ? defById[order[j]] : null;
+            if (nextDef && nextDef.type === "small") {
+                html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${frag}${w[order[j]]}</div>`;
+                i = j + 1;
+            } else {
+                html += `<div style="display:grid;grid-template-columns:1fr;gap:8px;">${frag}</div>`;
+                i++;
+            }
+        } else {
+            html += frag;
+            i++;
+        }
+    }
+
+    html += `<div style="text-align:center;padding-top:2px;">
+        <span onclick="goDashboardCustomize()" style="font-size:12px;color:var(--muted);font-weight:600;cursor:pointer;">⚙ Customize dashboard</span>
+    </div>`;
+
+    el.innerHTML = html;
+
+    // Patch in the live notification count (includes unread customer messages, not just local enquiry jobs)
+    computeNotificationBadge().then(count => {
+        if (notifSeq !== _dashNotifSeq) return; // a newer render has already superseded this one — ignore stale result
+        const countEl = document.getElementById("dash-notif-count");
+        const cardEl  = document.getElementById("dash-notif-card");
+        if (!countEl || !cardEl) return;
+        countEl.textContent = count;
+        const active = count > 0;
+        cardEl.style.background = active ? "#f5f3ff" : "var(--surface)";
+        cardEl.style.border = active ? "1px solid transparent" : "1px solid var(--border)";
+        countEl.style.color = active ? "#6d28d9" : "var(--ink)";
+        const labelEl = cardEl.querySelector("div");
+        if (labelEl) labelEl.style.color = active ? "#7c3aed" : "var(--muted)";
+    }).catch(() => {});
+}
+
+function goDashboardCustomize() {
+    show("screen-dashboard-customize");
+    renderDashboardCustomizeList();
+}
+
+function renderDashboardCustomizeList() {
+    const container = document.getElementById("dashboard-customize-list");
+    if (!container) return;
+
+    const visibleOrder = getDashboardWidgetOrder();
+    const hiddenIds     = DASHBOARD_WIDGET_DEFS.map(d => d.id).filter(id => !visibleOrder.includes(id));
+    const defById = {};
+    DASHBOARD_WIDGET_DEFS.forEach(d => { defById[d.id] = d; });
+
+    let html = `<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin:4px 0 8px;">Visible on dashboard</div>`;
+
+    if (!visibleOrder.length) {
+        html += `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">Nothing visible — turn some widgets back on below.</div>`;
+    } else {
+        html += visibleOrder.map((id, idx) => {
+            const def = defById[id];
+            if (!def) return "";
+            const btnStyle = "background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;width:32px;height:32px;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;";
+            const disabledStyle = "opacity:0.3;cursor:default;";
+            return `<div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 12px;margin-bottom:8px;">
+                <span style="font-size:18px;flex-shrink:0;">${def.icon}</span>
+                <span style="flex:1;font-size:14px;font-weight:600;color:var(--ink);min-width:0;">${def.title}</span>
+                <button onclick="moveDashboardWidget('${id}',-1)" ${idx === 0 ? "disabled" : ""} style="${btnStyle}${idx === 0 ? disabledStyle : ""}" title="Move up">⬆</button>
+                <button onclick="moveDashboardWidget('${id}',1)" ${idx === visibleOrder.length - 1 ? "disabled" : ""} style="${btnStyle}${idx === visibleOrder.length - 1 ? disabledStyle : ""}" title="Move down">⬇</button>
+                <button onclick="toggleDashboardWidget('${id}')" style="${btnStyle}" title="Hide">🚫</button>
+            </div>`;
+        }).join("");
+    }
+
+    if (hiddenIds.length) {
+        html += `<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px;">Hidden</div>`;
+        html += hiddenIds.map(id => {
+            const def = defById[id];
+            return `<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;">
+                <span style="font-size:18px;flex-shrink:0;opacity:0.5;">${def.icon}</span>
+                <span style="flex:1;font-size:14px;font-weight:600;color:var(--muted);min-width:0;">${def.title}</span>
+                <button onclick="toggleDashboardWidget('${id}')" class="btn-secondary btn-sm">+ Show</button>
+            </div>`;
+        }).join("");
+    }
+
+    html += `<div style="text-align:center;margin-top:16px;">
+        <span onclick="resetDashboardWidgets()" style="font-size:13px;color:var(--muted);font-weight:600;cursor:pointer;text-decoration:underline;">↺ Reset to default</span>
+    </div>`;
+
+    container.innerHTML = html;
+}
+
+function toggleDashboardWidget(id) {
+    let order = getDashboardWidgetOrder();
+    if (order.includes(id)) {
+        order = order.filter(w => w !== id);
+    } else {
+        order = [...order, id];
+    }
+    settings.dashboardWidgets = order;
+    saveAll();
+    renderDashboardCustomizeList();
+    renderHomeDashboard();
+}
+
+function moveDashboardWidget(id, dir) {
+    const order = getDashboardWidgetOrder();
+    const idx = order.indexOf(id);
+    const newIdx = idx + dir;
+    if (idx === -1 || newIdx < 0 || newIdx >= order.length) return;
+    [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
+    settings.dashboardWidgets = order;
+    saveAll();
+    renderDashboardCustomizeList();
+    renderHomeDashboard();
+}
+
+function resetDashboardWidgets() {
+    settings.dashboardWidgets = null;
+    saveAll();
+    renderDashboardCustomizeList();
+    renderHomeDashboard();
+}
+
 
 /* ═══════════════════════════════════════════════════════════════
    BACKGROUND AUTO-SYNC
@@ -2172,8 +2499,45 @@ function stopBackgroundSync() {
     if (bgSyncInterval) { clearInterval(bgSyncInterval); bgSyncInterval = null; }
 }
 
+async function computeNotificationBadge() {
+    const enquiryJobs = jobs.filter(j => !j.jobArchived &&
+        ["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) &&
+        (j.status || "enquiry") === "enquiry"
+    );
+
+    let unreadMsgCount = 0;
+    try {
+        const tokens = [...new Set(jobs.filter(j => j.quoteToken).map(j => j.quoteToken))];
+        if (tokens.length && currentUser) {
+            let accessToken = "";
+            try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) accessToken = JSON.parse(s).access_token || ""; } catch(e) {}
+            const tokenList = tokens.map(t => `"${t}"`).join(",");
+            const resp = await fetch(`${SB_URL}/rest/v1/customer_messages?token=in.(${tokenList})&sender=neq.tiler&read=eq.false&select=token`, {
+                headers: { "apikey": SB_KEY, "Authorization": `Bearer ${accessToken || SB_KEY}` }
+            });
+            const rows = await resp.json();
+            if (Array.isArray(rows)) unreadMsgCount = rows.length;
+        }
+    } catch(e) { console.warn("Notification badge fetch failed:", e.message); }
+
+    return enquiryJobs.length + unreadMsgCount;
+}
+
+async function updateNotificationBadge() {
+    const badge = document.getElementById("notif-badge");
+    if (!badge) return;
+    const count = await computeNotificationBadge();
+    if (count > 0) {
+        badge.textContent = count > 99 ? "99+" : count;
+        badge.style.display = "flex";
+    } else {
+        badge.style.display = "none";
+    }
+}
+
 async function backgroundSync() {
     if (!currentUser?.id || !navigator.onLine) return;
+    updateNotificationBadge();
     try {
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
@@ -2255,6 +2619,7 @@ async function backgroundSync() {
             renderDashboard();
             const activeScreen = document.querySelector(".screen:not(.hidden)")?.id;
             if (activeScreen === "screen-dashboard") renderDashboard();
+            if (activeScreen === "screen-home") renderHomeDashboard();
         }
     } catch(e) {
         console.warn("Background sync error:", e.message);
@@ -2304,6 +2669,12 @@ function renderDashboard() {
     if (quoteFilter === "accepted") filtered = filtered.filter(j => j.quoteStatus === "accepted");
     if (quoteFilter === "declined") filtered = filtered.filter(j => j.quoteStatus === "declined");
     if (quoteFilter === "none")     filtered = filtered.filter(j => !j.quoteToken);
+    if (quoteFilter === "needs_invoicing") filtered = filtered.filter(j => (j.status || "enquiry") === "complete" && !j.invoicedAt);
+    if (quoteFilter === "new_requests")    filtered = filtered.filter(j => (j.source === "web_form" || j.source === "ai_receptionist") && (j.status || "enquiry") === "enquiry");
+    if (quoteFilter === "accepted_week") {
+        const startOfWeek = new Date(); startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+        filtered = filtered.filter(j => j.quoteStatus === "accepted" && j.quoteRespondedAt && new Date(j.quoteRespondedAt) >= startOfWeek);
+    }
 
     const sort = document.getElementById("jobs-sort")?.value || "updated";
     const jobTotal = j => (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
@@ -2663,6 +3034,7 @@ function createJob() {
     };
 
     jobs.unshift(job);
+    incrementMonthlyQuoteCount();
     saveAll();
     currentJobId = job.id;
     renderJobView();
@@ -3309,7 +3681,20 @@ function renderJobView() {
             transcriptEl.innerHTML = `
                 <div style="margin:12px 16px 0;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;">
                     <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">🎙 Voicemail Transcript</div>
-                    <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${esc(job.voicemailTranscript)}</div>
+                    <div style="font-size:13px;color:#cbd5e1;line-height:1.5;white-space:pre-wrap;">${esc(job.voicemailTranscript)}</div>
+                    ${(() => {
+                        const urls = Array.isArray(job.voicemailAudioUrls) && job.voicemailAudioUrls.length
+                            ? job.voicemailAudioUrls
+                            : (job.voicemailAudioUrl ? [job.voicemailAudioUrl] : []);
+                        if (!urls.length) return "";
+                        return `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">` +
+                            urls.map((u, i) => `
+                                <div style="display:flex;gap:4px;">
+                                    <button onclick="playJobVoicemail('${u}')" style="background:#e07a2f;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;">▶ ${urls.length > 1 ? "Message " + (i + 1) : "Play Message"}</button>
+                                    <button onclick="deleteJobVoicemail('${u}')" title="Delete this message" style="background:#1e293b;color:#f87171;border:1px solid #334155;border-radius:8px;padding:9px 11px;font-size:13px;cursor:pointer;">🗑</button>
+                                </div>`).join("") +
+                            `</div>`;
+                    })()}
                 </div>`;
         } else {
             transcriptEl.style.display = "none";
@@ -6121,6 +6506,11 @@ function openJobFromCal(jobId) {
 function goSettings() {
     settingsTab("profile"); // always open on profile tab
     const s = settings;
+    document.getElementById("set-ai-receptionist").checked = s.aiReceptionistEnabled || false;
+    if (document.getElementById("set-ai-call-voice")) document.getElementById("set-ai-call-voice").value = s.aiCallVoice || "Polly.Amy-Generative";
+    if (document.getElementById("set-business-website")) document.getElementById("set-business-website").value = s.businessWebsite || "";
+    const websiteMsgEl = document.getElementById("website-sync-msg");
+    if (websiteMsgEl) websiteMsgEl.textContent = s.businessProfileSummary ? "Website synced" : "";
     document.getElementById("set-tile-price").value     = s.tilePrice;
     document.getElementById("set-grout-price-25").value  = s.groutPrice25 || 4.50;
     document.getElementById("set-grout-price-5").value   = s.groutPrice5  || 7.50;
@@ -6187,11 +6577,12 @@ function goSettings() {
         if (logoPlaceholder) logoPlaceholder.style.display = "block";
         if (removeBtn) removeBtn.style.display = "none";
     }
+    if (document.getElementById("set-tiler-name")) document.getElementById("set-tiler-name").value = s.tilerName || "";
     if (document.getElementById("set-voicemail-name")) document.getElementById("set-voicemail-name").value = s.voicemailName || "";
     if (document.getElementById("set-twilio-number")) document.getElementById("set-twilio-number").value = s.twilioNumber || "";
     // Inject greeting buttons next to voicemail name field if not already present
     const vmNameEl = document.getElementById("set-voicemail-name");
-    const existingWrapper = document.getElementById("btn-generate-greeting")?.closest("div");
+    const existingWrapper = document.getElementById("btn-generate-call-greeting")?.closest("div");
     if (existingWrapper) existingWrapper.remove();
     const existingMsg = document.getElementById("greeting-gen-msg");
     if (existingMsg) existingMsg.remove();
@@ -6199,14 +6590,7 @@ function goSettings() {
         const wrapper = document.createElement("div");
         wrapper.style.cssText = "margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
         wrapper.innerHTML = `
-            <select id="greeting-voice" style="flex:1;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:10px;padding:11px 14px;font-size:14px;cursor:pointer;">
-                <option value="en-GB-Neural2-A" ${(s.greetingVoice||'en-GB-Neural2-A')==='en-GB-Neural2-A'?'selected':''}>🎙 Female 1</option>
-                <option value="en-GB-Neural2-C" ${(s.greetingVoice||'')==='en-GB-Neural2-C'?'selected':''}>🎙 Female 2</option>
-                <option value="en-GB-Neural2-B" ${(s.greetingVoice||'')==='en-GB-Neural2-B'?'selected':''}>🎙 Male 1</option>
-                <option value="en-GB-Neural2-D" ${(s.greetingVoice||'')==='en-GB-Neural2-D'?'selected':''}>🎙 Male 2</option>
-            </select>
-            <button id="btn-generate-greeting" onclick="generateGreeting()" style="flex:1;background:#e07a2f;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">🎙 Generate</button>
-            <button id="btn-preview-greeting" onclick="previewGreeting()" style="${s.greetingUrl ? "" : "display:none;"}flex:1;background:#1e293b;color:#f7f4ef;border:1px solid #334155;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">▶ Preview</button>
+            <button id="btn-generate-call-greeting" onclick="generateCallGreeting()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;">🎙 Generate/Preview Greeting</button>
         `;
         const msgDiv = document.createElement("div");
         msgDiv.id = "greeting-gen-msg";
@@ -6228,6 +6612,8 @@ function goSettings() {
     document.getElementById("set-reminder-days").value  = s.quoteReminderDays ?? 3;
     const docTypeEl = document.getElementById("set-doc-type");
     if (docTypeEl) docTypeEl.value = s.docType || "quote";
+    const hideBreakdownEl = document.getElementById("set-hide-breakdown");
+    if (hideBreakdownEl) hideBreakdownEl.value = s.hideCostBreakdown ? "true" : "false";
     document.getElementById("set-bank-name")?.setAttribute("value", s.bankName || "");
     if (document.getElementById("set-bank-name")) document.getElementById("set-bank-name").value = s.bankName || "";
     if (document.getElementById("set-bank-account-name")) document.getElementById("set-bank-account-name").value = s.bankAccountName || "";
@@ -6554,6 +6940,10 @@ function copyEnquiryLink() {
 }
 function saveSettings() {
     settings = {
+        aiReceptionistEnabled: document.getElementById("set-ai-receptionist").checked,
+        aiCallVoice: document.getElementById("set-ai-call-voice")?.value || "Polly.Amy-Generative",
+        businessWebsite: (document.getElementById("set-business-website")?.value || "").trim(),
+        businessProfileSummary: settings.businessProfileSummary || "",
         tilePrice:     parseFloat(document.getElementById("set-tile-price").value)     || 25.00,
         groutPrice25:  parseFloat(document.getElementById("set-grout-price-25").value)  || 4.50,
         groutPrice5:   parseFloat(document.getElementById("set-grout-price-5").value)   || 7.50,
@@ -6604,11 +6994,15 @@ function saveSettings() {
         sealerCoats:         parseInt(document.getElementById("set-sealer-coats").value)       || 2,
         applyVat:      document.getElementById("set-vat").value === "true",
         companyName:    document.getElementById("set-company-name").value.trim(),
+        tilerName:      (document.getElementById("set-tiler-name")?.value || "").trim(),
         voicemailName:  (document.getElementById("set-voicemail-name")?.value || "").trim(),
         twilioNumber:   (document.getElementById("set-twilio-number")?.value || "").trim().replace(/\s/g, ""),
         mobileNumber:   (document.getElementById("set-mobile-number")?.value || "").trim().replace(/\s/g, ""),
         slug:           (document.getElementById("set-enquiry-slug")?.value || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, ""),
         logoUrl:        settings.logoUrl || "",
+        greetingUrl:    settings.greetingUrl || "",
+        greetingVoice:  settings.greetingVoice || "",
+        callGreetingUrl: settings.callGreetingUrl || "",
         companyAddress: (document.getElementById("set-company-address")?.value || "").trim(),
         companyPhone:  document.getElementById("set-company-phone").value.trim(),
         companyEmail:  document.getElementById("set-company-email").value.trim(),
@@ -6616,6 +7010,7 @@ function saveSettings() {
         terms:         document.getElementById("set-terms").value.trim(),
         quoteReminderDays: parseInt(document.getElementById("set-reminder-days").value) || 0,
         docType:       document.getElementById("set-doc-type")?.value || "quote",
+        hideCostBreakdown: document.getElementById("set-hide-breakdown")?.value === "true",
         bankName:          (document.getElementById("set-bank-name")?.value || "").trim(),
         bankAccountName:   (document.getElementById("set-bank-account-name")?.value || "").trim(),
         bankSortCode:      (document.getElementById("set-bank-sort-code")?.value || "").trim(),
@@ -6688,6 +7083,8 @@ function goQuote() {
     }
     vatEl.value = settings.applyVat !== false ? "true" : "false";
     expiryEl.value = 30;
+    const breakdownEl = document.getElementById("q-breakdown");
+    if (breakdownEl) breakdownEl.value = settings.hideCostBreakdown ? "true" : "false";
     aiBox.innerHTML = "";
     const ta = document.getElementById("quote-desc-edit");
     if (ta) ta.value = j.description || "";
@@ -6891,6 +7288,7 @@ function renderQuote() {
         return;
     }
     const applyVat = document.getElementById("q-vat").value === "true";
+    const hideBreakdown = document.getElementById("q-breakdown")?.value === "true";
     const expDays  = parseInt(document.getElementById("q-expiry").value) || 30;
     const today    = new Date();
     const expiry   = new Date(today); expiry.setDate(expiry.getDate() + expDays);
@@ -7144,6 +7542,7 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
 
         ${j.description ? `<div class="quote-description">${esc(j.description)}</div>` : `<div class="quote-description" style="color:#64748b;font-style:italic;">No description — add one below.</div>`}
 
+        ${hideBreakdown ? "" : `
         <table class="quote-table">
             <tbody>
                 ${totalWallTilesQ > 0 ? `<tr><td>🧱 Wall Tiles</td><td style="text-align:right">£${totalWallTilesQ.toFixed(2)}</td></tr>` : ""}
@@ -7152,6 +7551,7 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
                 <tr><td>Labour</td><td style="text-align:right">£${(totalLabour + totalExtras).toFixed(2)}</td></tr>
             </tbody>
         </table>
+        `}
 
         <div class="quote-totals">
             <div class="quote-total-row"><span>Subtotal</span><span>£${subtotal.toFixed(2)}</span></div>
@@ -7321,7 +7721,6 @@ function showPushBanner(title, body, data) {
 
 
 async function callAnthropicAI(prompt) {
-    if (!checkProFeature("ai")) throw new Error("AI descriptions require TileIQ Pro");
     // Get the stored session token to authenticate with the Worker
     let token = "";
     try {
@@ -7489,6 +7888,7 @@ function buildPDFDoc() {
     const j = getJob();
     if (!j) return null;
     const applyVat = document.getElementById("q-vat")?.value === "true";
+    const hideBreakdown = document.getElementById("q-breakdown")?.value === "true";
     let doc;
     try { doc = new jsPDF({ unit:"mm", format:"a4" }); } catch(e) { return null; }
 
@@ -7630,8 +8030,10 @@ function buildPDFDoc() {
     doc.setTextColor(...AMBER);
     doc.text("ROOM / AREA", 16, y + 5.5);
     doc.text("M²", 130, y + 5.5, { align:"right" });
-    doc.text("MATERIALS", 158, y + 5.5, { align:"right" });
-    doc.text("LABOUR", 178, y + 5.5, { align:"right" });
+    if (!hideBreakdown) {
+        doc.text("MATERIALS", 158, y + 5.5, { align:"right" });
+        doc.text("LABOUR", 178, y + 5.5, { align:"right" });
+    }
     doc.text("TOTAL", W - 14, y + 5.5, { align:"right" });
     y += 10;
 
@@ -7669,15 +8071,18 @@ function buildPDFDoc() {
         doc.setFontSize(8);
         doc.setTextColor(...SLATE);
         doc.text(`${totalArea.toFixed(2)}`, 130, y + 4, { align:"right" });
-        doc.text(`£${(roomMats + roomPrep + sealCost).toFixed(2)}`, 158, y + 4, { align:"right" });
-        doc.text(`£${roomLabour.toFixed(2)}`, 178, y + 4, { align:"right" });
+        if (!hideBreakdown) {
+            doc.text(`£${(roomMats + roomPrep + sealCost).toFixed(2)}`, 158, y + 4, { align:"right" });
+            doc.text(`£${roomLabour.toFixed(2)}`, 178, y + 4, { align:"right" });
+        }
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...DARK);
         doc.text(`£${roomTotal.toFixed(2)}`, W - 14, y + 4, { align:"right" });
         y += 7;
 
-        // Show prep line items (tanking, cement board, etc.)
-        const allPrepLines = surfaces.flatMap(s => s.prepLines || []);
+        // Show prep line items (tanking, cement board, etc.) — omitted when the cost breakdown is hidden,
+        // since these lines spell out individual material/labour costs.
+        const allPrepLines = hideBreakdown ? [] : surfaces.flatMap(s => s.prepLines || []);
         if (allPrepLines.length > 0) {
             allPrepLines.forEach(line => {
                 doc.setFont("helvetica", "normal");
@@ -7721,13 +8126,15 @@ function buildPDFDoc() {
         y += 6;
     };
 
-    totRow("Materials & Prep", `£${grandMaterials.toFixed(2)}`);
-    totRow("Labour", `£${grandLabour.toFixed(2)}`);
+    if (!hideBreakdown) {
+        totRow("Materials & Prep", `£${grandMaterials.toFixed(2)}`);
+        totRow("Labour", `£${grandLabour.toFixed(2)}`);
 
-    y += 1;
-    doc.setDrawColor(...BORDER);
-    doc.line(totalsX, y, valX, y);
-    y += 5;
+        y += 1;
+        doc.setDrawColor(...BORDER);
+        doc.line(totalsX, y, valX, y);
+        y += 5;
+    }
 
     totRow("Subtotal", `£${subtotal.toFixed(2)}`);
     if (applyVat) totRow("VAT (20%)", `£${(subtotal * 0.2).toFixed(2)}`);
@@ -8121,7 +8528,6 @@ function updateFreeAgentButton() {
 }
 
 async function exportFreeAgent() {
-    if (!checkProFeature("accounting")) return;
     const tokens = await getValidFreeAgentToken();
     if (!tokens) { freeAgentConnect(); return; }
     const j      = getJob();
@@ -8235,7 +8641,6 @@ function updateQBOButton() {
 }
 
 async function exportQBO() {
-    if (!checkProFeature("accounting")) return;
     const tokens = await getValidQBOToken();
     if (!tokens) { qboConnect(); return; }
     const j      = getJob();
@@ -8413,7 +8818,6 @@ function updateXeroButton() {
 }
 
 async function exportXero() {
-    if (!checkProFeature("accounting")) return;
     const tokens = await getValidXeroToken();
     if (!tokens) { xeroConnect(); return; }
     const j        = getJob();
@@ -8580,12 +8984,16 @@ async function sendInvoiceByEmail(jobId) {
                     companyName: settings.companyName || "", companyPhone: settings.companyPhone || "",
                     replyTo: settings.companyEmail || currentUser?.email || "",
                     fromName: settings.companyName || "TileIQ Pro",
-                    verifiedDomain: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
-                    fromEmail: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null,
+                    verifiedDomain: (settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
+                    fromEmail: (settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null,
                     pdfBase64: pdf.base64, pdfFileName: fileName, isInvoice: true
                 })
             });
-            if (resp.ok) { alert("\u2705 Invoice sent to " + j.email); return; }
+            if (resp.ok) {
+                markJobInvoiced(jobId);
+                alert("\u2705 Invoice sent to " + j.email);
+                return;
+            }
         } catch(e) { console.error(e); }
     }
     const go = confirm("Could not send automatically.\n\nThis will open your device email app \u2014 make sure you are signed in with the correct account.\n\nTap OK to open.");
@@ -8593,6 +9001,15 @@ async function sendInvoiceByEmail(jobId) {
     const subject = encodeURIComponent(`Invoice \u2013 ${j.customerName}`);
     const body = encodeURIComponent(`Hi ${j.customerName},\n\nPlease find your invoice attached.\n\nKind regards,\n${settings.companyName || ""}`);
     window.open(`mailto:${j.email ? encodeURIComponent(j.email) : ""}?subject=${subject}&body=${body}`, "_system");
+    markJobInvoiced(jobId);
+}
+
+function markJobInvoiced(jobId) {
+    const j = jobs.find(x => x.id === jobId);
+    if (!j || j.invoicedAt) return;
+    j.invoicedAt = new Date().toISOString();
+    saveAll();
+    renderHomeDashboard();
 }
 
 async function sendInvoiceShare() {
@@ -8608,10 +9025,12 @@ async function sendInvoiceShare() {
             await Filesystem.writeFile({ path: fileName, data: pdf.base64, directory: "CACHE" });
             const { uri } = await Filesystem.getUri({ path: fileName, directory: "CACHE" });
             await Share.share({ title: `Invoice – ${pdf.customerName}`, text: "Please find your invoice attached.", files: [uri], dialogTitle: "Share Invoice" });
+            if (currentJobId) markJobInvoiced(currentJobId);
             return;
         } catch(e) { console.error(e); }
     }
     downloadPDF();
+    if (currentJobId) markJobInvoiced(currentJobId);
 }
 
 function previewQuote() {
@@ -8711,8 +9130,8 @@ async function sendQuoteByEmail() {
                 logoUrl: settings.logoUrl || "",
                 replyTo: settings.companyEmail || currentUser?.email || "",
                 fromName: settings.companyName || "TileIQ Pro",
-                verifiedDomain: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
-                fromEmail: (isPro() && settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null
+                verifiedDomain: (settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
+                fromEmail: (settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null
             })
         });
         if (resp.ok) { _markQuoteSent(j); alert("✅ Quote sent to " + j.email); return; }
@@ -8781,6 +9200,7 @@ async function buildQuoteUrl(j) {
     getQuoteToken(j);
     let grand = 0, totalMats = 0, totalLabour = 0, totalPrep = 0, totalWallTiles = 0, totalFloorTiles = 0;
     const applyVat = document.getElementById("q-vat")?.value === "true";
+    const hideBreakdown = document.getElementById("q-breakdown")?.value === "true";
     (j.rooms || []).forEach(room => {
         const surfaces = room.surfaces || [];
         const rCt = room.tileSupply === "customer";
@@ -8807,14 +9227,17 @@ async function buildQuoteUrl(j) {
         address:      (j.address || "") + (j.city ? ", " + j.city : ""),
         description:  j.description || "",
         grand:        grandTotal.toFixed(2),
-        totalMats:    totalMats.toFixed(2),
-        totalWallTiles:  totalWallTiles > 0 ? totalWallTiles.toFixed(2) : null,
-        totalFloorTiles: totalFloorTiles > 0 ? totalFloorTiles.toFixed(2) : null,
-        totalLabour:  totalLabour.toFixed(2),
-        totalPrep:    totalPrep > 0 ? totalPrep.toFixed(2) : null,
+        // When the cost breakdown is hidden, don't send the per-category figures at all — the
+        // hosted quote page should have no materials/labour numbers to render, not just a hidden one.
+        totalMats:    hideBreakdown ? null : totalMats.toFixed(2),
+        totalWallTiles:  (hideBreakdown || totalWallTiles <= 0) ? null : totalWallTiles.toFixed(2),
+        totalFloorTiles: (hideBreakdown || totalFloorTiles <= 0) ? null : totalFloorTiles.toFixed(2),
+        totalLabour:  hideBreakdown ? null : totalLabour.toFixed(2),
+        totalPrep:    (hideBreakdown || totalPrep <= 0) ? null : totalPrep.toFixed(2),
         subtotal:     subtotal.toFixed(2),
         vatAmt:       vatAmt > 0 ? vatAmt.toFixed(2) : null,
         applyVat,
+        hideBreakdown,
         ref:          currentQuoteRef || j.quoteToken.slice(0, 8).toUpperCase(),
         companyName:  settings.companyName || "",
         companyPhone: settings.companyPhone || "",
@@ -8881,7 +9304,8 @@ async function syncAllQuoteStatuses() {
 ═══════════════════════════════════════════════════════════════ */
 const FREE_JOB_LIMIT = 3;
 
-let _proStatus    = null;
+let _proStatus     = null;
+let _proPeriodType = null; // "trial" | "intro" | "normal" | null — normal/access-code = a genuinely paying Pro
 let _rcAppUserId  = null;
 
 async function initRevenueCat() {
@@ -8902,27 +9326,42 @@ async function initRevenueCat() {
 async function refreshProStatus() {
     try {
         // Check access code first
-        if (checkAccessCodePro()) { _proStatus = true; updateProBadge(); return true; }
-        if (!_rcAppUserId) { _proStatus = false; updateProBadge(); return false; }
+        if (checkAccessCodePro()) { _proStatus = true; _proPeriodType = "normal"; updateProBadge(); return true; }
+        if (!_rcAppUserId) { _proStatus = false; _proPeriodType = null; updateProBadge(); return false; }
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "rc_check", user_id: _rcAppUserId })
         });
-        if (!resp.ok) { _proStatus = false; updateProBadge(); return false; }
+        if (!resp.ok) { _proStatus = false; _proPeriodType = null; updateProBadge(); return false; }
         const data = await resp.json();
         _proStatus = !!data.pro;
+        _proPeriodType = data.periodType || null;
         updateProBadge();
         return _proStatus;
     } catch(e) {
         console.warn("RC status check failed:", e.message);
         _proStatus = false;
+        _proPeriodType = null;
         updateProBadge();
         return false;
     }
 }
 
 function isPro() { return _proStatus === true || checkAccessCodePro(); }
+
+// A genuinely paying Pro — true subscribers and access-code holders, but NOT someone currently
+// inside a store free-trial/intro period. Use this (not isPro()) to gate anything with a real
+// per-use running cost, like the AI Receptionist, so trial users get the full quoting/job-management
+// experience without exposing paid API usage before the subscription has actually converted.
+function isPaidPro() { return isPro() && _proPeriodType !== "trial" && _proPeriodType !== "intro"; }
+
+function onAiReceptionistToggle(checkbox) {
+    if (checkbox.checked && !isPaidPro()) {
+        checkbox.checked = false;
+        showPaywall("ai_receptionist");
+    }
+}
 
 function updateProBadge() {
     // Also refresh the home screen tier badge whenever Pro status changes
@@ -9218,13 +9657,14 @@ async function loadPaywallPackages() {
             }
         }
         container.innerHTML = `
-            <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
+            <button onclick="openPlayStorePurchase('monthly', this)" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div style="font-size:16px;font-weight:800;">Monthly</div>
                     <div style="font-size:20px;font-weight:800;">${monthlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
+                <div style="font-size:12px;margin-top:6px;opacity:0.75;">1 month free trial, then ${monthlyPrice}/month. Cancel anytime before the trial ends to avoid being charged.</div>
             </button>
-            <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
+            <button onclick="openPlayStorePurchase('yearly', this)" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
                         <div style="font-size:16px;font-weight:800;">Annual</div>
@@ -9232,17 +9672,19 @@ async function loadPaywallPackages() {
                     </div>
                     <div style="font-size:20px;font-weight:800;">${yearlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
                 </div>
-            </button>`;
+            </button>
+            <div style="font-size:11px;opacity:0.6;margin-top:10px;text-align:center;">Subscriptions renew automatically until cancelled. Manage or cancel anytime in your account settings.</div>`;
     } catch(e) {
         console.warn("Failed to load prices:", e.message);
         container.innerHTML = `
-            <button onclick="openPlayStorePurchase('monthly')" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
+            <button onclick="openPlayStorePurchase('monthly', this)" style="width:100%;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;margin-bottom:10px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div style="font-size:16px;font-weight:800;">Monthly</div>
                     <div style="font-size:20px;font-weight:800;">£9.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
+                <div style="font-size:12px;margin-top:6px;opacity:0.75;">1 month free trial, then £9.99/month. Cancel anytime before the trial ends to avoid being charged.</div>
             </button>
-            <button onclick="openPlayStorePurchase('yearly')" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
+            <button onclick="openPlayStorePurchase('yearly', this)" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
                         <div style="font-size:16px;font-weight:800;">Annual</div>
@@ -9250,11 +9692,18 @@ async function loadPaywallPackages() {
                     </div>
                     <div style="font-size:20px;font-weight:800;">£79.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
                 </div>
-            </button>`;
+            </button>
+            <div style="font-size:11px;opacity:0.6;margin-top:10px;text-align:center;">Subscriptions renew automatically until cancelled. Manage or cancel anytime in your account settings.</div>`;
     }
 }
 
-async function openPlayStorePurchase(plan) {
+async function openPlayStorePurchase(plan, btnEl) {
+    const originalText = btnEl ? btnEl.innerHTML : null;
+    if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.style.opacity = "0.6";
+        btnEl.innerHTML = "Processing...";
+    }
     try {
         const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
         if (!Purchases) { alert("Billing not available. Please restart the app."); return; }
@@ -9262,7 +9711,6 @@ async function openPlayStorePurchase(plan) {
             Purchases.getOfferings(),
             new Promise((_, reject) => setTimeout(() => reject(new Error("getOfferings timeout after 10s")), 10000))
         ]);
-        alert("Got offerings: " + JSON.stringify(Object.keys(offerings||{})));
         const current = offerings?.current;
         if (!current) { alert("No offerings found. Please try again."); return; }
         const pkg = plan === "yearly"
@@ -9277,7 +9725,16 @@ async function openPlayStorePurchase(plan) {
             alert("🎉 Welcome to TileIQ Pro!");
         }
     } catch(e) {
-        if (e?.code !== "1") console.warn("Purchase error:", e.message);
+        if (e?.code !== "1") {
+            console.warn("Purchase error:", e.message);
+            alert("Something went wrong with the purchase. Please try again.");
+        }
+    } finally {
+        if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.style.opacity = "1";
+            btnEl.innerHTML = originalText;
+        }
     }
 }
 
@@ -9291,9 +9748,29 @@ async function restorePurchases() {
     }
 }
 
+function currentMonthKey() {
+    const d = new Date();
+    return d.getFullYear() + "-" + (d.getMonth() + 1);
+}
+
+function getQuotesUsedThisMonth() {
+    if (settings.quotesMonthKey !== currentMonthKey()) return 0; // new month — not reset in storage yet, but counts as 0
+    return settings.quotesThisMonth || 0;
+}
+
+function incrementMonthlyQuoteCount() {
+    const key = currentMonthKey();
+    if (settings.quotesMonthKey !== key) {
+        settings.quotesMonthKey = key;
+        settings.quotesThisMonth = 0;
+    }
+    settings.quotesThisMonth = (settings.quotesThisMonth || 0) + 1;
+    settings.quotesCreatedLifetime = (settings.quotesCreatedLifetime || 0) + 1;
+}
+
 function checkJobLimit() {
     if (isPro()) return true;
-    if (jobs.length < FREE_JOB_LIMIT) return true;
+    if (getQuotesUsedThisMonth() < FREE_JOB_LIMIT) return true;
     showPaywall("job_limit");
     return false;
 }
@@ -9361,8 +9838,7 @@ async function generateGreeting() {
     try {
         let greetTok = "";
         try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) greetTok = JSON.parse(s).access_token || ""; } catch(e) {}
-        const voiceName = document.getElementById("greeting-voice")?.value || "en-GB-Neural2-A";
-        alert("Sending voice: " + voiceName);
+        const voiceName = "Xb7hH8MSUJpSbSDYk0k2"; // Alice — locked voice
         const resp = await fetch(TILEIQ_WORKER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + greetTok },
@@ -9375,19 +9851,63 @@ async function generateGreeting() {
         settings.voicemailName = businessName;
         settings.greetingVoice = voiceName;
         saveSettingsLocal();
-        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "✅ Greeting saved! Callers will hear your new greeting."; }
-        const previewBtn = document.getElementById("btn-preview-greeting");
-        if (previewBtn) previewBtn.style.display = "inline-block";
+        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "✅ Greeting saved — playing preview…"; }
+        previewGreeting();
     } catch(e) {
         if (msgEl) { msgEl.style.color = "#f87171"; msgEl.textContent = "Failed: " + e.message; }
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "🎙 Generate Greeting"; }
+        if (btn) { btn.disabled = false; btn.textContent = "🎙 Generate/Preview"; }
     }
 }
 
 function previewGreeting() {
-    const url = settings.greetingUrl;
-    if (!url) { alert("No greeting generated yet."); return; }
+    const baseUrl = settings.greetingUrl;
+    if (!baseUrl) { alert("No greeting generated yet."); return; }
+    const url = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "cb=" + Date.now();
+    const audio = new Audio(url);
+    audio.play().catch(e => alert("Could not play audio: " + e.message));
+}
+
+async function generateCallGreeting() {
+    if (!currentUser) return;
+    const nameEl = document.getElementById("set-voicemail-name");
+    const businessName = (nameEl?.value || "").trim() || settings.voicemailName || settings.companyName || "";
+    if (!businessName) {
+        alert("Please enter your business name first.");
+        nameEl?.focus();
+        return;
+    }
+    const btn = document.getElementById("btn-generate-call-greeting");
+    const msgEl = document.getElementById("greeting-gen-msg");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Generating…"; }
+    try {
+        let greetTok = "";
+        try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) greetTok = JSON.parse(s).access_token || ""; } catch(e) {}
+        const selectedGender = document.getElementById("set-ai-call-voice")?.value || "Polly.Amy-Generative";
+        const voiceName = selectedGender.includes("Brian") ? "JBFqnCBsd6RMkjVDRZzb" : "Xb7hH8MSUJpSbSDYk0k2"; // George (male) or Alice (female)
+        const resp = await fetch(TILEIQ_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + greetTok },
+            body: JSON.stringify({ action: "generate_greeting", greeting_type: "call", user_id: currentUser.id, business_name: businessName, voice_name: voiceName })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || "Failed");
+        if (!data.callGreetingUrl) throw new Error("No callGreetingUrl returned: " + JSON.stringify(data));
+        settings.callGreetingUrl = data.callGreetingUrl;
+        saveSettingsLocal();
+        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "✅ Call greeting saved — playing preview…"; }
+        previewCallGreeting();
+    } catch(e) {
+        if (msgEl) { msgEl.style.color = "#f87171"; msgEl.textContent = "Failed: " + e.message; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📞 Generate/Preview Call Greeting"; }
+    }
+}
+
+function previewCallGreeting() {
+    const baseUrl = settings.callGreetingUrl;
+    if (!baseUrl) { alert("No call greeting generated yet."); return; }
+    const url = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "cb=" + Date.now();
     const audio = new Audio(url);
     audio.play().catch(e => alert("Could not play audio: " + e.message));
 }
@@ -9409,27 +9929,58 @@ async function loadVoicemails() {
 
     const headers = { "apikey": SB_KEY, "Authorization": "Bearer " + token };
 
-    // Load from jobs table — voicemail, ai_receptionist, and missed_call sources
+    // Load from jobs table — voicemail, ai_receptionist, missed_call, and web_form sources
     const resp = await fetch(
-      `${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&source=in.(voicemail,ai_receptionist,missed_call)&select=data,source,updated_at&order=updated_at.desc&limit=50`,
+      `${SB_URL}/rest/v1/jobs?user_id=eq.${currentUser.id}&source=in.(voicemail,ai_receptionist,missed_call,web_form)&select=data,source,updated_at&order=updated_at.desc&limit=50`,
       { headers }
     );
     const rows = await resp.json();
 
-    if (!rows || !rows.length) {
-      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">No messages yet</div><div style=\"font-size:13px;\">Voicemails and AI receptionist enquiries appear here.</div></div>';
+    // Unread customer messages, across every quoted job — read-only, does not mark as read
+    let unreadSectionHtml = "";
+    try {
+      const msgTokens = [...new Set(jobs.filter(j => j.quoteToken).map(j => j.quoteToken))];
+      if (msgTokens.length) {
+        const tokenList = msgTokens.map(t => `"${t}"`).join(",");
+        const msgResp = await fetch(`${SB_URL}/rest/v1/customer_messages?token=in.(${tokenList})&sender=neq.tiler&read=eq.false&select=token,message,created_at&order=created_at.desc`, { headers });
+        const msgRows = await msgResp.json();
+        if (Array.isArray(msgRows) && msgRows.length) {
+          const byToken = {};
+          msgRows.forEach(m => { if (!byToken[m.token]) byToken[m.token] = m; });
+          const items = Object.values(byToken).map(m => {
+            const j = jobs.find(x => x.quoteToken === m.token);
+            if (!j) return "";
+            const dateStr = new Date(m.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+            return `<div onclick="currentJobId='${j.id}';goMessages()" style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;cursor:pointer;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:24px;">💬</span>
+      <div style="font-weight:700;font-size:15px;">${esc(j.customerName || "Customer")}</div>
+    </div>
+    <span style="font-size:12px;color:var(--text-muted);">${dateStr}</span>
+  </div>
+  <div style="font-size:13px;color:var(--text-muted);line-height:1.4;">${esc((m.message || "").slice(0, 100))}</div>
+</div>`;
+          }).filter(Boolean).join("");
+          if (items) unreadSectionHtml = `<div style="font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:4px 0 -4px;">Unread Messages</div>${items}`;
+        }
+      }
+    } catch(e) { console.warn("Unread messages load failed:", e.message); }
+
+    if ((!rows || !rows.length) && !unreadSectionHtml) {
+      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 20px;"><div style=\"font-size:48px;margin-bottom:12px;\">📭</div><div style=\"font-weight:700;margin-bottom:4px;\">Nothing new</div><div style=\"font-size:13px;\">Enquiries, voicemails and customer messages appear here.</div></div>';
       return;
     }
 
-    list.innerHTML = rows.map(row => {
+    const enquiriesHtml = (rows || []).map(row => {
       const v = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
       if (!v) return "";
       const source = row.source || v.source || "voicemail";
       const date = new Date(row.updated_at || v.createdAt);
       const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-      const sourceIcon = source === "ai_receptionist" ? "📞" : source === "missed_call" ? "📵" : "🎙";
-      const sourceLabel = source === "ai_receptionist" ? "AI Enquiry" : source === "missed_call" ? "Missed Call" : "Voicemail";
+      const sourceIcon = source === "ai_receptionist" ? "📞" : source === "missed_call" ? "📵" : source === "web_form" ? "🌐" : "🎙";
+      const sourceLabel = source === "ai_receptionist" ? "AI Enquiry" : source === "missed_call" ? "Missed Call" : source === "web_form" ? "Web Enquiry" : "Voicemail";
       const callerName = v.customerName && v.customerName !== "Unknown Caller" && v.customerName !== "Missed Call" ? v.customerName : "";
       const callerPhone = v.phone || v.customerPhone || "";
       const description = v.description || v.voicemailTranscript?.slice(0, 80) || "";
@@ -9454,10 +10005,69 @@ async function loadVoicemails() {
 </div>`;
     }).filter(Boolean).join("");
 
+    list.innerHTML = unreadSectionHtml + enquiriesHtml;
+    updateNotificationBadge();
+
   } catch(e) {
     list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Failed to load</div>';
     console.error("loadVoicemails error:", e);
   }
+}
+
+async function syncBusinessWebsite() {
+    if (!currentUser) return;
+    const urlEl = document.getElementById("set-business-website");
+    const websiteUrl = (urlEl?.value || "").trim();
+    if (!websiteUrl) {
+        alert("Please enter your website address first.");
+        urlEl?.focus();
+        return;
+    }
+    const btn = document.getElementById("btn-sync-website");
+    const msgEl = document.getElementById("website-sync-msg");
+    if (btn) { btn.disabled = true; btn.textContent = "Syncing..."; }
+    if (msgEl) { msgEl.style.color = "#94a3b8"; msgEl.textContent = "Reading your website..."; }
+    try {
+        let tok = "";
+        try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) tok = JSON.parse(s).access_token || ""; } catch(e) {}
+        const resp = await fetch(TILEIQ_WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tok },
+            body: JSON.stringify({ action: "generate_business_profile", user_id: currentUser.id, website_url: websiteUrl })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || "Failed");
+        if (!data.businessProfileSummary) throw new Error("No summary returned");
+        settings.businessProfileSummary = data.businessProfileSummary;
+        settings.businessWebsite = websiteUrl;
+        saveSettingsLocal();
+        if (msgEl) { msgEl.style.color = "#10b981"; msgEl.textContent = "Website synced - your AI receptionist can now answer questions using this info."; }
+    } catch(e) {
+        if (msgEl) { msgEl.style.color = "#f87171"; msgEl.textContent = "Failed: " + e.message; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Sync"; }
+    }
+}
+
+function deleteJobVoicemail(url) {
+    if (!confirm("Delete this message? This cannot be undone.")) return;
+    const job = getJob();
+    if (!job) return;
+    if (Array.isArray(job.voicemailAudioUrls)) {
+        job.voicemailAudioUrls = job.voicemailAudioUrls.filter(u => u !== url);
+    }
+    if (job.voicemailAudioUrl === url) {
+        job.voicemailAudioUrl = "";
+    }
+    saveAll();
+    renderJobView();
+}
+
+function playJobVoicemail(url) {
+    const audio = new Audio(url);
+    audio.play().catch(e => {
+        window.open(url, "_blank");
+    });
 }
 
 async function playVoicemail(id, url) {
@@ -9516,8 +10126,8 @@ function setupDivert() {
     let e164 = twilioNum;
     if (e164.startsWith("07")) e164 = "+44" + e164.slice(1);
     else if (e164.startsWith("447")) e164 = "+" + e164;
-    // Divert on no answer after 20 seconds (works on EE, O2, Vodafone, Three)
-    const code = "**61*" + e164 + "*11*20#";
+    // Divert on no answer after 15 seconds (works on EE, O2, Vodafone, Three)
+    const code = "**61*" + e164 + "*11*15#";
     if (confirm("This will open your dialler with the divert setup code.\n\nJust press Call and your missed calls will go to your TileIQ voicemail automatically.\n\nCode: " + code)) {
         window.open("tel:" + code);
     }
