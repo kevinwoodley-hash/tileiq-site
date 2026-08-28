@@ -291,7 +291,8 @@ footer{border-top-color:#173033}
   position:relative;
   z-index:2;
   display:grid;
-  grid-template-columns:410px minmax(500px,1fr);
+  grid-template-columns:410px minmax(500px,660px);
+  justify-content:center;
   gap:50px;
   align-items:center;
 }
