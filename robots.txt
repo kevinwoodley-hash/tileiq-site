@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tile-iq.com/sitemap.xml

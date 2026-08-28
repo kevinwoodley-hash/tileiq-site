@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TileIQ Pro Demo</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;font-family:Arial,Helvetica,sans-serif}
+.demo-bar{height:38px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 12px;background:#E07A2F;color:#111;font-size:12px;font-weight:700;position:relative;z-index:10}
+.demo-bar span{font-weight:500}
+.demo-bar a{position:absolute;right:12px;color:#111;text-decoration:none;font-weight:800}
+
+.demo-stage{
+  width:100%;
+  height:calc(100% - 38px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:radial-gradient(circle at 50% 15%,#152229,#07090b 70%);
+  padding:28px;
+}
+.phone-frame{
+  position:relative;
+  width:390px;
+  height:min(844px,100%);
+  background:#111417;
+  border-radius:54px;
+  padding:14px;
+  box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 2px #2a2f35 inset;
+  flex-shrink:0;
+}
+.phone-frame::before{
+  content:"";
+  position:absolute;
+  top:14px;left:50%;
+  transform:translateX(-50%);
+  width:120px;height:28px;
+  background:#111417;
+  border-radius:0 0 18px 18px;
+  z-index:2;
+}
+.demo-frame{
+  display:block;
+  width:100%;
+  height:100%;
+  border:0;
+  border-radius:38px;
+  background:#fff;
+}
+
+@media(max-width:640px){
+  .demo-bar{height:34px;font-size:11px;justify-content:flex-start;padding-right:88px}
+  .demo-bar a{right:9px}
+  .demo-stage{height:calc(100% - 34px);padding:0;background:none}
+  .phone-frame{width:100%;height:100%;border-radius:0;padding:0;box-shadow:none;background:transparent}
+  .phone-frame::before{display:none}
+  .demo-frame{border-radius:0}
+}
+</style>
+</head>
+<body>
+<div class="demo-bar">TileIQ Pro Demo <span>— real app, demo account</span><a href="https://tile-iq.com">Exit demo</a></div>
+<div class="demo-stage">
+  <div class="phone-frame">
+    <iframe id="tileiq-demo-app" class="demo-frame" src="/app/?demo=1" title="TileIQ Pro Demo"></iframe>
+  </div>
+</div>
+<script>
+(() => {
+  const frame = document.getElementById('tileiq-demo-app');
+  let loginClicked = false;
+
+  function installDemoProtection(win, doc) {
+    if (!doc || doc.documentElement.dataset.demoProtected === '1') return;
+    doc.documentElement.dataset.demoProtected = '1';
+
+    const label = el => ((el && el.textContent) || '').trim().toLowerCase();
+    const isLogoutAction = el => {
+      if (!el) return false;
+      const text = label(el);
+      const href = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
+      const onclick = (el.getAttribute && el.getAttribute('onclick') || '').toLowerCase();
+      const id = (el.id || '').toLowerCase();
+      const cls = typeof el.className === 'string' ? el.className.toLowerCase() : '';
+      return /^(log\s*out|logout|sign\s*out)$/.test(text) || /logout|signout|sign-out/.test(id+' '+cls+' '+href+' '+onclick);
+    };
+    const isPasswordAction = el => {
+      if (!el || el.id === 'si-pwd-toggle') return false;
+      const text = label(el);
+      const href = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
+      const onclick = (el.getAttribute && el.getAttribute('onclick') || '').toLowerCase();
+      return /change\s+password|reset\s+password|set\s+password|update\s+password/.test(text) || /password/.test(href) || /password/.test(onclick);
+    };
+
+    doc.addEventListener('click', event => {
+      const action = event.target.closest && event.target.closest('button,a,[role="button"]');
+      if (!action) return;
+      if (isLogoutAction(action)) {
+        event.preventDefault(); event.stopImmediatePropagation(); return;
+      }
+      if (isPasswordAction(action)) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        win.alert('Password changes are disabled for the TileIQ demo account.');
+      }
+    }, true);
+
+    doc.addEventListener('submit', event => {
+      const form = event.target;
+      if (!form || form.querySelector('#si-email')) return;
+      const text = (form.textContent || '').toLowerCase();
+      const passwordFields = form.querySelectorAll('input[type="password"]');
+      if (passwordFields.length && /password/.test(text)) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        win.alert('Password changes are disabled for the TileIQ demo account.');
+      }
+    }, true);
+
+    const hideRestrictedActions = () => {
+      doc.querySelectorAll('button,a,[role="button"]').forEach(el => {
+        if (isLogoutAction(el) || isPasswordAction(el)) {
+          el.style.setProperty('display','none','important');
+          el.setAttribute('aria-hidden','true');
+          el.setAttribute('tabindex','-1');
+        }
+      });
+    };
+    hideRestrictedActions();
+    new MutationObserver(hideRestrictedActions).observe(doc.body, {childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
+  }
+
+  function autoLogin() {
+    let win, doc;
+    try { win = frame.contentWindow; doc = frame.contentDocument; } catch(e) { return; }
+    if (!win || !doc) return;
+    installDemoProtection(win, doc);
+    const email = doc.getElementById('si-email');
+    const password = doc.getElementById('si-password');
+    const signInScreen = doc.getElementById('screen-signin');
+    if (!email || !password || !signInScreen) return;
+    email.value = 'demo@tile-iq.com';
+    password.value = 'Demo1234!';
+    email.dispatchEvent(new Event('input',{bubbles:true}));
+    password.dispatchEvent(new Event('input',{bubbles:true}));
+    const visible = !signInScreen.classList.contains('hidden');
+    if (!visible || loginClicked) return;
+    const signInButton = [...signInScreen.querySelectorAll('button')].find(b => /^sign\s*in$/i.test((b.textContent||'').trim())) || [...signInScreen.querySelectorAll('button')].find(b => /sign\s*in/i.test((b.textContent||'').trim()));
+    if (signInButton) { loginClicked = true; signInButton.click(); }
+  }
+
+  frame.addEventListener('load', () => {
+    loginClicked = false; autoLogin();
+    const timer = setInterval(autoLogin,400);
+    setTimeout(() => clearInterval(timer),15000);
+  });
+})();
+</script>
+</body>
+</html>
