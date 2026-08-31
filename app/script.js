@@ -85,6 +85,7 @@ let settings = {
     wetRoomTrayRate: 150,  // £ flat rate for tiling a wet room tray
     nicheLabourRate: 30,   // £ flat rate per niche (confined space surcharge)
     applyVat:      true,
+    hideCostBreakdown: false, // when true, quotes show only the project price — no materials/labour split
     // tile type labour multipliers
     tileRates: {
         ceramic:      1.0,
@@ -1813,6 +1814,414 @@ async function loadUserData() {
     window.Disto = DistoD2;
     // ────────────────────────────────────────────────────────────────
 
+    // ── AR Tape Measure (phone camera, no Disto needed) ───────────────
+    const ARMeasure = {
+        _activeInput: null,
+        setActive(inputEl) { this._activeInput = inputEl; },
+        async isSupported() {
+            try {
+                const plugin = window.Capacitor?.Plugins?.ARMeasure;
+                if (!plugin) return false;
+                const result = await plugin.isSupported();
+                return !!result?.supported;
+            } catch (_) { return false; }
+        },
+        async measure() {
+            const plugin = window.Capacitor?.Plugins?.ARMeasure;
+            if (!plugin) { alert('AR measuring is not available on this build.'); return; }
+            if (!this._activeInput) { alert('Tap a length/width/height field first, then try AR again.'); return; }
+            try {
+                const result = await plugin.measure();
+                const metres = result?.meters;
+                if (!isFinite(metres) || metres <= 0) return;
+                this._activeInput.value = metres.toFixed(3);
+                this._activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                // Advance to next data-disto input, same as the Disto flow
+                const all = Array.from(document.querySelectorAll('input[data-disto]'));
+                const idx = all.indexOf(this._activeInput);
+                const next = all[idx + 1];
+                if (next) { next.focus(); this._activeInput = next; }
+            } catch (err) {
+                if (err?.code !== 'CANCELLED') {
+                    console.error('AR measure error:', err);
+                    alert('AR measure error: ' + (err.message || err.code || JSON.stringify(err)));
+                }
+            }
+        },
+        // Traces an irregular outline (with optional cutouts, e.g. a cupboard on a wall)
+        // and writes the net m² straight into a "Total m²" direct-area field — unlike
+        // measure() above, this targets one specific field passed in by the caller rather
+        // than "whichever field was last focused", since there's only ever one sensible
+        // place for a single net-area result to go.
+        async measureArea(targetFieldId) {
+            const plugin = window.Capacitor?.Plugins?.ARMeasure;
+            if (!plugin) { alert('AR measuring is not available on this build.'); return; }
+            const target = document.getElementById(targetFieldId);
+            if (!target) return;
+            try {
+                const result = await plugin.measureArea();
+                const outerM2 = result?.outerAreaM2;
+                if (!isFinite(outerM2) || outerM2 <= 0) return;
+                target.value = outerM2.toFixed(2);
+                // Fires the field's own oninput handler (applyDirectArea), which clears
+                // length/width and recalculates — same as typing the value in by hand.
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+
+                // Cutouts traced in AR become their own Deductions entries (same as a
+                // manual "✏ Custom" deduction) instead of being folded silently into the
+                // area above, so the breakdown stays visible, editable and removable.
+                const cutouts = (result?.cutoutAreasM2 || []).filter(m2 => isFinite(m2) && m2 > 0);
+                if (!cutouts.length) return;
+                const isFloor = targetFieldId.startsWith('rm-f-');
+                const isWall  = targetFieldId.startsWith('rm-w-');
+                if (!isFloor && !isWall) {
+                    console.warn('AR measureArea: no Deductions group wired for target field', targetFieldId);
+                    return;
+                }
+                const arr = isFloor ? floorDeducts : wallDeducts;
+                cutouts.forEach((m2, i) => {
+                    arr.push({ label: cutouts.length > 1 ? `AR Cutout ${i + 1}` : 'AR Cutout', m2: parseFloat(m2.toFixed(3)) });
+                });
+                renderDeducts();
+                rmCalc();
+                openDeductPanel(isFloor ? 'f' : 'w');
+            } catch (err) {
+                if (err?.code !== 'CANCELLED') {
+                    console.error('AR area measure error:', err);
+                    alert('AR measure error: ' + (err.message || err.code || JSON.stringify(err)));
+                }
+            }
+        }
+    };
+    window.ARMeasure = ARMeasure;
+    // ────────────────────────────────────────────────────────────────
+
+    // ── Shape Sketch (draw the outline, then fire the Disto — or type — each edge's
+    // length) ───────────────────────────────────────────────────────────────────────
+    // Same job as ARMeasure.measureArea() above (net area + cutouts as their own
+    // Deductions entries) but gets its topology from a quick on-screen sketch instead
+    // of walking the AR camera around the room, and its dimensions from the existing
+    // Disto BLE flow (or manual typing) instead of AR world-space taps. No ARCore/ARKit
+    // dependency at all — pure canvas + DOM, works on any device.
+    //
+    // Area math: the sketch is only a topology/proportion guide (tap-to-place corners,
+    // snapped to 45° so it reads as a real floor plan) — it is NOT drawn to scale. Once
+    // real edge lengths come in (Disto or typed), each edge's real-length ÷ its sketched
+    // pixel-length gives a scale factor; the average of those scales, squared, converts
+    // the sketch's raw pixel-space shoelace area into real m². This tolerates sketch
+    // imprecision by averaging it out, rather than trying to force the polygon to close
+    // exactly from independently-measured edges (a much fussier constraint-solving
+    // problem this v1 deliberately avoids) — same "quick estimate" spirit as the AR tool.
+    const ShapeSketch = {
+        targetFieldId: null,
+        current: null,   // {points:[{x,y}], closed, edgeLengths:[m|null], isCutout}
+        outer: null,     // finalized outer shape, same shape
+        cutouts: [],     // finalized cutout shapes
+        _ctx: null,
+        _cssWidth: 0,
+        _cssHeight: 0,
+        _boundPointerDown: null,
+
+        open(targetFieldId) {
+            this.targetFieldId = targetFieldId;
+            this.outer = null;
+            this.cutouts = [];
+            this.current = { points: [], closed: false, edgeLengths: [], isCutout: false };
+            document.getElementById('sketch-overlay')?.classList.remove('hidden');
+            document.getElementById('sketch-draw-controls')?.classList.remove('hidden');
+            document.getElementById('sketch-measure-panel')?.classList.add('hidden');
+            const hint = document.getElementById('sketch-hint');
+            if (hint) hint.textContent = 'Tap to place each corner — snaps to 45°. Need at least 3 points.';
+            this._setCloseEnabled(false);
+            this._setupCanvas();
+            this.redraw();
+        },
+
+        cancel() { this._close(); },
+
+        _close() {
+            document.getElementById('sketch-overlay')?.classList.add('hidden');
+            this.current = null;
+            this.outer = null;
+            this.cutouts = [];
+            this.targetFieldId = null;
+        },
+
+        _setupCanvas() {
+            const canvas = document.getElementById('sketch-canvas');
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(1, Math.round(rect.width * dpr));
+            canvas.height = Math.max(1, Math.round(rect.height * dpr));
+            this._cssWidth = rect.width;
+            this._cssHeight = rect.height;
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            this._ctx = ctx;
+            if (!this._boundPointerDown) {
+                this._boundPointerDown = (e) => this._onPointerDown(e);
+                canvas.addEventListener('pointerdown', this._boundPointerDown);
+            }
+        },
+
+        _onPointerDown(e) {
+            if (!this.current || this.current.closed) return;
+            const canvas = document.getElementById('sketch-canvas');
+            const rect = canvas.getBoundingClientRect();
+            const raw = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            const pts = this.current.points;
+            const pt = pts.length > 0 ? this._snapPoint(pts[pts.length - 1], raw) : raw;
+            pts.push(pt);
+            this._setCloseEnabled(pts.length >= 3);
+            this.redraw();
+        },
+
+        _snapPoint(prev, raw) {
+            const dx = raw.x - prev.x, dy = raw.y - prev.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 4) return prev; // ignore an accidental near-zero-length tap
+            const step = Math.PI / 4; // 45°
+            const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+            return { x: prev.x + dist * Math.cos(angle), y: prev.y + dist * Math.sin(angle) };
+        },
+
+        undo() {
+            if (!this.current || this.current.closed || !this.current.points.length) return;
+            this.current.points.pop();
+            this._setCloseEnabled(this.current.points.length >= 3);
+            this.redraw();
+        },
+
+        _setCloseEnabled(enabled) {
+            const btn = document.getElementById('sketch-close-shape-btn');
+            if (!btn) return;
+            btn.disabled = !enabled;
+            btn.style.opacity = enabled ? '1' : '.5';
+        },
+
+        closeShape() {
+            if (!this.current || this.current.points.length < 3) return;
+            this.current.closed = true;
+            this.current.edgeLengths = new Array(this.current.points.length).fill(null);
+            document.getElementById('sketch-draw-controls')?.classList.add('hidden');
+            document.getElementById('sketch-measure-panel')?.classList.remove('hidden');
+            const hint = document.getElementById('sketch-hint');
+            if (hint) hint.textContent = 'Fire the Disto at each edge below (or type it in), in any order.';
+            this._renderEdgeList();
+            this._recomputeLiveArea();
+            this._updateActionButtons();
+            this.redraw();
+        },
+
+        _renderEdgeList() {
+            const container = document.getElementById('sketch-edge-list');
+            if (!container || !this.current) return;
+            container.innerHTML = '';
+            this.current.points.forEach((_, i) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+                const label = document.createElement('div');
+                label.textContent = `Edge ${i + 1}`;
+                label.style.cssText = 'width:60px;flex-shrink:0;color:var(--muted,#72757a);font-size:13px;';
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.step = '0.01';
+                input.min = '0';
+                input.inputMode = 'decimal';
+                input.placeholder = 'metres';
+                input.setAttribute('data-disto', '');
+                input.dataset.edgeIndex = String(i);
+                input.style.cssText = 'flex:1;min-width:0;background:rgba(120,120,120,.15);border:1px solid rgba(120,120,120,.35);border-radius:8px;padding:9px 10px;color:var(--ink,#1e2328);font-size:14px;';
+                input.addEventListener('input', () => this._onEdgeInput(i, input.value));
+                row.appendChild(label);
+                row.appendChild(input);
+                container.appendChild(row);
+            });
+        },
+
+        _onEdgeInput(i, rawVal) {
+            if (!this.current) return;
+            const v = parseFloat(rawVal);
+            this.current.edgeLengths[i] = (isFinite(v) && v > 0) ? v : null;
+            this._recomputeLiveArea();
+            this._updateActionButtons();
+            this.redraw();
+        },
+
+        _allEdgesFilled(shape) {
+            return !!shape && shape.edgeLengths.length === shape.points.length &&
+                shape.edgeLengths.every(v => isFinite(v) && v > 0);
+        },
+
+        _updateActionButtons() {
+            const ready = this._allEdgesFilled(this.current);
+            [document.getElementById('sketch-use-area-btn'), document.getElementById('sketch-add-cutout-btn')]
+                .forEach(btn => {
+                    if (!btn) return;
+                    btn.disabled = !ready;
+                    btn.style.opacity = ready ? '1' : '.5';
+                });
+        },
+
+        _shoelaceArea(pts) {
+            let sum = 0;
+            for (let i = 0; i < pts.length; i++) {
+                const a = pts[i], b = pts[(i + 1) % pts.length];
+                sum += a.x * b.y - b.x * a.y;
+            }
+            return Math.abs(sum) / 2;
+        },
+
+        // Raw pixel-shoelace area scaled by the average (real-length ÷ pixel-length)
+        // ratio across whichever edges currently have a value — see the file-level
+        // comment above for why an averaged scale rather than exact polygon closure.
+        computeArea(shape) {
+            if (!shape || shape.points.length < 3) return 0;
+            const pts = shape.points;
+            const rawPx2 = this._shoelaceArea(pts);
+            const scales = [];
+            for (let i = 0; i < pts.length; i++) {
+                const len = shape.edgeLengths[i];
+                if (!isFinite(len) || len <= 0) continue;
+                const a = pts[i], b = pts[(i + 1) % pts.length];
+                const pxLen = Math.hypot(b.x - a.x, b.y - a.y);
+                if (pxLen > 0) scales.push(len / pxLen);
+            }
+            if (!scales.length) return 0;
+            const avgScale = scales.reduce((s, v) => s + v, 0) / scales.length;
+            return rawPx2 * avgScale * avgScale;
+        },
+
+        _recomputeLiveArea() {
+            const readout = document.getElementById('sketch-area-readout');
+            if (!readout || !this.current) return;
+            const area = this.computeArea(this.current);
+            const complete = this._allEdgesFilled(this.current);
+            const label = this.current.isCutout ? 'cutout' : 'area';
+            readout.textContent = area > 0 ? `${complete ? '' : '≈ '}${area.toFixed(2)} m² ${label}` : `0.00 m² ${label}`;
+        },
+
+        _finalizeCurrent() {
+            if (!this.current || !this.current.closed) return;
+            if (this.current.isCutout) this.cutouts.push(this.current);
+            else this.outer = this.current;
+        },
+
+        addCutout() {
+            if (!this._allEdgesFilled(this.current)) return;
+            this._finalizeCurrent();
+            this.current = { points: [], closed: false, edgeLengths: [], isCutout: true };
+            document.getElementById('sketch-draw-controls')?.classList.remove('hidden');
+            document.getElementById('sketch-measure-panel')?.classList.add('hidden');
+            const hint = document.getElementById('sketch-hint');
+            if (hint) hint.textContent = 'Trace the cutout (e.g. a cupboard), then Close Shape.';
+            this._setCloseEnabled(false);
+            this.redraw();
+        },
+
+        useThisArea() {
+            if (!this._allEdgesFilled(this.current)) return;
+            this._finalizeCurrent();
+            const target = this.targetFieldId && document.getElementById(this.targetFieldId);
+            if (!target || !this.outer) { this._close(); return; }
+
+            const outerM2 = this.computeArea(this.outer);
+            if (!isFinite(outerM2) || outerM2 <= 0) { this._close(); return; }
+            target.value = outerM2.toFixed(2);
+            // Fires the field's own oninput handler (applyDirectArea), same as AR/typing.
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+
+            // Same Deductions-panel treatment as AR cutouts — visible, editable, removable
+            // line items rather than a silently pre-subtracted net number.
+            const cutoutM2s = this.cutouts.map(c => this.computeArea(c)).filter(m2 => isFinite(m2) && m2 > 0);
+            if (cutoutM2s.length) {
+                const isFloor = this.targetFieldId.startsWith('rm-f-');
+                const isWall  = this.targetFieldId.startsWith('rm-w-');
+                if (isFloor || isWall) {
+                    const arr = isFloor ? floorDeducts : wallDeducts;
+                    cutoutM2s.forEach((m2, i) => {
+                        arr.push({ label: cutoutM2s.length > 1 ? `Sketch Cutout ${i + 1}` : 'Sketch Cutout', m2: parseFloat(m2.toFixed(3)) });
+                    });
+                    renderDeducts();
+                    rmCalc();
+                    openDeductPanel(isFloor ? 'f' : 'w');
+                } else {
+                    console.warn('ShapeSketch: no Deductions group wired for target field', this.targetFieldId);
+                }
+            }
+            this._close();
+        },
+
+        redraw() {
+            const ctx = this._ctx;
+            if (!ctx) return;
+            const w = this._cssWidth, h = this._cssHeight;
+            ctx.clearRect(0, 0, w, h);
+
+            const drawShape = (shape, strokeStyle, fillStyle, showVertices) => {
+                if (!shape || shape.points.length < 2) return;
+                ctx.beginPath();
+                ctx.moveTo(shape.points[0].x, shape.points[0].y);
+                for (let i = 1; i < shape.points.length; i++) ctx.lineTo(shape.points[i].x, shape.points[i].y);
+                if (shape.closed) ctx.closePath();
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                if (shape.closed && fillStyle) { ctx.fillStyle = fillStyle; ctx.fill(); }
+                if (showVertices) {
+                    shape.points.forEach(p => {
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                        ctx.fillStyle = strokeStyle;
+                        ctx.fill();
+                    });
+                }
+            };
+
+            if (this.outer) drawShape(this.outer, 'rgba(148,163,184,.6)', 'rgba(39,211,195,.08)', false);
+            this.cutouts.forEach(c => drawShape(c, 'rgba(248,113,113,.7)', 'rgba(248,113,113,.12)', false));
+            if (this.current) {
+                drawShape(
+                    this.current,
+                    this.current.isCutout ? '#f87171' : '#27d3c3',
+                    this.current.closed ? (this.current.isCutout ? 'rgba(248,113,113,.15)' : 'rgba(39,211,195,.15)') : null,
+                    true
+                );
+                // Once closed, number each edge at its midpoint so it's obvious which
+                // line on the sketch corresponds to which "Edge N" row in the list below.
+                if (this.current.closed) this._drawEdgeLabels(this.current);
+            }
+        },
+
+        _drawEdgeLabels(shape) {
+            const ctx = this._ctx;
+            const pts = shape.points;
+            const badgeFill = shape.isCutout ? '#f87171' : '#27d3c3';
+            ctx.font = '700 13px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            for (let i = 0; i < pts.length; i++) {
+                const a = pts[i], b = pts[(i + 1) % pts.length];
+                const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+                const label = String(i + 1);
+                const boxW = Math.max(20, ctx.measureText(label).width + 12), boxH = 20;
+                ctx.fillStyle = badgeFill;
+                if (ctx.roundRect) {
+                    ctx.beginPath();
+                    ctx.roundRect(mx - boxW / 2, my - boxH / 2, boxW, boxH, 5);
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(mx - boxW / 2, my - boxH / 2, boxW, boxH);
+                }
+                ctx.fillStyle = '#04231f';
+                ctx.fillText(label, mx, my + 1);
+            }
+        }
+    };
+    window.ShapeSketch = ShapeSketch;
+    // ────────────────────────────────────────────────────────────────
+
     // Disto D2
     if (window.Disto) {
         window.Disto.init();
@@ -1824,7 +2233,32 @@ async function loadUserData() {
         document.addEventListener('focusin', (e) => {
             if (e.target?.matches('input[data-disto]')) {
                 window.Disto.setActive(e.target);
+                window.ARMeasure.setActive(e.target);
             }
+        });
+    }
+
+    // AR tape measure & area-tracing buttons — hidden entirely for now (2026-08-31,
+    // at the user's request): both flows had real bugs shake out during sideload
+    // testing (see README), and Shape Sketch now covers the no-camera irregular-area
+    // case, so AR is off the UI until it's trusted again. Plugin/native code and click
+    // wiring are left untouched — swap the unconditional hide below back for the
+    // isSupported()-gated version (still in git history) to re-enable.
+    if (window.ARMeasure) {
+        const arBtn = document.getElementById('ar-measure-btn');
+        arBtn?.addEventListener('click', () => window.ARMeasure.measure());
+        document.querySelectorAll('.ar-area-btn').forEach(btn => {
+            btn.addEventListener('click', () => window.ARMeasure.measureArea(btn.dataset.arAreaTarget));
+        });
+        if (arBtn) arBtn.style.display = 'none';
+        document.querySelectorAll('.ar-area-btn').forEach(btn => { btn.style.display = 'none'; });
+    }
+
+    // Shape-sketch buttons — no ARCore/ARKit dependency, so always available (unlike
+    // the AR buttons above, nothing to feature-detect or hide here).
+    if (window.ShapeSketch) {
+        document.querySelectorAll('.sketch-area-btn').forEach(btn => {
+            btn.addEventListener('click', () => window.ShapeSketch.open(btn.dataset.sketchAreaTarget));
         });
     }
 })();
@@ -5484,8 +5918,11 @@ function renderDeducts() {
     const wallTotal  = wallDeducts.reduce((a, d) => a + d.m2, 0);
     const floorTotal = floorDeducts.reduce((a, d) => a + d.m2, 0);
 
-    const wallTag  = (d, i) => `<div class="deduct-tag"><span>${d.label} (${d.w}×${d.h}m = ${d.m2}m²)</span><button onclick="removeDeduct(${i}, false)" class="deduct-remove">×</button></div>`;
-    const floorTag = (d, i) => `<div class="deduct-tag"><span>${d.label} (${d.w}×${d.h}m = ${d.m2}m²)</span><button onclick="removeDeduct(${i}, true)" class="deduct-remove">×</button></div>`;
+    // AR-traced cutouts carry only an area (no meaningful single width×height for an
+    // irregular shape), so fall back to showing just the m² for those.
+    const deductLabel = d => (d.w && d.h) ? `${d.label} (${d.w}×${d.h}m = ${d.m2}m²)` : `${d.label} (${d.m2}m²)`;
+    const wallTag  = (d, i) => `<div class="deduct-tag"><span>${deductLabel(d)}</span><button onclick="removeDeduct(${i}, false)" class="deduct-remove">×</button></div>`;
+    const floorTag = (d, i) => `<div class="deduct-tag"><span>${deductLabel(d)}</span><button onclick="removeDeduct(${i}, true)" class="deduct-remove">×</button></div>`;
 
     // Full-room: manual wall deducts list
     const manualEl = document.getElementById("deduct-manual-items");
@@ -6611,6 +7048,8 @@ function goSettings() {
     document.getElementById("set-reminder-days").value  = s.quoteReminderDays ?? 3;
     const docTypeEl = document.getElementById("set-doc-type");
     if (docTypeEl) docTypeEl.value = s.docType || "quote";
+    const hideBreakdownEl = document.getElementById("set-hide-breakdown");
+    if (hideBreakdownEl) hideBreakdownEl.value = s.hideCostBreakdown ? "true" : "false";
     document.getElementById("set-bank-name")?.setAttribute("value", s.bankName || "");
     if (document.getElementById("set-bank-name")) document.getElementById("set-bank-name").value = s.bankName || "";
     if (document.getElementById("set-bank-account-name")) document.getElementById("set-bank-account-name").value = s.bankAccountName || "";
@@ -7007,6 +7446,7 @@ function saveSettings() {
         terms:         document.getElementById("set-terms").value.trim(),
         quoteReminderDays: parseInt(document.getElementById("set-reminder-days").value) || 0,
         docType:       document.getElementById("set-doc-type")?.value || "quote",
+        hideCostBreakdown: document.getElementById("set-hide-breakdown")?.value === "true",
         bankName:          (document.getElementById("set-bank-name")?.value || "").trim(),
         bankAccountName:   (document.getElementById("set-bank-account-name")?.value || "").trim(),
         bankSortCode:      (document.getElementById("set-bank-sort-code")?.value || "").trim(),
@@ -7079,6 +7519,8 @@ function goQuote() {
     }
     vatEl.value = settings.applyVat !== false ? "true" : "false";
     expiryEl.value = 30;
+    const breakdownEl = document.getElementById("q-breakdown");
+    if (breakdownEl) breakdownEl.value = settings.hideCostBreakdown ? "true" : "false";
     aiBox.innerHTML = "";
     const ta = document.getElementById("quote-desc-edit");
     if (ta) ta.value = j.description || "";
@@ -7282,6 +7724,7 @@ function renderQuote() {
         return;
     }
     const applyVat = document.getElementById("q-vat").value === "true";
+    const hideBreakdown = document.getElementById("q-breakdown")?.value === "true";
     const expDays  = parseInt(document.getElementById("q-expiry").value) || 30;
     const today    = new Date();
     const expiry   = new Date(today); expiry.setDate(expiry.getDate() + expDays);
@@ -7535,6 +7978,7 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
 
         ${j.description ? `<div class="quote-description">${esc(j.description)}</div>` : `<div class="quote-description" style="color:#64748b;font-style:italic;">No description — add one below.</div>`}
 
+        ${hideBreakdown ? "" : `
         <table class="quote-table">
             <tbody>
                 ${totalWallTilesQ > 0 ? `<tr><td>🧱 Wall Tiles</td><td style="text-align:right">£${totalWallTilesQ.toFixed(2)}</td></tr>` : ""}
@@ -7543,6 +7987,7 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
                 <tr><td>Labour</td><td style="text-align:right">£${(totalLabour + totalExtras).toFixed(2)}</td></tr>
             </tbody>
         </table>
+        `}
 
         <div class="quote-totals">
             <div class="quote-total-row"><span>Subtotal</span><span>£${subtotal.toFixed(2)}</span></div>
@@ -7879,6 +8324,7 @@ function buildPDFDoc() {
     const j = getJob();
     if (!j) return null;
     const applyVat = document.getElementById("q-vat")?.value === "true";
+    const hideBreakdown = document.getElementById("q-breakdown")?.value === "true";
     let doc;
     try { doc = new jsPDF({ unit:"mm", format:"a4" }); } catch(e) { return null; }
 
@@ -8020,8 +8466,10 @@ function buildPDFDoc() {
     doc.setTextColor(...AMBER);
     doc.text("ROOM / AREA", 16, y + 5.5);
     doc.text("M²", 130, y + 5.5, { align:"right" });
-    doc.text("MATERIALS", 158, y + 5.5, { align:"right" });
-    doc.text("LABOUR", 178, y + 5.5, { align:"right" });
+    if (!hideBreakdown) {
+        doc.text("MATERIALS", 158, y + 5.5, { align:"right" });
+        doc.text("LABOUR", 178, y + 5.5, { align:"right" });
+    }
     doc.text("TOTAL", W - 14, y + 5.5, { align:"right" });
     y += 10;
 
@@ -8059,15 +8507,18 @@ function buildPDFDoc() {
         doc.setFontSize(8);
         doc.setTextColor(...SLATE);
         doc.text(`${totalArea.toFixed(2)}`, 130, y + 4, { align:"right" });
-        doc.text(`£${(roomMats + roomPrep + sealCost).toFixed(2)}`, 158, y + 4, { align:"right" });
-        doc.text(`£${roomLabour.toFixed(2)}`, 178, y + 4, { align:"right" });
+        if (!hideBreakdown) {
+            doc.text(`£${(roomMats + roomPrep + sealCost).toFixed(2)}`, 158, y + 4, { align:"right" });
+            doc.text(`£${roomLabour.toFixed(2)}`, 178, y + 4, { align:"right" });
+        }
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...DARK);
         doc.text(`£${roomTotal.toFixed(2)}`, W - 14, y + 4, { align:"right" });
         y += 7;
 
-        // Show prep line items (tanking, cement board, etc.)
-        const allPrepLines = surfaces.flatMap(s => s.prepLines || []);
+        // Show prep line items (tanking, cement board, etc.) — omitted when the cost breakdown is hidden,
+        // since these lines spell out individual material/labour costs.
+        const allPrepLines = hideBreakdown ? [] : surfaces.flatMap(s => s.prepLines || []);
         if (allPrepLines.length > 0) {
             allPrepLines.forEach(line => {
                 doc.setFont("helvetica", "normal");
@@ -8111,13 +8562,15 @@ function buildPDFDoc() {
         y += 6;
     };
 
-    totRow("Materials & Prep", `£${grandMaterials.toFixed(2)}`);
-    totRow("Labour", `£${grandLabour.toFixed(2)}`);
+    if (!hideBreakdown) {
+        totRow("Materials & Prep", `£${grandMaterials.toFixed(2)}`);
+        totRow("Labour", `£${grandLabour.toFixed(2)}`);
 
-    y += 1;
-    doc.setDrawColor(...BORDER);
-    doc.line(totalsX, y, valX, y);
-    y += 5;
+        y += 1;
+        doc.setDrawColor(...BORDER);
+        doc.line(totalsX, y, valX, y);
+        y += 5;
+    }
 
     totRow("Subtotal", `£${subtotal.toFixed(2)}`);
     if (applyVat) totRow("VAT (20%)", `£${(subtotal * 0.2).toFixed(2)}`);
@@ -9183,6 +9636,7 @@ async function buildQuoteUrl(j) {
     getQuoteToken(j);
     let grand = 0, totalMats = 0, totalLabour = 0, totalPrep = 0, totalWallTiles = 0, totalFloorTiles = 0;
     const applyVat = document.getElementById("q-vat")?.value === "true";
+    const hideBreakdown = document.getElementById("q-breakdown")?.value === "true";
     (j.rooms || []).forEach(room => {
         const surfaces = room.surfaces || [];
         const rCt = room.tileSupply === "customer";
@@ -9209,14 +9663,17 @@ async function buildQuoteUrl(j) {
         address:      (j.address || "") + (j.city ? ", " + j.city : ""),
         description:  j.description || "",
         grand:        grandTotal.toFixed(2),
-        totalMats:    totalMats.toFixed(2),
-        totalWallTiles:  totalWallTiles > 0 ? totalWallTiles.toFixed(2) : null,
-        totalFloorTiles: totalFloorTiles > 0 ? totalFloorTiles.toFixed(2) : null,
-        totalLabour:  totalLabour.toFixed(2),
-        totalPrep:    totalPrep > 0 ? totalPrep.toFixed(2) : null,
+        // When the cost breakdown is hidden, don't send the per-category figures at all — the
+        // hosted quote page should have no materials/labour numbers to render, not just a hidden one.
+        totalMats:    hideBreakdown ? null : totalMats.toFixed(2),
+        totalWallTiles:  (hideBreakdown || totalWallTiles <= 0) ? null : totalWallTiles.toFixed(2),
+        totalFloorTiles: (hideBreakdown || totalFloorTiles <= 0) ? null : totalFloorTiles.toFixed(2),
+        totalLabour:  hideBreakdown ? null : totalLabour.toFixed(2),
+        totalPrep:    (hideBreakdown || totalPrep <= 0) ? null : totalPrep.toFixed(2),
         subtotal:     subtotal.toFixed(2),
         vatAmt:       vatAmt > 0 ? vatAmt.toFixed(2) : null,
         applyVat,
+        hideBreakdown,
         ref:          currentQuoteRef || j.quoteToken.slice(0, 8).toUpperCase(),
         companyName:  settings.companyName || "",
         companyPhone: settings.companyPhone || "",

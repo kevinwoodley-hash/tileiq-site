@@ -758,6 +758,7 @@
     <header class="app-header"><div class="header-row">
         <button onclick="goJob()" class="btn-back">← Rooms</button>
         <h2 id="room-screen-title" class="header-title">Add Room</h2>
+        <button id="ar-measure-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📷 AR</button>
         <button id="disto-connect-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📏 Disto</button>
     </div></header>
     <div class="page-body">
@@ -1195,7 +1196,11 @@
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:8px;">
                 <label style="color:var(--amber,#E07A2F);">Total m² <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
-                <input id="rm-f-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-f-area-direct','rm-f-length','rm-f-width')">
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <input id="rm-f-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-f-area-direct','rm-f-length','rm-f-width')" style="flex:1;min-width:0;">
+                    <button type="button" class="disto-btn ar-area-btn" data-ar-area-target="rm-f-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Trace the floor's outline in AR — handles irregular shapes and cutouts">📐 AR</button>
+                    <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-f-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the Disto (or type) each wall's length — handles irregular shapes and cutouts, no camera/AR needed">✏️ Sketch</button>
+                </div>
             </div>
             <div class="field-row">
                 <div class="field-group">
@@ -1420,7 +1425,11 @@
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:8px;">
                 <label style="color:var(--amber,#E07A2F);">Total m² <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
-                <input id="rm-w-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-w-area-direct','rm-w-width','rm-w-height')">
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <input id="rm-w-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-w-area-direct','rm-w-width','rm-w-height')" style="flex:1;min-width:0;">
+                    <button type="button" class="disto-btn ar-area-btn" data-ar-area-target="rm-w-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Trace the wall's outline in AR — handles irregular shapes and cutouts (e.g. a cupboard)">📐 AR</button>
+                    <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-w-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the Disto (or type) each wall's length — handles irregular shapes and cutouts (e.g. a cupboard), no camera/AR needed">✏️ Sketch</button>
+                </div>
             </div>
             <div class="field-row">
                 <div class="field-group">
@@ -1995,6 +2004,14 @@
                         <option value="14">14 days</option>
                     </select>
                 </div>
+                <div class="field-group">
+                    <label>Show cost breakdown on quotes? <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(materials/labour split)</span></label>
+                    <select id="set-hide-breakdown">
+                        <option value="false">Yes – show materials &amp; labour split</option>
+                        <option value="true">No – show project price only</option>
+                    </select>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Turn this off to send clients a single project price, with no materials or labour costs itemised. You can still override this per quote.</div>
+                </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Bank Details <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(shown on quotes/estimates)</span></div>
@@ -2245,6 +2262,14 @@
                 </div>
                 <div class="field-group"><label>Valid for (days)</label>
                     <input id="q-expiry" type="number" value="30" onchange="renderQuote()">
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-group"><label>Show cost breakdown?</label>
+                    <select id="q-breakdown" onchange="renderQuote()">
+                        <option value="false">Yes – materials &amp; labour split</option>
+                        <option value="true">No – project price only</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -3639,6 +3664,34 @@
     <div id="adm-support" style="margin-bottom:16px;font-size:13px;color:#64748b;">Loading...</div>
     <button onclick="sendAdminTestPush()" style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px;font-size:14px;color:#f1f5f9;cursor:pointer;margin-bottom:16px;">🔔 Send Test Push to Me</button>
   </div>
+</div>
+
+<!-- SHAPE SKETCH (draw the outline, then fire the Disto or type each edge's length —
+     same net-area/cutout result as the AR tracer, no camera/ARCore needed). A self-contained
+     fixed overlay rather than a real `.screen`, on purpose: it isn't part of the app's
+     screen-navigation stack, just a modal launched from and closed straight back to
+     whichever room-editor field opened it. -->
+<div id="sketch-overlay" class="hidden" style="position:fixed;inset:0;z-index:9500;background:var(--bg);display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 14px 8px;">
+        <button type="button" onclick="ShapeSketch.cancel()" style="background:rgba(120,120,120,.25);border:none;color:var(--ink,#1e2328);width:36px;height:36px;border-radius:8px;font-size:18px;cursor:pointer;">✕</button>
+        <div style="flex:1;">
+            <div style="font-weight:700;color:var(--ink,#1e2328);font-size:15px;">Sketch the outline</div>
+            <div id="sketch-hint" style="color:var(--muted,#72757a);font-size:12px;">Tap to place each corner — snaps to 45°. Need at least 3 points.</div>
+        </div>
+    </div>
+    <canvas id="sketch-canvas" style="flex:1;min-height:0;touch-action:none;"></canvas>
+    <div id="sketch-draw-controls" style="display:flex;gap:8px;padding:10px 14px;">
+        <button type="button" onclick="ShapeSketch.undo()" style="flex:1;background:rgba(120,120,120,.25);color:var(--ink,#1e2328);border:none;border-radius:8px;padding:12px;font-size:14px;cursor:pointer;">↩ Undo Point</button>
+        <button type="button" id="sketch-close-shape-btn" onclick="ShapeSketch.closeShape()" disabled style="flex:1;background:#27d3c3;color:#04231f;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;opacity:.5;">✓ Close Shape</button>
+    </div>
+    <div id="sketch-measure-panel" class="hidden" style="padding:0 14px 14px;overflow-y:auto;max-height:45vh;">
+        <div id="sketch-area-readout" style="text-align:center;font-size:22px;font-weight:800;color:var(--ink,#1e2328);margin-bottom:10px;">0.00 m²</div>
+        <div id="sketch-edge-list"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+            <button type="button" id="sketch-add-cutout-btn" onclick="ShapeSketch.addCutout()" style="flex:1;background:rgba(120,120,120,.25);color:var(--ink,#1e2328);border:none;border-radius:8px;padding:12px;font-size:14px;cursor:pointer;">+ Add Cutout</button>
+            <button type="button" id="sketch-use-area-btn" onclick="ShapeSketch.useThisArea()" disabled style="flex:1;background:#27d3c3;color:#04231f;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;opacity:.5;">Use This Area</button>
+        </div>
+    </div>
 </div>
 </body>
 </html>
