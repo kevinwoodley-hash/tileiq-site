@@ -830,6 +830,25 @@ async function api(path, options = {}) {
 // textarea's current value is what actually sends, this array is just
 // the starting draft.
 const OUTREACH_EMAILS = [
+  { name: "TEST — send to yourself first", to: "kevin.woodley@gmail.com",
+    subject: "Quick question about your tiling course",
+    body: `Hi Dan,
+
+I wanted to introduce TileIQ Pro — it's a complete business app built specifically for tilers, covering the whole job from first enquiry to getting paid. It handles room measuring (with live Leica Disto laser integration), works out exact material quantities, sends professional quotes, manages customers and job scheduling, creates invoices with exports straight into Xero, QuickBooks, FreeAgent or Sage — and even has an AI Receptionist that picks up calls and captures job details when a tiler's on the tools and can't answer. It's built to replace the notebook-calculator-separate-paperwork approach entirely. You can see the full app and every feature here: https://tile-iq.com
+
+We've already added Preston College's wall and floor tiling course to our UK tiling training directory as a genuine provider — you can see the listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where students get 3 months of TileIQ Pro free, activated with a unique code for the college. No cost to Preston College — it just means your trainees leave the course already set up to measure, manage jobs and customers, and take it from quote to invoicing, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest as part of your employer engagement work, happy to jump on a quick call, or you can register the college directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
   { name: "Professional Trades Training Centre", to: "info@pttc.co.uk",
     subject: "Quick question about your tiling course",
     body: `Hi PTTC team,
