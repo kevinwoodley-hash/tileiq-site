@@ -456,6 +456,9 @@ body {
       <button class="nav-item" onclick="showPage('outreach')" id="nav-outreach">
         <span class="nav-icon">✉️</span> Outreach
       </button>
+      <button class="nav-item" onclick="showPage('mailing')" id="nav-mailing">
+        <span class="nav-icon">📧</span> Mailing
+      </button>
       <button class="nav-item" onclick="showPage('stats')" id="nav-stats">
         <span class="nav-icon">📊</span> Stats
       </button>
@@ -543,6 +546,43 @@ body {
       </div>
       <div class="outreach-page">
         <div id="outreach-list"></div>
+      </div>
+    </div>
+
+    <!-- Mailing Page -->
+    <div class="page" id="page-mailing">
+      <div class="page-header">
+        <h1>Mailing</h1>
+        <p>One template, sent to as many real TileIQ users as you choose — sent from the same Resend identity as the rest of the app.</p>
+      </div>
+      <div class="outreach-page">
+        <div class="card" style="margin-bottom:14px;">
+          <h2>Compose</h2>
+          <div class="form-group"><label>Subject</label><input type="text" id="ml-subject" placeholder="e.g. New in TileIQ Pro this month"></div>
+          <div class="form-group"><label>Body</label><textarea id="ml-body" style="min-height:220px;" placeholder="Write the email…"></textarea></div>
+          <p style="font-size:12px;color:var(--muted,#6b7280);">A line is auto-added at the bottom: "You're receiving this because you have a TileIQ Pro account — reply to this email to opt out of future updates." Not a one-click unsubscribe, but every send needs a working opt-out.</p>
+        </div>
+        <div class="card" style="margin-bottom:14px;">
+          <h2>Recipients</h2>
+          <div id="ml-recipients-loading" class="loading">Loading users…</div>
+          <div id="ml-recipients-body" class="hidden">
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;">
+              <input type="radio" name="ml-target" value="all" checked onchange="renderMailingRecipients()"> All users (<span id="ml-all-count">0</span>)
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;">
+              <input type="radio" name="ml-target" value="pick" onchange="renderMailingRecipients()"> Pick specific users
+            </label>
+            <div id="ml-picker" class="hidden">
+              <input type="text" id="ml-search" placeholder="Search by name or email…" oninput="renderMailingUserList()" style="width:100%;box-sizing:border-box;margin-bottom:8px;">
+              <div id="ml-user-list" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn-secondary" onclick="sendMailingTest()">Send test to me</button>
+          <button class="btn-primary" onclick="sendMailingBatch()">Send to <span id="ml-send-count">0</span> users</button>
+          <span id="ml-status" style="font-size:13px;color:var(--muted,#6b7280);"></span>
+        </div>
       </div>
     </div>
 
@@ -798,6 +838,7 @@ function toggleSidebar() {
 // ── Page navigation ────────────────────────────────────────────
 let statsLoaded = false;
 let outreachRendered = false;
+let mailingLoaded = false;
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
@@ -809,6 +850,7 @@ function showPage(name) {
   // Load data for page
   if (name === 'announce') loadAnnounceHistory();
   if (name === 'outreach' && !outreachRendered) { renderOutreachPage(); outreachRendered = true; }
+  if (name === 'mailing' && !mailingLoaded) { loadMailingPage(); mailingLoaded = true; }
   if (name === 'stats' && !statsLoaded) { loadStats(); statsLoaded = true; }
   if (name === 'users') loadUsersPage();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
@@ -1144,6 +1186,102 @@ async function sendAllOutreach() {
     const btn = document.getElementById(`oa-send-${i}`);
     if (btn.disabled) continue; // already sent
     await sendOutreachEmail(i);
+  }
+}
+
+// ── Mailing — one template broadcast to real TileIQ users ────────
+let mailingSelected = new Set(); // emails checked under "Pick specific users"
+
+async function loadMailingPage() {
+  if (!users.length) await loadUsers();
+  document.getElementById('ml-recipients-loading').classList.add('hidden');
+  document.getElementById('ml-recipients-body').classList.remove('hidden');
+  document.getElementById('ml-all-count').textContent = users.length;
+  renderMailingRecipients();
+}
+
+function renderMailingRecipients() {
+  const target = document.querySelector('input[name="ml-target"]:checked').value;
+  document.getElementById('ml-picker').classList.toggle('hidden', target !== 'pick');
+  if (target === 'pick') renderMailingUserList();
+  updateMailingSendCount();
+}
+
+function renderMailingUserList() {
+  const q = (document.getElementById('ml-search').value || '').toLowerCase();
+  const filtered = users.filter(u =>
+    !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+  );
+  const list = document.getElementById('ml-user-list');
+  list.innerHTML = filtered.map(u => `
+    <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px;">
+      <input type="checkbox" value="${escHtml(u.email)}" ${mailingSelected.has(u.email) ? 'checked' : ''} onchange="toggleMailingUser('${escHtml(u.email)}', this.checked)">
+      ${escHtml(u.name || u.email)} <span style="color:var(--muted,#6b7280);">${escHtml(u.email)}</span>
+    </label>
+  `).join('') || '<div style="font-size:13px;color:var(--muted,#6b7280);">No users match.</div>';
+}
+
+function toggleMailingUser(email, checked) {
+  if (checked) mailingSelected.add(email); else mailingSelected.delete(email);
+  updateMailingSendCount();
+}
+
+function updateMailingSendCount() {
+  document.getElementById('ml-send-count').textContent = getMailingRecipients().length;
+}
+
+function getMailingRecipients() {
+  const target = document.querySelector('input[name="ml-target"]:checked').value;
+  if (target === 'all') return users.map(u => u.email).filter(Boolean);
+  return [...mailingSelected];
+}
+
+function mailingBodyToHtml(text) {
+  const withFooter = text.trim() +
+    "\n\n---\nYou're receiving this because you have a TileIQ Pro account — reply to this email to opt out of future updates.";
+  return outreachBodyToHtml(withFooter);
+}
+
+async function sendMailingTest() {
+  const subject = document.getElementById('ml-subject').value.trim();
+  const body = document.getElementById('ml-body').value;
+  const status = document.getElementById('ml-status');
+  if (!subject || !body.trim()) { alert('Write a subject and body first.'); return; }
+  status.textContent = 'Sending test…';
+  try {
+    const data = await api('/api/admin/send-marketing-batch', {
+      method: 'POST',
+      body: JSON.stringify({ subject: '[TEST] ' + subject, html: mailingBodyToHtml(body), recipients: ['kevin.woodley@gmail.com'] })
+    });
+    status.textContent = data.ok ? '✅ Test sent to kevin.woodley@gmail.com' : '❌ Test failed';
+    status.style.color = data.ok ? 'var(--green,#16a34a)' : 'var(--red,#dc2626)';
+  } catch (err) {
+    status.textContent = '❌ Test failed — ' + err.message;
+    status.style.color = 'var(--red,#dc2626)';
+  }
+}
+
+async function sendMailingBatch() {
+  const subject = document.getElementById('ml-subject').value.trim();
+  const body = document.getElementById('ml-body').value;
+  const status = document.getElementById('ml-status');
+  const recipients = getMailingRecipients();
+  if (!subject || !body.trim()) { alert('Write a subject and body first.'); return; }
+  if (!recipients.length) { alert('No recipients selected.'); return; }
+  if (!confirm(`Send this to ${recipients.length} real user${recipients.length === 1 ? '' : 's'}? This can't be undone.`)) return;
+  status.textContent = `Sending to ${recipients.length}…`;
+  try {
+    const data = await api('/api/admin/send-marketing-batch', {
+      method: 'POST',
+      body: JSON.stringify({ subject, html: mailingBodyToHtml(body), recipients })
+    });
+    status.textContent = data.ok
+      ? `✅ Sent to ${data.sent}/${data.total}`
+      : `⚠️ Sent ${data.sent}/${data.total} — some batches failed`;
+    status.style.color = data.ok ? 'var(--green,#16a34a)' : 'var(--red,#dc2626)';
+  } catch (err) {
+    status.textContent = '❌ Failed — ' + err.message;
+    status.style.color = 'var(--red,#dc2626)';
   }
 }
 
