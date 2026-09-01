@@ -1052,7 +1052,7 @@ function renderOutreachPage() {
   list.innerHTML = `
     <div style="margin-bottom:14px;display:flex;gap:10px;">
       <button class="btn-primary" onclick="sendAllOutreach()">Send all not yet sent</button>
-      <button class="btn-primary" onclick="refreshOutreachOpens()">🔄 Check who's opened it</button>
+      <button class="btn-primary" onclick="applyOutreachSentStatus()">🔄 Refresh sent/opened status</button>
     </div>
   ` + OUTREACH_EMAILS.map((e, i) => `
     <div class="card" style="margin-bottom:14px;">
@@ -1065,33 +1065,45 @@ function renderOutreachPage() {
       <span id="oa-opened-${i}" style="margin-left:10px;font-size:13px;color:var(--muted,#6b7280);"></span>
     </div>
   `).join('');
+  // A row's "sent" state is only real once the worker's actually recorded a
+  // successful send (see send-outreach-batch) — reload that on every render so
+  // a page refresh doesn't forget what's already gone out and offer to resend it.
+  applyOutreachSentStatus();
 }
 
 // A pixel embedded in the email pings /api/track-open when it loads (most email
 // clients auto-load images unless the recipient has that switched off, so this is
 // "probably opened", not a guarantee — same limitation every mail-merge tool has).
-// This just reads back what the worker's recorded, keyed by recipient address.
-async function refreshOutreachOpens() {
+// This reads back what the worker's recorded, keyed by recipient address, and
+// applies both the open status and the persisted sent/disabled state.
+async function applyOutreachSentStatus() {
   try {
     const data = await api('/api/admin/outreach-opens');
     const byEmail = {};
     (data.records || []).forEach(r => { byEmail[(r.to || '').toLowerCase()] = r; });
     OUTREACH_EMAILS.forEach((e, i) => {
-      const el = document.getElementById(`oa-opened-${i}`);
-      if (!el) return;
       const rec = byEmail[e.to.toLowerCase()];
-      if (rec && rec.openedAt) {
-        el.textContent = '👀 Opened ' + new Date(rec.openedAt).toLocaleString();
-        el.style.color = 'var(--green, #16a34a)';
-      } else if (rec) {
-        el.textContent = 'Sent, not opened yet';
-        el.style.color = 'var(--muted, #6b7280)';
-      } else {
-        el.textContent = '';
+      if (!rec) return; // never actually sent — leave the Send button as-is
+      const btn = document.getElementById(`oa-send-${i}`);
+      const status = document.getElementById(`oa-status-${i}`);
+      const opened = document.getElementById(`oa-opened-${i}`);
+      if (btn) btn.disabled = true;
+      if (status) {
+        status.textContent = '✅ Sent ' + new Date(rec.sentAt).toLocaleString();
+        status.style.color = 'var(--green, #16a34a)';
+      }
+      if (opened) {
+        if (rec.openedAt) {
+          opened.textContent = '👀 Opened ' + new Date(rec.openedAt).toLocaleString();
+          opened.style.color = 'var(--green, #16a34a)';
+        } else {
+          opened.textContent = 'Not opened yet';
+          opened.style.color = 'var(--muted, #6b7280)';
+        }
       }
     });
   } catch (err) {
-    alert('Could not check open status: ' + err.message);
+    console.error('Could not load outreach sent/open status:', err);
   }
 }
 
