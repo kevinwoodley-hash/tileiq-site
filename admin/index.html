@@ -452,6 +452,9 @@ body {
       <button class="nav-item" onclick="showPage('announce')" id="nav-announce">
         <span class="nav-icon">📢</span> Announce
       </button>
+      <button class="nav-item" onclick="showPage('outreach')" id="nav-outreach">
+        <span class="nav-icon">✉️</span> Outreach
+      </button>
       <button class="nav-item" onclick="showPage('stats')" id="nav-stats">
         <span class="nav-icon">📊</span> Stats
       </button>
@@ -529,6 +532,15 @@ body {
           <div id="announce-history-body" style="background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;"><div class="loading">Loading…</div></div>
         </div>
       </div>
+    </div>
+
+    <!-- Outreach Page -->
+    <div class="page" id="page-outreach">
+      <div class="page-header">
+        <h1>Outreach</h1>
+        <p>One-off, hand-reviewed emails — sent from the same Resend identity as the rest of the app. Edit before sending; nothing sends until you press a button.</p>
+      </div>
+      <div id="outreach-list"></div>
     </div>
 
     <!-- Stats Page -->
@@ -782,6 +794,7 @@ function toggleSidebar() {
 
 // ── Page navigation ────────────────────────────────────────────
 let statsLoaded = false;
+let outreachRendered = false;
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
@@ -792,6 +805,7 @@ function showPage(name) {
   document.getElementById('sidebar-overlay').classList.remove('open');
   // Load data for page
   if (name === 'announce') loadAnnounceHistory();
+  if (name === 'outreach' && !outreachRendered) { renderOutreachPage(); outreachRendered = true; }
   if (name === 'stats' && !statsLoaded) { loadStats(); statsLoaded = true; }
   if (name === 'users') loadUsersPage();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
@@ -807,6 +821,246 @@ async function api(path, options = {}) {
   });
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
+}
+
+// ── Outreach — hand-reviewed one-off emails ──────────────────────
+// One batch, hardcoded: the 9 tiling training centres listed at
+// training.tile-iq.com, pitching the Trade Starter Programme. Edit any
+// body here before sending, or in the textarea on the page itself — the
+// textarea's current value is what actually sends, this array is just
+// the starting draft.
+const OUTREACH_EMAILS = [
+  { name: "Professional Trades Training Centre", to: "info@pttc.co.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi PTTC team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added PTTC to our UK tiling training directory as a genuine provider — you can see your listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where students on courses like your Pro Tiler Foundation Intensive get 3 months of TileIQ Pro free, activated with a unique code for your centre. No cost to PTTC — it just means your trainees leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register the centre directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "New Beginnings Tiling Academy", to: "Support@newbegintilingacademy.com",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi New Beginnings team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added New Beginnings Tiling Academy to our UK tiling training directory as a genuine provider — you can see your listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where your trainees get 3 months of TileIQ Pro free, activated with a unique code for your centre. No cost to New Beginnings — it just means your students leave the academy already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register the centre directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "Preston College", to: "dcrumblehulme@preston.ac.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi Dan,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added Preston College's wall and floor tiling course to our UK tiling training directory as a genuine provider — you can see the listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where students get 3 months of TileIQ Pro free, activated with a unique code for the college. No cost to Preston College — it just means your students leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest as part of your employer engagement work, happy to jump on a quick call, or you can register the college directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "Leeds College of Building", to: "info@lcb.ac.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi LCB team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added Leeds College of Building's tiling courses to our UK tiling training directory as a genuine provider — you can see the listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where students get 3 months of TileIQ Pro free, activated with a unique code for the college. No cost to LCB — it just means your students leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register the college directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "Cardiff and Vale College", to: "info@cavc.ac.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi CAVC team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added Cardiff and Vale College's wall and floor tiling course to our UK tiling training directory as a genuine provider — you can see the listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where students get 3 months of TileIQ Pro free, activated with a unique code for the college. No cost to CAVC — it just means your students leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register the college directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "Construction Skills College", to: "enquiries@tradeteacher.co.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi Construction Skills College team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added Construction Skills College to our UK tiling training directory as a genuine provider — you can see your listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where your trainees get 3 months of TileIQ Pro free, activated with a unique code for your centre. No cost to you — it just means your students leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register the centre directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "Specialist Trade Courses", to: "info@thestcgroup.co.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi STC Group team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added Specialist Trade Courses to our UK tiling training directory as a genuine provider — you can see your listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where your trainees get 3 months of TileIQ Pro free, activated with a unique code for your centre. No cost to you — it just means your students leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register the centre directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "The Growth Company", to: "business@gceducationandskills.ac.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi Growth Company team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added your Level 1 tiling training to our UK tiling training directory as a genuine provider — you can see the listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where students get 3 months of TileIQ Pro free, activated with a unique code. No cost to you — it just means your students leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` },
+
+  { name: "Norfolk Adult Learning and Skills", to: "adultlearning@norfolk.gov.uk",
+    subject: "You're already listed on TileIQ's tiling training directory",
+    body: `Hi Norfolk Adult Learning team,
+
+I run TileIQ Pro, a business app built for tilers — measuring, material calculations, quotes, invoicing and job management in one place. You can see more about the app and its features here: https://tile-iq.com
+
+We've already added your basic tiling course to our UK tiling training directory as a genuine provider — you can see the listing here: https://training.tile-iq.com/#courses
+
+No action needed on that, it's just there because it's a good course. But it made me think there's a natural next step: we run a Trade Starter Programme for training centres, where students get 3 months of TileIQ Pro free, activated with a unique code. No cost to you — it just means your students leave the course already set up to quote and invoice properly, not scrambling with a notebook and a calculator on their first real job.
+
+If that's of interest, happy to jump on a quick call, or you can register directly here: https://training.tile-iq.com/#register
+
+Either way, thanks for the work you're doing training new tilers.
+
+Best,
+Kevin Woodley
+TileIQ Pro
+tile-iq.com` }
+];
+
+function outreachBodyToHtml(text) {
+  return text.split(/\n\s*\n/).map(para =>
+    `<p style="margin:0 0 14px;">${para.replace(/\n/g, '<br>').replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`
+  ).join('');
+}
+
+function renderOutreachPage() {
+  const list = document.getElementById('outreach-list');
+  list.innerHTML = `
+    <div style="margin-bottom:14px;">
+      <button class="btn-primary" onclick="sendAllOutreach()">Send all not yet sent</button>
+    </div>
+  ` + OUTREACH_EMAILS.map((e, i) => `
+    <div class="card" style="margin-bottom:14px;">
+      <h2>${e.name}</h2>
+      <p style="margin-top:-6px;">${e.to}</p>
+      <div class="form-group"><label>Subject</label><input type="text" id="oa-subject-${i}" value="${e.subject.replace(/"/g, '&quot;')}"></div>
+      <div class="form-group"><label>Body</label><textarea id="oa-body-${i}" style="min-height:220px;">${e.body}</textarea></div>
+      <button class="btn-primary" id="oa-send-${i}" onclick="sendOutreachEmail(${i})">Send</button>
+      <span id="oa-status-${i}" style="margin-left:10px;font-size:13px;color:var(--muted,#6b7280);"></span>
+    </div>
+  `).join('');
+}
+
+async function sendOutreachEmail(i) {
+  const btn = document.getElementById(`oa-send-${i}`);
+  const status = document.getElementById(`oa-status-${i}`);
+  const subject = document.getElementById(`oa-subject-${i}`).value;
+  const body = document.getElementById(`oa-body-${i}`).value;
+  const to = OUTREACH_EMAILS[i].to;
+  btn.disabled = true;
+  status.textContent = 'Sending…';
+  try {
+    const data = await api('/api/admin/send-outreach-batch', {
+      method: 'POST',
+      body: JSON.stringify({ emails: [{ to, subject, html: outreachBodyToHtml(body) }] })
+    });
+    const result = data.results && data.results[0];
+    if (result && result.ok) {
+      status.textContent = '✅ Sent';
+      status.style.color = 'var(--green, #16a34a)';
+    } else {
+      status.textContent = '❌ Failed — ' + (result && (result.error || result.status) || 'unknown error');
+      status.style.color = 'var(--red, #dc2626)';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    status.textContent = '❌ Failed — ' + err.message;
+    status.style.color = 'var(--red, #dc2626)';
+    btn.disabled = false;
+  }
+}
+
+async function sendAllOutreach() {
+  for (let i = 0; i < OUTREACH_EMAILS.length; i++) {
+    const btn = document.getElementById(`oa-send-${i}`);
+    if (btn.disabled) continue; // already sent
+    await sendOutreachEmail(i);
+  }
 }
 
 // ── Support ────────────────────────────────────────────────────
