@@ -1547,7 +1547,7 @@ async function loadStats() {
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
           <span style="font-size:11px;color:var(--text-muted);">joined ${timeAgo(u.created_at)}</span>
           ${u.last_sign_in_at ? `<span style="font-size:11px;color:var(--green);">last seen ${timeAgo(u.last_sign_in_at)}</span>` : ''}
-          <button onclick="viewUserJobs('${u.id}', '${escHtml(u.name||u.email)}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;margin-top:2px;">View Jobs</button>
+          <button data-id="${u.id}" data-name="${escHtml(u.name||u.email)}" onclick="viewUserJobs(this.dataset.id, this.dataset.name)" style="font-size:10px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;margin-top:2px;">View Jobs</button>
         </div>
       </div>`).join('');
   } catch(e) { console.error('loadStats:', e); }
@@ -1564,7 +1564,7 @@ async function loadUsersPage() {
         <div class="user-name">${escHtml(u.name || u.email)}</div>
         <div class="user-email">${escHtml(u.email)} · joined ${timeAgo(u.created_at)}${u.last_sign_in_at ? " · last seen " + timeAgo(u.last_sign_in_at) : ""}</div>
       </div>
-      <button class="btn-view" onclick="viewUserJobs('${u.id}', '${escHtml(u.name || u.email)}')">View Jobs</button>
+      <button class="btn-view" data-id="${u.id}" data-name="${escHtml(u.name || u.email)}" onclick="viewUserJobs(this.dataset.id, this.dataset.name)">View Jobs</button>
     </div>`).join('');
 }
 
