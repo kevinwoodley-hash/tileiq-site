@@ -1193,11 +1193,24 @@ async function sendAllOutreach() {
 let mailingSelected = new Set(); // emails checked under "Pick specific users"
 
 async function loadMailingPage() {
-  if (!users.length) await loadUsers();
-  document.getElementById('ml-recipients-loading').classList.add('hidden');
-  document.getElementById('ml-recipients-body').classList.remove('hidden');
-  document.getElementById('ml-all-count').textContent = users.length;
-  renderMailingRecipients();
+  const loadingEl = document.getElementById('ml-recipients-loading');
+  try {
+    // Always fetch fresh here rather than trusting a cached `users` from
+    // elsewhere — a bad/partial cache from another page would otherwise
+    // never get corrected, since the usual "if empty, load" guard only
+    // catches a truly empty array, not a wrong one.
+    await loadUsers();
+    if (!users.length) throw new Error('User list came back empty');
+    loadingEl.classList.add('hidden');
+    document.getElementById('ml-recipients-body').classList.remove('hidden');
+    document.getElementById('ml-all-count').textContent = users.length;
+    renderMailingRecipients();
+  } catch (err) {
+    loadingEl.textContent = 'Could not load users: ' + err.message + ' — try reloading the page.';
+    loadingEl.style.color = 'var(--red, #dc2626)';
+    console.error('loadMailingPage failed:', err);
+    mailingLoaded = false; // allow a retry on the next visit to this page
+  }
 }
 
 function renderMailingRecipients() {
