@@ -1011,8 +1011,9 @@ function outreachBodyToHtml(text) {
 function renderOutreachPage() {
   const list = document.getElementById('outreach-list');
   list.innerHTML = `
-    <div style="margin-bottom:14px;">
+    <div style="margin-bottom:14px;display:flex;gap:10px;">
       <button class="btn-primary" onclick="sendAllOutreach()">Send all not yet sent</button>
+      <button class="btn-primary" onclick="refreshOutreachOpens()">🔄 Check who's opened it</button>
     </div>
   ` + OUTREACH_EMAILS.map((e, i) => `
     <div class="card" style="margin-bottom:14px;">
@@ -1022,8 +1023,37 @@ function renderOutreachPage() {
       <div class="form-group"><label>Body</label><textarea id="oa-body-${i}" style="min-height:220px;">${e.body}</textarea></div>
       <button class="btn-primary" id="oa-send-${i}" onclick="sendOutreachEmail(${i})">Send</button>
       <span id="oa-status-${i}" style="margin-left:10px;font-size:13px;color:var(--muted,#6b7280);"></span>
+      <span id="oa-opened-${i}" style="margin-left:10px;font-size:13px;color:var(--muted,#6b7280);"></span>
     </div>
   `).join('');
+}
+
+// A pixel embedded in the email pings /api/track-open when it loads (most email
+// clients auto-load images unless the recipient has that switched off, so this is
+// "probably opened", not a guarantee — same limitation every mail-merge tool has).
+// This just reads back what the worker's recorded, keyed by recipient address.
+async function refreshOutreachOpens() {
+  try {
+    const data = await api('/api/admin/outreach-opens');
+    const byEmail = {};
+    (data.records || []).forEach(r => { byEmail[(r.to || '').toLowerCase()] = r; });
+    OUTREACH_EMAILS.forEach((e, i) => {
+      const el = document.getElementById(`oa-opened-${i}`);
+      if (!el) return;
+      const rec = byEmail[e.to.toLowerCase()];
+      if (rec && rec.openedAt) {
+        el.textContent = '👀 Opened ' + new Date(rec.openedAt).toLocaleString();
+        el.style.color = 'var(--green, #16a34a)';
+      } else if (rec) {
+        el.textContent = 'Sent, not opened yet';
+        el.style.color = 'var(--muted, #6b7280)';
+      } else {
+        el.textContent = '';
+      }
+    });
+  } catch (err) {
+    alert('Could not check open status: ' + err.message);
+  }
 }
 
 async function sendOutreachEmail(i) {
