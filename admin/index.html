@@ -1215,7 +1215,7 @@ function renderMailingUserList() {
   const list = document.getElementById('ml-user-list');
   list.innerHTML = filtered.map(u => `
     <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:13px;">
-      <input type="checkbox" value="${escHtml(u.email)}" ${mailingSelected.has(u.email) ? 'checked' : ''} onchange="toggleMailingUser('${escHtml(u.email)}', this.checked)">
+      <input type="checkbox" data-email="${escHtml(u.email)}" ${mailingSelected.has(u.email) ? 'checked' : ''} onchange="toggleMailingUser(this.dataset.email, this.checked)">
       ${escHtml(u.name || u.email)} <span style="color:var(--muted,#6b7280);">${escHtml(u.email)}</span>
     </label>
   `).join('') || '<div style="font-size:13px;color:var(--muted,#6b7280);">No users match.</div>';
