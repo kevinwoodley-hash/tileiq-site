@@ -30,13 +30,9 @@
     .comp-hero p{color:#b7c0c5;font-size:17px;line-height:1.6;max-width:600px;margin:0 auto 30px}
     .comp-badges{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
     .comp-note{font-size:13px;color:#7d8890}
-    .comp-scroll-cue{display:inline-flex;align-items:center;gap:10px;margin-top:30px;padding:14px 26px;border-radius:99px;background:var(--yellow);color:#111;text-decoration:none;font-size:14px;font-weight:800;letter-spacing:.02em;box-shadow:0 8px 24px rgba(230,175,46,.35);transition:transform .15s,box-shadow .15s}
-    .comp-scroll-cue:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(230,175,46,.45)}
-    .comp-scroll-cue svg{animation:comp-bounce 1.6s ease-in-out infinite}
-    @keyframes comp-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
     .comp-section{padding:60px 0;border-bottom:1px solid #1a2226}
-    .comp-section h2{font:800 clamp(1.8rem,3vw,2.6rem)/1.1 'Manrope';letter-spacing:-.04em;margin:0 0 30px;text-align:center}
-    .comp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .comp-section h2, .comp-hero h2{font:800 clamp(1.8rem,3vw,2.6rem)/1.1 'Manrope';letter-spacing:-.04em;margin:0 0 30px;text-align:center}
+    .comp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:left}
     .comp-steps article{background:linear-gradient(155deg,#0e1315,#080b0d);border:1px solid #222d31;border-radius:15px;padding:26px 22px;text-align:center}
     .comp-steps .step-num{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:12px;background:var(--yellow);color:#111;font:800 16px 'Manrope';margin-bottom:14px}
     .comp-steps h3{font:700 17px 'Manrope';margin:0 0 8px}
@@ -89,22 +85,8 @@
         <span class="kicker">🎯 COMPETITION</span>
         <h1>Win a Leica <span>DISTO D2</span> laser measure</h1>
         <img src="/images/competition-leica-disto-d2.jpg" alt="Win a Leica DISTO D2 laser measure — download TileIQ, send 3 genuine quotes through the app, you're in the draw. Bonus entry: like/follow and share on Facebook for 2 chances to win. Competition closes 11:59pm UK time, 30 September 2026." class="comp-hero-image">
-        <p>Download TileIQ Pro, send 3 genuine customer quotes through the app, and you're in the draw.</p>
-        <div class="comp-badges">
-          <a class="app-store-link" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener noreferrer" aria-label="Download TileIQ Pro on the App Store" style="display:inline-flex;align-items:center;"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" style="width:145px;max-width:145px;height:auto;"></a>
-          <a class="google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play"></a>
-        </div>
-        <p class="comp-note">UK residents 18+ · No purchase necessary · Full terms below</p>
-        <a class="comp-scroll-cue" href="#how-to-enter" aria-label="Scroll down for how to enter">
-          <span>See how to enter</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-        </a>
-      </div>
-    </section>
 
-    <section class="comp-section" id="how-to-enter">
-      <div class="container">
-        <h2>How to enter</h2>
+        <h2 id="how-to-enter">How to enter</h2>
         <div class="comp-steps">
           <article>
             <span class="step-num">1</span>
@@ -122,6 +104,12 @@
             <p>That's it — no extra sign-up. One winner is picked at random after the closing date.</p>
           </article>
         </div>
+
+        <div class="comp-badges" style="margin-top:30px;">
+          <a class="app-store-link" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener noreferrer" aria-label="Download TileIQ Pro on the App Store" style="display:inline-flex;align-items:center;"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" style="width:145px;max-width:145px;height:auto;"></a>
+          <a class="google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play"></a>
+        </div>
+        <p class="comp-note">UK residents 18+ · No purchase necessary · Full terms below</p>
       </div>
     </section>
 
