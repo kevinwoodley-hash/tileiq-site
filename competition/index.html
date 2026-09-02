@@ -29,6 +29,10 @@
     .comp-hero p{color:#b7c0c5;font-size:17px;line-height:1.6;max-width:600px;margin:0 auto 30px}
     .comp-badges{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
     .comp-note{font-size:13px;color:#7d8890}
+    .comp-scroll-cue{display:inline-flex;flex-direction:column;align-items:center;gap:6px;margin-top:36px;color:#7d8890;text-decoration:none;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;transition:color .15s}
+    .comp-scroll-cue:hover{color:var(--yellow)}
+    .comp-scroll-cue svg{animation:comp-bounce 1.6s ease-in-out infinite}
+    @keyframes comp-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
     .comp-section{padding:60px 0;border-bottom:1px solid #1a2226}
     .comp-section h2{font:800 clamp(1.8rem,3vw,2.6rem)/1.1 'Manrope';letter-spacing:-.04em;margin:0 0 30px;text-align:center}
     .comp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
@@ -90,6 +94,10 @@
           <a class="google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play"></a>
         </div>
         <p class="comp-note">UK residents 18+ · No purchase necessary · Full terms below</p>
+        <a class="comp-scroll-cue" href="#how-to-enter" aria-label="Scroll down for how to enter">
+          <span>How to enter</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </a>
       </div>
     </section>
 
