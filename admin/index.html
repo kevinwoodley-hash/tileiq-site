@@ -460,6 +460,9 @@ body {
       <button class="nav-item" onclick="showPage('mailing')" id="nav-mailing">
         <span class="nav-icon">📧</span> Mailing
       </button>
+      <button class="nav-item" onclick="showPage('promo')" id="nav-promo">
+        <span class="nav-icon">🎁</span> Promo
+      </button>
       <button class="nav-item" onclick="showPage('stats')" id="nav-stats">
         <span class="nav-icon">📊</span> Stats
       </button>
@@ -583,6 +586,27 @@ body {
           <button class="btn-secondary" onclick="sendMailingTest()">Send test to me</button>
           <button class="btn-primary" onclick="sendMailingBatch()">Send to <span id="ml-send-count">0</span> users</button>
           <span id="ml-status" style="font-size:13px;color:var(--muted,#6b7280);"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Promo Page -->
+    <div class="page" id="page-promo">
+      <div class="page-header">
+        <h1>Promo</h1>
+        <p>Download and send 3 quotes to win a laser measure — who's qualified so far.</p>
+      </div>
+      <div class="outreach-page">
+        <div id="promo-loading" class="loading">Loading…</div>
+        <div id="promo-body" class="hidden">
+          <div class="card" style="margin-bottom:14px;">
+            <h2 id="promo-summary">—</h2>
+          </div>
+          <div class="card" style="margin-bottom:14px;">
+            <input type="text" id="promo-search" placeholder="Search by name or email…" oninput="renderPromoTable()" style="width:100%;box-sizing:border-box;margin-bottom:10px;">
+            <button class="btn-secondary" onclick="exportPromoCsv()">Export CSV</button>
+          </div>
+          <div class="data-table" id="promo-table"></div>
         </div>
       </div>
     </div>
@@ -840,6 +864,7 @@ function toggleSidebar() {
 let statsLoaded = false;
 let outreachRendered = false;
 let mailingLoaded = false;
+let promoLoaded = false;
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
@@ -852,6 +877,7 @@ function showPage(name) {
   if (name === 'announce') loadAnnounceHistory();
   if (name === 'outreach' && !outreachRendered) { renderOutreachPage(); outreachRendered = true; }
   if (name === 'mailing' && !mailingLoaded) { loadMailingPage(); mailingLoaded = true; }
+  if (name === 'promo' && !promoLoaded) { loadPromoPage(); promoLoaded = true; }
   if (name === 'stats' && !statsLoaded) { loadStats(); statsLoaded = true; }
   if (name === 'users') loadUsersPage();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
@@ -1297,6 +1323,64 @@ async function sendMailingBatch() {
     status.textContent = '❌ Failed — ' + err.message;
     status.style.color = 'var(--red,#dc2626)';
   }
+}
+
+// ── Promo — "download + send 3 quotes, win a laser measure" tracker ──
+let promoUsers = []; // [{id, name, email, created_at, quotesSent}], loaded once per page load
+
+async function loadPromoPage() {
+  const loadingEl = document.getElementById('promo-loading');
+  try {
+    const [userList, counts] = await Promise.all([
+      loadUsers(),
+      api('/api/admin/promo-quote-counts')
+    ]);
+    promoUsers = userList.map(u => ({ ...u, quotesSent: counts.counts?.[u.id] || 0 }));
+    promoUsers.sort((a, b) => b.quotesSent - a.quotesSent);
+    loadingEl.classList.add('hidden');
+    document.getElementById('promo-body').classList.remove('hidden');
+    renderPromoTable();
+  } catch (err) {
+    loadingEl.textContent = 'Could not load promo data: ' + err.message + ' — try reloading the page.';
+    loadingEl.style.color = 'var(--red, #dc2626)';
+    console.error('loadPromoPage failed:', err);
+    promoLoaded = false; // allow a retry on the next visit
+  }
+}
+
+function renderPromoTable() {
+  const q = (document.getElementById('promo-search').value || '').toLowerCase();
+  const filtered = promoUsers.filter(u =>
+    !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+  );
+  const qualified = promoUsers.filter(u => u.quotesSent >= 3).length;
+  document.getElementById('promo-summary').textContent =
+    `${qualified} of ${promoUsers.length} users have sent 3+ quotes`;
+  document.getElementById('promo-table').innerHTML = filtered.map(u => `
+    <div class="data-row">
+      <div>
+        <div class="data-row-label" style="font-weight:600;text-transform:none;">${escHtml(u.name || u.email)}</div>
+        <div style="font-size:12px;color:var(--muted,#6b7280);">${escHtml(u.email)} · joined ${timeAgo(u.created_at)}</div>
+      </div>
+      <div class="data-row-val" style="color:${u.quotesSent >= 3 ? 'var(--green,#16a34a)' : 'inherit'};">
+        ${u.quotesSent >= 3 ? '🏆 ' : ''}${u.quotesSent} quote${u.quotesSent === 1 ? '' : 's'} sent
+      </div>
+    </div>
+  `).join('') || '<div class="loading">No users match.</div>';
+}
+
+function exportPromoCsv() {
+  const rows = [['Name', 'Email', 'Joined', 'Quotes Sent', 'Qualified (3+)']];
+  promoUsers.forEach(u => rows.push([
+    u.name || u.email, u.email, u.created_at, u.quotesSent, u.quotesSent >= 3 ? 'Yes' : 'No'
+  ]));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tileiq-promo-quote-counts.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ── Support ────────────────────────────────────────────────────
