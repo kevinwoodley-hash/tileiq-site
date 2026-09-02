@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="../style.css" />
   <style>
     .comp-hero{padding:92px 0 60px;background:radial-gradient(circle at 80% 20%,rgba(230,175,46,.14),transparent 30%),linear-gradient(145deg,#0b1012,#050708 72%);text-align:center}
+    .comp-hero-image{display:block;max-width:420px;width:100%;height:auto;margin:0 auto 34px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
     .comp-hero .kicker{display:block;margin-bottom:14px}
     .comp-hero h1{font:800 clamp(2.6rem,5.5vw,4.4rem)/1.05 'Manrope';letter-spacing:-.045em;margin:0 0 18px}
     .comp-hero h1 span{color:var(--yellow)}
@@ -42,6 +43,12 @@
     .comp-closing{text-align:center;padding:44px 0;background:#090e11}
     .comp-closing strong{display:block;font:800 20px 'Manrope';margin-bottom:6px}
     .comp-closing p{color:#96a0a5;font-size:13px;margin:0}
+    .comp-countdown{display:flex;justify-content:center;gap:14px;margin:18px 0}
+    .comp-countdown div{background:#0e1315;border:1px solid #222d31;border-radius:12px;padding:12px 16px;min-width:66px}
+    .comp-countdown span{display:block;font:800 26px 'Manrope';color:var(--yellow)}
+    .comp-countdown small{display:block;font-size:11px;color:#7d8890;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+    .comp-countdown.ended span{color:#96a0a5}
+    @media(max-width:480px){.comp-countdown{gap:8px}.comp-countdown div{min-width:52px;padding:10px 8px}.comp-countdown span{font-size:20px}}
     .comp-terms{padding:60px 0}
     .comp-terms h2{font:800 1.8rem/1.1 'Manrope';margin:0 0 22px}
     .comp-terms h3{font:700 15px 'Manrope';margin:24px 0 8px;color:var(--yellow)}
@@ -74,6 +81,7 @@
   <main>
     <section class="comp-hero">
       <div class="container">
+        <img src="/images/competition-leica-disto-d2.jpg" alt="Win a Leica DISTO D2 laser measure — download TileIQ, send 3 genuine quotes through the app, you're in the draw. Bonus entry: like/follow and share on Facebook for 2 chances to win. Competition closes 11:59pm UK time, 30 September 2026." class="comp-hero-image">
         <span class="kicker">🎯 COMPETITION</span>
         <h1>Win a Leica <span>DISTO D2</span> laser measure</h1>
         <p>Download TileIQ Pro, send 3 genuine customer quotes through the app, and you're in the draw.</p>
@@ -123,6 +131,12 @@
     <section class="comp-closing">
       <div class="container">
         <strong>Competition closes 11:59pm (UK time), 30 September 2026</strong>
+        <div class="comp-countdown" id="comp-countdown" aria-live="polite">
+          <div><span id="cd-days">--</span><small>days</small></div>
+          <div><span id="cd-hours">--</span><small>hrs</small></div>
+          <div><span id="cd-mins">--</span><small>mins</small></div>
+          <div><span id="cd-secs">--</span><small>secs</small></div>
+        </div>
         <p>Winner announced shortly after. UK residents 18+. No purchase necessary — see full terms below.</p>
       </div>
     </section>
@@ -172,5 +186,34 @@
     </div>
   </footer>
 <script src="/mobile-menu.js"></script>
+<script>
+(function() {
+  // 11:59pm UK time, 30 September 2026 — UK is on BST (UTC+1) in September,
+  // so the offset is spelled out explicitly rather than left to guesswork.
+  var target = new Date("2026-09-30T23:59:00+01:00").getTime();
+  var wrap = document.getElementById('comp-countdown');
+  var dEl = document.getElementById('cd-days');
+  var hEl = document.getElementById('cd-hours');
+  var mEl = document.getElementById('cd-mins');
+  var sEl = document.getElementById('cd-secs');
+  var timer;
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function tick() {
+    var diff = target - Date.now();
+    if (diff <= 0) {
+      wrap.classList.add('ended');
+      dEl.textContent = hEl.textContent = mEl.textContent = sEl.textContent = '0';
+      clearInterval(timer);
+      return;
+    }
+    dEl.textContent = Math.floor(diff / 86400000);
+    hEl.textContent = pad(Math.floor((diff % 86400000) / 3600000));
+    mEl.textContent = pad(Math.floor((diff % 3600000) / 60000));
+    sEl.textContent = pad(Math.floor((diff % 60000) / 1000));
+  }
+  tick();
+  timer = setInterval(tick, 1000);
+})();
+</script>
 </body>
 </html>
