@@ -655,11 +655,12 @@ footer{border-top-color:#173033}
   border-radius:999px;padding:7px 11px;font-size:9px;font-weight:800;letter-spacing:.12em
 }
 .promo-strip{
-  display:inline-flex;align-items:center;gap:6px;margin-bottom:18px;
+  display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;margin:34px 0 18px;max-width:100%;
   background:linear-gradient(135deg,var(--yellow-2),#099895);color:#111;
   border-radius:999px;padding:9px 16px;font:700 13px 'DM Sans',sans-serif;
-  text-decoration:none;transition:transform .15s
+  text-decoration:none;transition:transform .15s;box-sizing:border-box
 }
+@media(max-width:600px){.promo-strip{font-size:12px;border-radius:14px}}
 .promo-strip:hover{transform:translateY(-1px)}
 .promo-strip strong{font-weight:800}
 .pricing-promo-copy h2{font:800 clamp(2rem,3.3vw,3.4rem)/1.05 'Manrope';margin:13px 0 12px;letter-spacing:-.04em}
