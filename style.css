@@ -1072,3 +1072,15 @@ a.blog-card:hover{border-color:#187477}
   .post-more-grid{grid-template-columns:1fr}
   .post-hero{padding:60px 0 34px}
 }
+
+/* ── Benefit rows — standalone tiler-outcome panels on the homepage ── */
+.benefit-row{padding:72px 0;text-align:center;border-bottom:1px solid #1a2226}
+.benefit-row.benefit-row-alt{background:#0b0f11}
+.benefit-row .kicker{display:block;margin-bottom:14px}
+.benefit-row h2{font:800 clamp(2rem,3.6vw,3.2rem)/1.1 'Manrope';letter-spacing:-.04em;margin:0 0 18px;max-width:720px;margin-left:auto;margin-right:auto}
+.benefit-row .lead{font-size:17px;line-height:1.6;color:#c7cdd1;max-width:640px;margin:0 auto 26px}
+.benefit-list{list-style:none;padding:0;margin:0 auto 26px;display:inline-flex;flex-direction:column;gap:9px;text-align:left}
+.benefit-list li{color:#8a9298;font-size:14.5px}
+.benefit-list li:before{content:"—";color:var(--yellow);margin-right:9px;font-weight:800}
+.benefit-closer{font:800 19px/1.3 'Manrope';color:#fff;margin:0;max-width:600px;margin-left:auto;margin-right:auto}
+@media(max-width:600px){.benefit-row{padding:52px 0}}
