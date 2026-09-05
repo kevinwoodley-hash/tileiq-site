@@ -31,31 +31,89 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 10px 0 6px;
-            border-top: 0.5px solid var(--border);
-            margin-top: 4px;
+            padding: 12px 14px;
+            margin: 8px 0;
+            border-radius: 10px;
+            background: var(--blue);
+            border: 1px solid var(--blue);
             cursor: pointer;
+            /* Jumping to a section via the sticky nav would otherwise land its
+               heading right underneath the sticky app header + jump-nav, which
+               both occupy real space at the top — scroll-margin-top tells the
+               browser's own scrollIntoView to stop short of that, rather than
+               computing an offset by hand. Height varies by device and by how
+               many lines the nav chips wrap onto, so it's kept in sync via JS
+               (see syncRoomJumpNavOffset) rather than a fixed guess. */
+            scroll-margin-top: calc(var(--room-sticky-h, 150px) + 12px);
         }
         .rm-section-toggle .rm-section-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--ink);
+            font-size: 16px;
+            font-weight: 800;
+            color: #fff;
         }
         .rm-section-toggle .rm-section-badge {
             font-size: 12px;
-            color: var(--text-muted);
+            color: #fff;
+            opacity: .8;
             font-weight: 400;
             margin-left: 8px;
         }
         .rm-section-toggle .rm-section-arrow {
             font-size: 16px;
-            color: var(--text-muted);
+            color: #fff;
         }
-        .rm-section-toggle.active .rm-section-title {
-            color: #E07A2F;
+        .rm-jump-nav {
+            position: sticky;
+            top: var(--room-header-h, 96px);
+            z-index: 50;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 -16px 14px;
+            padding: 10px 16px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
         }
-        .rm-section-toggle.active .rm-section-arrow {
-            color: #E07A2F;
+        .rm-jump-nav button {
+            background: var(--blue);
+            border: 1px solid var(--blue);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 8px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: transform .1s;
+        }
+        .rm-jump-nav button:active {
+            transform: scale(0.95);
+        }
+        .rm-jump-nav button.rm-jump-active {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: #2b1e05;
+        }
+        .rm-jump-nav button.rm-jump-done {
+            background: var(--amber-lt);
+            border-color: var(--amber);
+            color: var(--ink);
+        }
+        .rm-summary-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--ink);
+        }
+        .rm-summary-row:last-child { border-bottom: none; }
+        .rm-summary-edit {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--amber);
         }
     </style>
 </head>
@@ -246,7 +304,73 @@
     </div>
 </div>
 
-<!-- PHOTO VIEWER -->
+<!-- PHOTO VIEWER — full-size in-app view for any thumbnail (job photos, customer
+     photos). window.open(url,'_blank') doesn't do anything visible in the native
+     WebView (no browser chrome to open a tab into) — this replaces it. -->
+<div id="photo-viewer-overlay" class="hidden" style="position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;" onclick="closePhotoViewer()">
+    <button type="button" onclick="closePhotoViewer()" style="position:absolute;top:32px;right:16px;background:rgba(120,120,120,.35);border:none;color:#fff;width:40px;height:40px;border-radius:20px;font-size:20px;cursor:pointer;z-index:1;">✕</button>
+    <img id="photo-viewer-img" src="" style="max-width:80vw;max-height:65vh;border-radius:10px;object-fit:contain;" onclick="event.stopPropagation()">
+</div>
+
+<!-- SOCIAL POST COMPOSER — pick finished-job photos, generate an AI caption
+     from them + the room/tile/location context already in the job, then hand
+     the caption + photo(s) to the OS share sheet. Deliberately not a direct
+     Facebook/Instagram API integration (needs Meta app review + business
+     verification) — the share sheet lets the tiler post to whatever they
+     actually have installed. -->
+<div id="social-post-overlay" class="hidden" style="position:fixed;inset:0;z-index:9700;background:var(--bg);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(135deg,#E6AF2E,#C8900E);padding:calc(env(safe-area-inset-top,0px) + 22px) 14px 26px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <button type="button" onclick="closeSocialPostComposer()" style="background:rgba(0,0,0,.15);border:none;color:#3a2a08;width:38px;height:38px;border-radius:10px;font-size:19px;cursor:pointer;flex-shrink:0;">✕</button>
+            <div style="flex:1;">
+                <div style="font-family:'Syne',sans-serif;font-weight:800;color:#2b1e05;font-size:19px;letter-spacing:.2px;">✨ Create Social Post</div>
+                <div id="social-post-hint" style="color:rgba(43,30,5,.75);font-size:12.5px;margin-top:3px;">Select 1–5 photos below, then generate a caption.</div>
+            </div>
+        </div>
+    </div>
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:14px;margin-top:-10px;">
+        <div class="form-card">
+            <div class="form-section-label" style="margin-bottom:10px;">📷 Photos</div>
+            <div id="social-post-photo-grid" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+
+        <div class="form-card">
+            <div class="form-section-label" style="margin-bottom:10px;">🎨 Caption style</div>
+            <select id="social-post-style" class="hidden" onchange="renderSocialStylePicker()">
+                <option value="friendly">Friendly</option>
+                <option value="professional">Professional</option>
+                <option value="short">Short</option>
+                <option value="sales">Sales-focused</option>
+            </select>
+            <div id="social-post-style-picker" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+        </div>
+
+        <button type="button" id="social-post-generate-btn" onclick="generateSocialCaption()" style="width:100%;padding:13px;font-weight:700;font-size:15px;border-radius:10px;color:#2b1e05;background:linear-gradient(135deg,#E6AF2E,#C8900E);box-shadow:0 4px 16px rgba(230,175,46,.35);" disabled>✨ Generate Caption</button>
+        <div id="social-post-loading" class="hidden" style="text-align:center;margin-top:16px;">
+            <div class="tile-loader"><span class="chip"></span><span class="chip"></span><span class="chip"></span><span class="chip"></span></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:8px;">Laying your caption, tile by tile…</div>
+        </div>
+        <div id="social-post-error" style="font-size:12px;color:var(--red);margin-top:8px;"></div>
+
+        <div id="social-post-result" class="hidden form-card" style="margin-top:14px;">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
+                <div class="form-section-label" style="margin-bottom:0;">✏️ Caption</div>
+                <div style="font-size:11px;color:var(--muted);">edit before sharing</div>
+            </div>
+            <textarea id="social-post-caption" rows="9" style="width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;font-family:inherit;resize:vertical;"></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button type="button" onclick="generateSocialCaption()" class="btn-secondary" style="flex:1;">🔄 Regenerate</button>
+                <button type="button" onclick="shareSocialPost()" id="social-post-share-btn" class="btn-primary" style="flex:1;">📤 Share</button>
+            </div>
+            <div style="display:flex;gap:8px;background:var(--amber-lt);border-radius:8px;padding:10px 12px;margin-top:12px;">
+                <div style="flex-shrink:0;">💡</div>
+                <div style="font-size:11.5px;color:var(--ink);line-height:1.5;">
+                    We've copied the caption to your clipboard — Instagram/Facebook won't add it for you, so just paste it in. For "Add to Story" only your first photo is used (that's an Instagram/Facebook limit); pick "Post" instead to share all of them.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- DASHBOARD -->
 <div id="screen-paywall" class="screen hidden">
     <div class="page-body" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 24px;min-height:100vh;">
@@ -611,6 +735,21 @@
                 <button onclick="goQuote()" class="btn-primary" style="flex:1;min-width:80px;">Quote →</button>
             </div>
         </div>
+        <div id="job-photos-card" class="form-card" style="margin-top:14px;">
+            <div class="form-section-label">📷 Job Photos <span style="font-weight:400;color:var(--muted);font-size:11px;">(your own reference — not shown to the customer)</span></div>
+            <div id="job-photos-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
+            <div id="job-photos-empty" class="empty-state-small" style="margin-top:0;">No photos yet — add some for your own reference before the job's marked complete.</div>
+            <button type="button" onclick="addJobPhoto()" id="btn-add-job-photo" class="btn-secondary" style="width:100%;margin-top:10px;">📷 Add Photo</button>
+            <div id="job-photo-upload-msg" style="font-size:12px;margin-top:6px;"></div>
+        </div>
+        <div id="finished-photos-card" class="form-card" style="margin-top:14px;">
+            <div class="form-section-label">✅ Finished Photos <span style="font-weight:400;color:var(--muted);font-size:11px;">(the completed job — used for social posts)</span></div>
+            <div id="finished-photos-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
+            <div id="finished-photos-empty" class="empty-state-small" style="margin-top:0;">No finished photos yet — add some once the job's done, ready to turn into a social post.</div>
+            <button type="button" onclick="addFinishedPhoto()" id="btn-add-finished-photo" class="btn-secondary" style="width:100%;margin-top:10px;">📷 Add Finished Photo</button>
+            <div id="finished-photo-upload-msg" style="font-size:12px;margin-top:6px;"></div>
+            <button type="button" onclick="openSocialPostComposer()" id="btn-create-social-post" class="btn-primary hidden" style="width:100%;margin-top:10px;">✨ Create Social Post</button>
+        </div>
         <div id="job-quote-status-bar" style="display:none;margin-top:10px;"></div>
         <div id="job-messages-btn-wrap" style="display:none;margin-top:10px;">
             <button onclick="goMessages()" id="job-messages-btn" class="btn-secondary" style="width:100%;position:relative;">
@@ -816,6 +955,8 @@
             </div>
         </div><!-- /measurements card -->
 
+        <div class="rm-jump-nav" id="rm-jump-nav-room"></div>
+
         <div class="form-card" style="margin-bottom:8px;">
             <div class="rm-section-toggle" onclick="toggleDeductPanel('r')" id="deduct-toggle-r">
                 <div><span class="rm-section-title">Deductions</span></div>
@@ -843,6 +984,11 @@
                 <span class="rm-section-arrow" id="collapse-arrow-room-wall-opts">▸</span>
             </div>
             <div id="collapse-panel-room-wall-opts" class="hidden" style="padding-top:10px;">
+                <div class="rm-section-toggle" onclick="toggleCollapse('room-tile-type')" id="collapse-toggle-room-tile-type">
+                    <div><span class="rm-section-title">Tile Type</span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-room-tile-type">▸</span>
+                </div>
+                <div id="collapse-panel-room-tile-type" class="hidden">
                 <div class="field-group" style="margin-bottom:10px;">
                     <label>Tile Type</label>
                     <select id="rm-tile-type" onchange="updateTileTypeNote();rmCalc();rmUpdateOptionsBadge()">
@@ -871,7 +1017,8 @@
                         </select>
                     </div>
                 </div>
-                <div class="rm-section-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles" style="border-top:0.5px solid var(--border);padding-top:8px;">
+                </div><!-- /collapse-panel-room-tile-type -->
+                <div class="rm-section-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles">
                     <div><span class="rm-section-title">Wall Tiles</span><span id="walltiles-badge" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;"></span></div>
                     <span class="rm-section-arrow" id="collapse-arrow-walltiles">▸</span>
                 </div>
@@ -894,8 +1041,12 @@
                     <label>Wall Grout Joint (mm)</label>
                     <input id="rm-r-wgrout" type="number" value="2" oninput="rmCalc()">
                 </div>
+                <div class="field-group">
+                    <label>Wall Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                    <input id="rm-r-wtilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
                 </div>
-                <div class="rm-section-toggle" onclick="toggleCollapse('room-wall-prep')" id="collapse-toggle-room-wall-prep" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('room-wall-prep')" id="collapse-toggle-room-wall-prep">
                     <div><span class="rm-section-title">Wall Preparation</span></div>
                     <span class="rm-section-arrow" id="collapse-arrow-room-wall-prep">▸</span>
                 </div>
@@ -936,7 +1087,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="rm-section-toggle" onclick="toggleCollapse('niches-r')" id="collapse-toggle-niches-r" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
+                <div class="rm-section-toggle" onclick="toggleCollapse('niches-r')" id="collapse-toggle-niches-r">
                     <div><span class="rm-section-title">Niches</span><span id="niches-r-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
                     <span class="rm-section-arrow" id="collapse-arrow-niches-r">▸</span>
                 </div>
@@ -990,11 +1141,23 @@
                         </label>
                     </div>
                 </div>
-                <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-tile')" id="collapse-toggle-room-floor-tile" style="border-top:0.5px solid var(--border);padding-top:8px;">
+                <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-tile')" id="collapse-toggle-room-floor-tile">
                     <div><span class="rm-section-title">Floor Tile</span><span id="room-floor-tile-badge" class="rm-section-badge"></span></div>
                     <span class="rm-section-arrow" id="collapse-arrow-room-floor-tile">▸</span>
                 </div>
                 <div id="collapse-panel-room-floor-tile" class="hidden">
+                <div class="field-group" style="margin-bottom:10px;">
+                    <label>Tile Type</label>
+                    <select id="rm-r-ftile-type" onchange="updateRoomFloorTileType()">
+                        <option value="ceramic">Ceramic</option>
+                        <option value="porcelain" selected>Porcelain</option>
+                        <option value="natural_stone">Natural Stone</option>
+                        <option value="modular">Modular Pattern</option>
+                        <option value="herringbone">Herringbone</option>
+                        <option value="mosaic">Mosaic</option>
+                    </select>
+                </div>
+                <div id="rm-r-ftile-type-rate-note" class="field-group" style="margin-bottom:10px;font-size:12px;color:var(--text-muted);"></div>
                 <div class="field-row">
                     <div class="field-group">
                         <label>Floor Tile W (mm)</label>
@@ -1013,8 +1176,12 @@
                     <label>Floor Grout Joint (mm)</label>
                     <input id="rm-r-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
                 </div>
+                <div class="field-group">
+                    <label>Floor Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                    <input id="rm-r-ftilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
                 </div>
-                <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-prep')" id="collapse-toggle-room-floor-prep" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
+                </div>
+                <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-prep')" id="collapse-toggle-room-floor-prep">
                     <div><span class="rm-section-title">Floor Preparation</span></div>
                     <span class="rm-section-arrow" id="collapse-arrow-room-floor-prep">▸</span>
                 </div>
@@ -1093,16 +1260,6 @@
         </div>
 
         <div class="form-card" style="margin-bottom:8px;">
-            <div class="field-row" style="margin-bottom:6px;">
-                <div class="field-group">
-                    <label>Wall Tile Price (£/m²)</label>
-                    <input id="rm-r-wtilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
-                </div>
-                <div class="field-group">
-                    <label>Floor Tile Price (£/m²)</label>
-                    <input id="rm-r-ftilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
-                </div>
-            </div>
             <div class="rm-section-toggle" onclick="toggleCollapse('sealant')" id="collapse-toggle-sealant">
                 <div><span class="rm-section-title">Sealant</span></div>
                 <span class="rm-section-arrow" id="collapse-arrow-sealant">▸</span>
@@ -1221,6 +1378,8 @@
                 </div>
             </div>
         </div>
+
+        <div class="rm-jump-nav" id="rm-jump-nav-floor"></div>
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:6px;">
                 <label>Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
@@ -1320,6 +1479,17 @@
                 <span class="rm-section-arrow" id="collapse-arrow-floor-tile">▸</span>
             </div>
             <div id="collapse-panel-floor-tile" class="hidden">
+            <div class="field-group" style="margin-bottom:10px;">
+                <label>Tile Type</label>
+                <select id="rm-f-tile-type" onchange="document.getElementById('rm-tile-type').value=this.value;updateTileTypeNote()">
+                    <option value="ceramic">Ceramic</option>
+                    <option value="porcelain">Porcelain</option>
+                    <option value="natural_stone">Natural Stone</option>
+                    <option value="modular">Modular Pattern</option>
+                    <option value="herringbone">Herringbone</option>
+                    <option value="mosaic">Mosaic</option>
+                </select>
+            </div>
             <div class="field-row">
                 <div class="field-group">
                     <label>Tile W (mm)</label>
@@ -1449,6 +1619,8 @@
                 </div>
             </div>
         </div>
+
+        <div class="rm-jump-nav" id="rm-jump-nav-wall"></div>
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:6px;">
                 <label>Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
@@ -1516,6 +1688,17 @@
                 <span class="rm-section-arrow" id="collapse-arrow-wall-tile">▸</span>
             </div>
             <div id="collapse-panel-wall-tile" class="hidden">
+            <div class="field-group" style="margin-bottom:10px;">
+                <label>Tile Type</label>
+                <select id="rm-w-tile-type" onchange="document.getElementById('rm-tile-type').value=this.value;updateTileTypeNote()">
+                    <option value="ceramic">Ceramic</option>
+                    <option value="porcelain">Porcelain</option>
+                    <option value="natural_stone">Natural Stone</option>
+                    <option value="modular">Modular Pattern</option>
+                    <option value="herringbone">Herringbone</option>
+                    <option value="mosaic">Mosaic</option>
+                </select>
+            </div>
             <div class="field-row">
                 <div class="field-group">
                     <label>Tile W (mm)</label>
@@ -1573,11 +1756,11 @@
             <div class="field-row">
                 <div class="field-group">
                     <label>Width (m)</label>
-                    <input id="rm-sh-width" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc()" data-disto>
+                    <input id="rm-sh-width" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc();rmShSyncTrayDims()" data-disto>
                 </div>
                 <div class="field-group">
                     <label>Depth (m)</label>
-                    <input id="rm-sh-depth" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc()" data-disto>
+                    <input id="rm-sh-depth" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc();rmShSyncTrayDims()" data-disto>
                 </div>
                 <div class="field-group">
                     <label>Height (m)</label>
@@ -1600,6 +1783,8 @@
                 <input id="rm-sh-wtilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
             </div>
         </div>
+
+        <div class="rm-jump-nav" id="rm-jump-nav-shower"></div>
         <div class="form-card" style="margin-bottom:8px;">
             <div class="rm-section-toggle" onclick="toggleCollapse('niches-sh')" id="collapse-toggle-niches-sh">
                 <div><span class="rm-section-title">Niches</span><span id="niches-sh-badge" style="font-size:10px;font-weight:600;color:var(--amber);margin-left:6px;"></span></div>
@@ -1614,6 +1799,17 @@
                 <span class="rm-section-arrow" id="collapse-arrow-shower-wall-tile">▸</span>
             </div>
             <div id="collapse-panel-shower-wall-tile" class="hidden">
+            <div class="field-group" style="margin-bottom:10px;">
+                <label>Tile Type</label>
+                <select id="rm-sh-tile-type" onchange="document.getElementById('rm-tile-type').value=this.value;updateTileTypeNote()">
+                    <option value="ceramic">Ceramic</option>
+                    <option value="porcelain">Porcelain</option>
+                    <option value="natural_stone">Natural Stone</option>
+                    <option value="modular">Modular Pattern</option>
+                    <option value="herringbone">Herringbone</option>
+                    <option value="mosaic">Mosaic</option>
+                </select>
+            </div>
             <div class="field-row">
                 <div class="field-group">
                     <label>Tile W (mm)</label>
@@ -1659,12 +1855,38 @@
                 </div>
             </div>
             </div>
-            <div class="divider-label">Wetroom Tray</div>
+            <div class="rm-section-toggle" onclick="toggleCollapse('shower-floor-opts')" id="collapse-toggle-shower-floor-opts">
+                <div><span class="rm-section-title">Wetroom Tray</span></div>
+                <span class="rm-section-arrow" id="collapse-arrow-shower-floor-opts">▸</span>
+            </div>
+            <div id="collapse-panel-shower-floor-opts" class="hidden">
             <label class="checkbox-label" style="margin-bottom:10px;">
                 <input type="checkbox" id="rm-sh-inclfloor" onchange="rmToggleShowerFloor()">
                 Include Wetroom Tray
             </label>
             <div id="rm-sh-floor-opts" class="hidden">
+                <div class="prep-options" style="margin-bottom:10px;">
+                    <label class="prep-option">
+                        <input type="checkbox" id="rm-sh-tray" onchange="rmShTrayToggle()">
+                        <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray"></span> flat rate</span></div>
+                    </label>
+                    <div id="rm-sh-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
+                        <div class="field-row" style="gap:8px;">
+                            <div class="field-group">
+                                <label>Tray Price (£)</label>
+                                <input id="rm-sh-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
+                            </div>
+                            <div class="field-group">
+                                <label>Width (mm)</label>
+                                <input id="rm-sh-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                            </div>
+                            <div class="field-group">
+                                <label>Depth (mm)</label>
+                                <input id="rm-sh-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="field-group" style="margin-bottom:6px;">
                     <label>Floor Wastage %</label>
                     <input id="rm-sh-fwastage" type="number" min="0" max="50" step="1" value="10" oninput="rmCalc()" style="width:80px;">
@@ -1697,32 +1919,7 @@
                     <input id="rm-sh-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('shower-floor-tile','rm-sh-ftilew','rm-sh-ftileh','rm-sh-fgrout')">
                 </div>
                 </div>
-                <div class="rm-section-toggle" onclick="toggleCollapse('shower-floor-prep')" id="collapse-toggle-shower-floor-prep">
-                <div><span class="rm-section-title">Floor Preparation</span></div>
-                <span class="rm-section-arrow" id="collapse-arrow-shower-floor-prep">▸</span>
-                </div>
-                <div id="collapse-panel-shower-floor-prep" class="hidden">
-                <div class="prep-options">
-                    <label class="prep-option">
-                        <input type="checkbox" id="rm-sh-tray" onchange="rmShTrayToggle()">
-                        <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray"></span> flat rate</span></div>
-                    </label>
-                    <div id="rm-sh-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
-                            <div class="field-row" style="gap:8px;">
-                                <div class="field-group">
-                                    <label>Tray Price (£)</label>
-                                    <input id="rm-sh-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
-                                </div>
-                                <div class="field-group">
-                                    <label>Width (mm)</label>
-                                    <input id="rm-sh-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
-                                </div>
-                                <div class="field-group">
-                                    <label>Depth (mm)</label>
-                                    <input id="rm-sh-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
-                                </div>
-                            </div>
-                        </div>
+                <div class="prep-options" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-sh-ftanking" onchange="rmCalc()" checked>
                         <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-sh"></span>/kit</span></div>
@@ -1744,8 +1941,8 @@
                         <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
                     </label>
                 </div>
-                </div>
             </div>
+            </div><!-- /collapse-panel-shower-floor-opts -->
             <div class="rm-section-toggle" onclick="toggleCollapse('extrawork-sh')" id="collapse-toggle-extrawork-sh">
                 <div><span class="rm-section-title">Extra Work</span></div>
                 <span class="rm-section-arrow" id="collapse-arrow-extrawork-sh">▸</span>
@@ -1798,6 +1995,8 @@
                 </div>
             </div>
         </div>
+
+        <div id="rm-summary" class="form-card hidden" style="margin-bottom:14px;"></div>
 
         <div class="live-total-card">
             <div class="live-total-label">Estimated Room Total <span id="rm-area" class="live-total-m2"></span></div>
@@ -2011,6 +2210,43 @@
                         <option value="true">No – show project price only</option>
                     </select>
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Turn this off to send clients a single project price, with no materials or labour costs itemised. You can still override this per quote.</div>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
+                <div class="form-section-label" style="display:flex;align-items:center;gap:6px;">
+                    <svg width="16" height="16" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+                        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+                        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+                        <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
+                        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+                    </svg>
+                    Google Reviews
+                </div>
+                <div class="field-group">
+                    <label>Automatically ask for a review? <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(sent once, when a job's status is set to Complete)</span></label>
+                    <select id="set-auto-review">
+                        <option value="false">Off</option>
+                        <option value="true">On</option>
+                    </select>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Emails the customer a link to leave you a Google review after a job is marked Complete. Needs your review link below to actually send.</div>
+                </div>
+                <div class="field-group">
+                    <label>Send after <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(days after job marked Complete)</span></label>
+                    <select id="set-review-delay-days">
+                        <option value="0">Immediately</option>
+                        <option value="1">1 day</option>
+                        <option value="2">2 days</option>
+                        <option value="3">3 days</option>
+                        <option value="5">5 days</option>
+                        <option value="7">7 days</option>
+                        <option value="14">14 days</option>
+                    </select>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Checked whenever you open the app — so it goes out the next time you're back, on or after this many days.</div>
+                </div>
+                <div class="field-group" style="margin-bottom:0;">
+                    <label>Google Review Link</label>
+                    <input id="set-google-review-link" type="url" placeholder="https://g.page/r/.../review" inputmode="url">
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Find this in your Google Business Profile — Ask for reviews → Share review form.</div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
@@ -3672,24 +3908,35 @@
      screen-navigation stack, just a modal launched from and closed straight back to
      whichever room-editor field opened it. -->
 <div id="sketch-overlay" class="hidden" style="position:fixed;inset:0;z-index:9500;background:var(--bg);display:flex;flex-direction:column;">
-    <div style="display:flex;align-items:center;gap:10px;padding:14px 14px 8px;">
-        <button type="button" onclick="ShapeSketch.cancel()" style="background:rgba(120,120,120,.25);border:none;color:var(--ink,#1e2328);width:36px;height:36px;border-radius:8px;font-size:18px;cursor:pointer;">✕</button>
-        <div style="flex:1;">
-            <div style="font-weight:700;color:var(--ink,#1e2328);font-size:15px;">Sketch the outline</div>
-            <div id="sketch-hint" style="color:var(--muted,#72757a);font-size:12px;">Tap to place each corner — snaps to 45°. Need at least 3 points.</div>
+    <div style="background:linear-gradient(135deg,#E6AF2E,#C8900E);padding:calc(env(safe-area-inset-top,0px) + 22px) 14px 20px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <button type="button" onclick="ShapeSketch.cancel()" style="background:rgba(0,0,0,.15);border:none;color:#3a2a08;width:38px;height:38px;border-radius:10px;font-size:19px;cursor:pointer;flex-shrink:0;">✕</button>
+            <div style="flex:1;min-width:0;">
+                <div style="font-family:'Syne',sans-serif;font-weight:800;color:#2b1e05;font-size:17px;letter-spacing:.2px;">📐 Sketch the outline</div>
+                <div id="sketch-hint" style="color:rgba(43,30,5,.75);font-size:12px;margin-top:2px;">Tap to place each corner — snaps to 45°. Need at least 3 points.</div>
+            </div>
+            <button type="button" id="sketch-disto-connect-btn" class="disto-btn" style="background:rgba(0,0,0,.15);border:none;color:#2b1e05;font-weight:700;font-size:11px;padding:8px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;white-space:nowrap;">⚪ Disto</button>
         </div>
     </div>
     <canvas id="sketch-canvas" style="flex:1;min-height:0;touch-action:none;"></canvas>
     <div id="sketch-draw-controls" style="display:flex;gap:8px;padding:10px 14px;">
         <button type="button" onclick="ShapeSketch.undo()" style="flex:1;background:rgba(120,120,120,.25);color:var(--ink,#1e2328);border:none;border-radius:8px;padding:12px;font-size:14px;cursor:pointer;">↩ Undo Point</button>
-        <button type="button" id="sketch-close-shape-btn" onclick="ShapeSketch.closeShape()" disabled style="flex:1;background:#27d3c3;color:#04231f;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;opacity:.5;">✓ Close Shape</button>
+        <button type="button" id="sketch-close-shape-btn" onclick="ShapeSketch.closeShape()" disabled style="flex:1;background:linear-gradient(135deg,#E6AF2E,#C8900E);color:#2b1e05;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;opacity:.5;box-shadow:0 3px 10px rgba(230,175,46,.3);">✓ Close Shape</button>
     </div>
     <div id="sketch-measure-panel" class="hidden" style="padding:0 14px 14px;overflow-y:auto;max-height:45vh;">
         <div id="sketch-area-readout" style="text-align:center;font-size:22px;font-weight:800;color:var(--ink,#1e2328);margin-bottom:10px;">0.00 m²</div>
         <div id="sketch-edge-list"></div>
         <div style="display:flex;gap:8px;margin-top:10px;">
             <button type="button" id="sketch-add-cutout-btn" onclick="ShapeSketch.addCutout()" style="flex:1;background:rgba(120,120,120,.25);color:var(--ink,#1e2328);border:none;border-radius:8px;padding:12px;font-size:14px;cursor:pointer;">+ Add Cutout</button>
-            <button type="button" id="sketch-use-area-btn" onclick="ShapeSketch.useThisArea()" disabled style="flex:1;background:#27d3c3;color:#04231f;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;opacity:.5;">Use This Area</button>
+            <button type="button" id="sketch-use-area-btn" onclick="ShapeSketch.useThisArea()" disabled style="flex:1;background:linear-gradient(135deg,#E6AF2E,#C8900E);color:#2b1e05;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;opacity:.5;box-shadow:0 3px 10px rgba(230,175,46,.3);">✓ Use This Area</button>
+        </div>
+    </div>
+    <div id="sketch-continue-prompt" class="hidden" style="padding:8px 14px 20px;text-align:center;">
+        <div style="font-size:16px;font-weight:800;color:var(--ink,#1e2328);margin-bottom:4px;">✅ Saved!</div>
+        <div id="sketch-continue-text" style="font-size:13px;color:var(--muted,#72757a);margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+            <button type="button" onclick="ShapeSketch.finishDone()" style="flex:1;background:rgba(120,120,120,.25);color:var(--ink,#1e2328);border:none;border-radius:8px;padding:12px;font-size:14px;cursor:pointer;">Done</button>
+            <button type="button" id="sketch-continue-btn" onclick="ShapeSketch.continueToOther()" class="hidden" style="flex:1;background:linear-gradient(135deg,#E6AF2E,#C8900E);color:#2b1e05;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(230,175,46,.3);"></button>
         </div>
     </div>
 </div>

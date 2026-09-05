@@ -40,6 +40,8 @@ window.onerror = function(msg, src, line) {
 };
 
 /* ─── BLOCK WEB BROWSER ACCESS ──────────────────────────────── */
+/* Disabled here (native-only gate) — this deployment IS the intentional
+   browser/web version of the app, at tile-iq.com/app/. */
 if (false && (!window.Capacitor || !window.Capacitor.isNativePlatform())) {
   document.body.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;background:#0f172a;color:#f1f5f9;text-align:center;padding:2rem;">
@@ -86,6 +88,9 @@ let settings = {
     nicheLabourRate: 30,   // £ flat rate per niche (confined space surcharge)
     applyVat:      true,
     hideCostBreakdown: false, // when true, quotes show only the project price — no materials/labour split
+    autoRequestReview: false, // when true, emails the customer a Google-review request reviewRequestDelayDays after a job is marked Complete
+    googleReviewLink: "",     // the tiler's own "leave a review" link, required for autoRequestReview to actually send
+    reviewRequestDelayDays: 3, // days to wait after completion before sending — 0 sends as soon as the app next checks
     // tile type labour multipliers
     tileRates: {
         ceramic:      1.0,
@@ -1806,9 +1811,16 @@ async function loadUserData() {
             this._deviceId = null;
             this._updateBtn();
         },
+        // Every screen that can take a Disto reading gets its own connect/disconnect
+        // button (the room editor, and the Sketch overlay) — they all reflect the same
+        // single BLE connection, so keep every one of them in sync here. The Sketch
+        // header button gets a shorter label — it sits in a tight header pill next to
+        // the title, not a full-width settings row like the room editor's.
         _updateBtn() {
-            const btn = document.getElementById('disto-connect-btn');
-            if (btn) btn.textContent = this._connected ? '🔵 Disto Connected' : '⚪ Connect Disto';
+            const full = document.getElementById('disto-connect-btn');
+            if (full) full.textContent = this._connected ? '🔵 Disto Connected' : '⚪ Connect Disto';
+            const short = document.getElementById('sketch-disto-connect-btn');
+            if (short) short.textContent = this._connected ? '🔵 Disto' : '⚪ Disto';
         }
     };
     window.Disto = DistoD2;
@@ -1930,21 +1942,25 @@ async function loadUserData() {
             document.getElementById('sketch-overlay')?.classList.remove('hidden');
             document.getElementById('sketch-draw-controls')?.classList.remove('hidden');
             document.getElementById('sketch-measure-panel')?.classList.add('hidden');
+            document.getElementById('sketch-continue-prompt')?.classList.add('hidden');
             const hint = document.getElementById('sketch-hint');
             if (hint) hint.textContent = 'Tap to place each corner — snaps to 45°. Need at least 3 points.';
             this._setCloseEnabled(false);
             this._setupCanvas();
             this.redraw();
+            window.Disto?._updateBtn();
         },
 
         cancel() { this._close(); },
 
         _close() {
             document.getElementById('sketch-overlay')?.classList.add('hidden');
+            document.getElementById('sketch-continue-prompt')?.classList.add('hidden');
             this.current = null;
             this.outer = null;
             this.cutouts = [];
             this.targetFieldId = null;
+            this._nextTarget = null;
         },
 
         _setupCanvas() {
@@ -2150,7 +2166,48 @@ async function loadUserData() {
                     console.warn('ShapeSketch: no Deductions group wired for target field', this.targetFieldId);
                 }
             }
+            this._offerContinue();
+        },
+
+        // Floor and Wall are tabs of the same room editor (see rmSelectType) — after
+        // saving one, offer to jump straight into sketching the other instead of making
+        // the tiler back all the way out and find that tab's own Sketch button themselves.
+        _continueMap: {
+            'rm-f-area-direct': { type: 'wall',  field: 'rm-w-area-direct', label: 'walls' },
+            'rm-w-area-direct': { type: 'floor', field: 'rm-f-area-direct', label: 'floor' }
+        },
+
+        _offerContinue() {
+            const next = this._continueMap[this.targetFieldId] || null;
+            this._nextTarget = next;
+            document.getElementById('sketch-draw-controls')?.classList.add('hidden');
+            document.getElementById('sketch-measure-panel')?.classList.add('hidden');
+            const prompt = document.getElementById('sketch-continue-prompt');
+            if (!prompt) { this._close(); return; }
+            const btn = document.getElementById('sketch-continue-btn');
+            const text = document.getElementById('sketch-continue-text');
+            if (next) {
+                if (text) text.textContent = `Want to sketch the ${next.label} for this room too?`;
+                if (btn) { btn.textContent = `✏️ Sketch the ${next.label}`; btn.classList.remove('hidden'); }
+            } else {
+                if (text) text.textContent = 'Area saved.';
+                if (btn) btn.classList.add('hidden');
+            }
+            prompt.classList.remove('hidden');
+        },
+
+        finishDone() {
+            this._nextTarget = null;
             this._close();
+        },
+
+        continueToOther() {
+            const next = this._nextTarget;
+            this._nextTarget = null;
+            document.getElementById('sketch-continue-prompt')?.classList.add('hidden');
+            if (!next) { this._close(); return; }
+            if (typeof window.rmSelectType === 'function') window.rmSelectType(next.type);
+            this.open(next.field);
         },
 
         redraw() {
@@ -2179,13 +2236,13 @@ async function loadUserData() {
                 }
             };
 
-            if (this.outer) drawShape(this.outer, 'rgba(148,163,184,.6)', 'rgba(39,211,195,.08)', false);
+            if (this.outer) drawShape(this.outer, 'rgba(148,163,184,.6)', 'rgba(230,175,46,.08)', false);
             this.cutouts.forEach(c => drawShape(c, 'rgba(248,113,113,.7)', 'rgba(248,113,113,.12)', false));
             if (this.current) {
                 drawShape(
                     this.current,
-                    this.current.isCutout ? '#f87171' : '#27d3c3',
-                    this.current.closed ? (this.current.isCutout ? 'rgba(248,113,113,.15)' : 'rgba(39,211,195,.15)') : null,
+                    this.current.isCutout ? '#f87171' : '#e6af2e',
+                    this.current.closed ? (this.current.isCutout ? 'rgba(248,113,113,.15)' : 'rgba(230,175,46,.15)') : null,
                     true
                 );
                 // Once closed, number each edge at its midpoint so it's obvious which
@@ -2197,7 +2254,7 @@ async function loadUserData() {
         _drawEdgeLabels(shape) {
             const ctx = this._ctx;
             const pts = shape.points;
-            const badgeFill = shape.isCutout ? '#f87171' : '#27d3c3';
+            const badgeFill = shape.isCutout ? '#f87171' : '#e6af2e';
             ctx.font = '700 13px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -2214,7 +2271,7 @@ async function loadUserData() {
                 } else {
                     ctx.fillRect(mx - boxW / 2, my - boxH / 2, boxW, boxH);
                 }
-                ctx.fillStyle = '#04231f';
+                ctx.fillStyle = shape.isCutout ? '#3a0a0a' : '#2b1e05';
                 ctx.fillText(label, mx, my + 1);
             }
         }
@@ -2225,10 +2282,12 @@ async function loadUserData() {
     // Disto D2
     if (window.Disto) {
         window.Disto.init();
-        document.getElementById("disto-connect-btn")?.addEventListener("click", async () => {
+        const distoToggle = async () => {
             if (window.Disto.isConnected()) { await window.Disto.disconnect(); }
             else { await window.Disto.connect(); }
-        });
+        };
+        document.getElementById("disto-connect-btn")?.addEventListener("click", distoToggle);
+        document.getElementById("sketch-disto-connect-btn")?.addEventListener("click", distoToggle);
         // Set active input on focus for any data-disto field
         document.addEventListener('focusin', (e) => {
             if (e.target?.matches('input[data-disto]')) {
@@ -3067,6 +3126,7 @@ function renderDashboard() {
 
     renderQuoteTotals();
     renderReminders();
+    checkDueReviewRequests();
 
     // Show loading spinner if fetching
     if (isLoadingJobs && jobs.length === 0) {
@@ -3867,6 +3927,428 @@ function renderJobQuoteStatusBar() {
     }
 }
 
+// ── Photo Viewer — full-size in-app view for any thumbnail. window.open(url,
+// '_blank') is a no-op in the native WebView (no browser chrome to open a tab
+// into), so every photo thumbnail (job photos, customer photos) routes here
+// instead of that.
+function viewPhoto(url) {
+    const overlay = document.getElementById("photo-viewer-overlay");
+    const img = document.getElementById("photo-viewer-img");
+    if (!overlay || !img) return;
+    img.src = url;
+    overlay.classList.remove("hidden");
+}
+function closePhotoViewer() {
+    const overlay = document.getElementById("photo-viewer-overlay");
+    const img = document.getElementById("photo-viewer-img");
+    if (overlay) overlay.classList.add("hidden");
+    if (img) img.src = "";
+}
+
+// ── Job Photos — the tiler's own on-site reference photos, taken/uploaded
+// any time before the job is marked complete. Deliberately a separate field
+// from job.photos (customer-submitted at enquiry time, rendered in the
+// source banner above) — different purpose, different audience. Stored the
+// same way as the company logo: uploaded to Supabase Storage, public URL
+// kept on the job's own JSON blob, persisted via the normal saveAll() path.
+function renderJobPhotos(job) {
+    const grid = document.getElementById("job-photos-grid");
+    const empty = document.getElementById("job-photos-empty");
+    if (!grid || !empty) return;
+    const photos = Array.isArray(job.sitePhotos) ? job.sitePhotos : [];
+    empty.style.display = photos.length ? "none" : "";
+    grid.innerHTML = photos.map(url => `
+        <div style="position:relative;width:80px;height:80px;">
+            <img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;" onclick="viewPhoto('${url}')">
+            <button type="button" onclick="removeJobPhoto('${url}')" title="Remove" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;line-height:1;cursor:pointer;">×</button>
+        </div>
+    `).join("");
+}
+
+// ── Finished Photos — a separate collection from Job Photos above,
+// specifically the completed job (not before/during-work reference shots).
+// This is what the Social Post composer draws from — mixing "before" photos
+// into a social post would be exactly wrong.
+function renderFinishedPhotos(job) {
+    const grid = document.getElementById("finished-photos-grid");
+    const empty = document.getElementById("finished-photos-empty");
+    if (!grid || !empty) return;
+    const photos = Array.isArray(job.finishedPhotos) ? job.finishedPhotos : [];
+    empty.style.display = photos.length ? "none" : "";
+    const socialBtn = document.getElementById("btn-create-social-post");
+    if (socialBtn) socialBtn.classList.toggle("hidden", photos.length === 0);
+    grid.innerHTML = photos.map(url => `
+        <div style="position:relative;width:80px;height:80px;">
+            <img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;" onclick="viewPhoto('${url}')">
+            <button type="button" onclick="removeFinishedPhoto('${url}')" title="Remove" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;line-height:1;cursor:pointer;">×</button>
+        </div>
+    `).join("");
+}
+
+async function addJobPhoto() {
+    if (!currentUser) { alert("Please log in first."); return; }
+    const job = getJob();
+    if (!job) return;
+    const btn = document.getElementById("btn-add-job-photo");
+    const msg = document.getElementById("job-photo-upload-msg");
+    if (msg) msg.textContent = "";
+
+    const cameraPlugin = window.Capacitor?.Plugins?.Camera;
+    if (!cameraPlugin) { alert("Camera is not available on this build."); return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = "Opening camera…"; }
+    try {
+        // source: "PROMPT" brings up the native "Take Photo / Choose from Gallery"
+        // action sheet on both iOS and Android — same plugin call either way, the
+        // OS handles the choice.
+        const photo = await cameraPlugin.getPhoto({
+            quality: 80,
+            allowEditing: false,
+            resultType: "base64",
+            source: "PROMPT",
+            saveToGallery: false
+        });
+        if (!photo?.base64String) return;
+
+        if (btn) btn.textContent = "Uploading…";
+        const byteChars = atob(photo.base64String);
+        const byteArr = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+        const mimeType = `image/${photo.format || "jpeg"}`;
+        const blob = new Blob([byteArr], { type: mimeType });
+
+        const ext = photo.format || "jpg";
+        const fileName = `${currentUser.id}/${job.id}/${Date.now()}.${ext}`;
+        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || SB_KEY;
+
+        // Upload to Supabase Storage — bucket "job-photos" must exist with a
+        // public-read policy (same setup as the "logos" bucket) before this works.
+        const uploadResp = await fetch(
+            `${SB_URL}/storage/v1/object/job-photos/${fileName}`,
+            {
+                method: "POST",
+                headers: {
+                    "apikey": tok,
+                    "Authorization": "Bearer " + tok,
+                    "Content-Type": blob.type,
+                    "x-upsert": "true"
+                },
+                body: blob
+            }
+        );
+        if (!uploadResp.ok) throw new Error("Upload failed: " + uploadResp.status);
+
+        const photoUrl = `${SB_URL}/storage/v1/object/public/job-photos/${fileName}`;
+        if (!Array.isArray(job.sitePhotos)) job.sitePhotos = [];
+        job.sitePhotos.push(photoUrl);
+        saveAll();
+        renderJobPhotos(job);
+        if (msg) { msg.textContent = "✅ Photo added"; msg.style.color = "#10b981"; }
+    } catch (e) {
+        // User backing out of the camera/picker isn't an error worth alerting on.
+        const cancelled = /cancel/i.test(e?.message || "");
+        if (!cancelled) {
+            console.error("Job photo upload error:", e);
+            if (msg) { msg.textContent = "Upload failed — please try again."; msg.style.color = "#ef4444"; }
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📷 Add Photo"; }
+    }
+}
+
+function removeJobPhoto(url) {
+    const job = getJob();
+    if (!job || !Array.isArray(job.sitePhotos)) return;
+    if (!confirm("Remove this photo? This can't be undone.")) return;
+    job.sitePhotos = job.sitePhotos.filter(u => u !== url);
+    saveAll();
+    renderJobPhotos(job);
+}
+
+// Same upload flow as addJobPhoto() above, but into job.finishedPhotos and
+// the "finished/" prefix of the same job-photos bucket — see the comment on
+// renderFinishedPhotos() for why this is a separate collection.
+async function addFinishedPhoto() {
+    if (!currentUser) { alert("Please log in first."); return; }
+    const job = getJob();
+    if (!job) return;
+    const btn = document.getElementById("btn-add-finished-photo");
+    const msg = document.getElementById("finished-photo-upload-msg");
+    if (msg) msg.textContent = "";
+
+    const cameraPlugin = window.Capacitor?.Plugins?.Camera;
+    if (!cameraPlugin) { alert("Camera is not available on this build."); return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = "Opening camera…"; }
+    try {
+        const photo = await cameraPlugin.getPhoto({
+            quality: 80,
+            allowEditing: false,
+            resultType: "base64",
+            source: "PROMPT",
+            saveToGallery: false
+        });
+        if (!photo?.base64String) return;
+
+        if (btn) btn.textContent = "Uploading…";
+        const byteChars = atob(photo.base64String);
+        const byteArr = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+        const mimeType = `image/${photo.format || "jpeg"}`;
+        const blob = new Blob([byteArr], { type: mimeType });
+
+        const ext = photo.format || "jpg";
+        const fileName = `${currentUser.id}/${job.id}/finished-${Date.now()}.${ext}`;
+        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || SB_KEY;
+
+        const uploadResp = await fetch(
+            `${SB_URL}/storage/v1/object/job-photos/${fileName}`,
+            {
+                method: "POST",
+                headers: {
+                    "apikey": tok,
+                    "Authorization": "Bearer " + tok,
+                    "Content-Type": blob.type,
+                    "x-upsert": "true"
+                },
+                body: blob
+            }
+        );
+        if (!uploadResp.ok) throw new Error("Upload failed: " + uploadResp.status);
+
+        const photoUrl = `${SB_URL}/storage/v1/object/public/job-photos/${fileName}`;
+        if (!Array.isArray(job.finishedPhotos)) job.finishedPhotos = [];
+        job.finishedPhotos.push(photoUrl);
+        saveAll();
+        renderFinishedPhotos(job);
+        if (msg) { msg.textContent = "✅ Photo added"; msg.style.color = "#10b981"; }
+    } catch (e) {
+        const cancelled = /cancel/i.test(e?.message || "");
+        if (!cancelled) {
+            console.error("Finished photo upload error:", e);
+            if (msg) { msg.textContent = "Upload failed — please try again."; msg.style.color = "#ef4444"; }
+        }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📷 Add Finished Photo"; }
+    }
+}
+
+function removeFinishedPhoto(url) {
+    const job = getJob();
+    if (!job || !Array.isArray(job.finishedPhotos)) return;
+    if (!confirm("Remove this photo? This can't be undone.")) return;
+    job.finishedPhotos = job.finishedPhotos.filter(u => u !== url);
+    saveAll();
+    renderFinishedPhotos(job);
+}
+
+// ── Social Post Composer — pick finished-job photos, get an AI-written
+// caption (Claude actually looks at the photos, combined with the job's
+// existing room/tile/location data), review/edit it, then hand off to the
+// OS share sheet. Deliberately not a direct Facebook/Instagram publish —
+// that needs Meta app review and business verification, a separate
+// undertaking; the share sheet works with whatever the tiler actually has
+// installed today.
+const SocialPost = {
+    jobId: null,
+    selected: [], // photo URLs, max 5
+
+    open() {
+        const job = getJob();
+        if (!job) return;
+        const photos = Array.isArray(job.finishedPhotos) ? job.finishedPhotos : [];
+        if (!photos.length) return;
+        this.jobId = job.id;
+        this.selected = [photos[0]]; // pre-select the first photo so Generate is usable immediately
+        document.getElementById("social-post-overlay")?.classList.remove("hidden");
+        document.getElementById("social-post-result")?.classList.add("hidden");
+        const err = document.getElementById("social-post-error");
+        if (err) err.textContent = "";
+        const styleSelect = document.getElementById("social-post-style");
+        if (styleSelect) styleSelect.value = "friendly";
+        renderSocialStylePicker();
+        this._renderGrid();
+    },
+
+    close() {
+        document.getElementById("social-post-overlay")?.classList.add("hidden");
+        this.jobId = null;
+        this.selected = [];
+    },
+
+    _job() {
+        return jobs.find(j => j.id === this.jobId);
+    },
+
+    _renderGrid() {
+        const grid = document.getElementById("social-post-photo-grid");
+        const job = this._job();
+        if (!grid || !job) return;
+        const photos = Array.isArray(job.finishedPhotos) ? job.finishedPhotos : [];
+        grid.innerHTML = photos.map(url => {
+            const isSelected = this.selected.includes(url);
+            return `
+            <div onclick="SocialPost.toggle('${url}')" style="position:relative;width:72px;height:72px;cursor:pointer;">
+                <img src="${url}" style="width:76px;height:76px;object-fit:cover;border-radius:10px;border:2.5px solid ${isSelected ? "#e6af2e" : "transparent"};box-shadow:${isSelected ? "0 3px 10px rgba(230,175,46,.4)" : "none"};opacity:${isSelected ? "1" : ".5"};transition:all .15s;">
+                ${isSelected ? `<div style="position:absolute;top:-5px;right:-5px;background:#e6af2e;color:#2b1e05;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.25);">✓</div>` : ""}
+            </div>`;
+        }).join("");
+        const genBtn = document.getElementById("social-post-generate-btn");
+        if (genBtn) genBtn.disabled = this.selected.length === 0;
+        const hint = document.getElementById("social-post-hint");
+        if (hint) hint.textContent = this.selected.length >= 5 ? "5 photos selected (max)." : "Select 1–5 photos below, then Generate.";
+    },
+
+    toggle(url) {
+        const idx = this.selected.indexOf(url);
+        if (idx >= 0) {
+            this.selected.splice(idx, 1);
+        } else if (this.selected.length < 5) {
+            this.selected.push(url);
+        }
+        this._renderGrid();
+    },
+
+    _jobContext(job) {
+        const rooms = job.rooms || [];
+        const roomNames = rooms.map(r => r.name).filter(Boolean);
+        const tileTypes = [...new Set(rooms.map(r => TILE_TYPE_LABELS[r.tileType] || r.tileType).filter(Boolean))];
+        const areaM2raw = rooms.reduce((sum, r) => sum + (r.surfaces || []).reduce((a, s) => a + (s.area || 0), 0), 0);
+        return {
+            roomNames,
+            tileTypes,
+            areaM2: areaM2raw > 0 ? Math.round(areaM2raw * 100) / 100 : null,
+            town: job.city || null,
+            postcode: job.postcode || null
+        };
+    },
+
+    async generate() {
+        const job = this._job();
+        if (!job || !this.selected.length) return;
+        const btn = document.getElementById("social-post-generate-btn");
+        const err = document.getElementById("social-post-error");
+        const resultBox = document.getElementById("social-post-result");
+        const loading = document.getElementById("social-post-loading");
+        if (err) err.textContent = "";
+        if (btn) { btn.disabled = true; btn.classList.add("hidden"); }
+        loading?.classList.remove("hidden");
+        try {
+            const ctx = this._jobContext(job);
+            const style = document.getElementById("social-post-style")?.value || "friendly";
+            const resp = await fetch(TILEIQ_WORKER_URL, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "generate_social_post",
+                    photoUrls: this.selected,
+                    roomNames: ctx.roomNames, tileTypes: ctx.tileTypes, areaM2: ctx.areaM2,
+                    town: ctx.town, postcode: ctx.postcode,
+                    style, companyName: settings.companyName || ""
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data?.error || "Generation failed");
+            const captionEl = document.getElementById("social-post-caption");
+            if (captionEl) captionEl.value = data.caption || "";
+            resultBox?.classList.remove("hidden");
+        } catch (e) {
+            console.error("generate_social_post failed:", e);
+            if (err) err.textContent = "Couldn't generate a caption — please try again.";
+        } finally {
+            loading?.classList.add("hidden");
+            if (btn) { btn.disabled = this.selected.length === 0; btn.classList.remove("hidden"); btn.textContent = "✨ Generate Caption"; }
+        }
+    },
+
+    async share() {
+        const caption = document.getElementById("social-post-caption")?.value || "";
+        const shareBtn = document.getElementById("social-post-share-btn");
+        const sharePlugin = window.Capacitor?.Plugins?.Share;
+        const fsPlugin = window.Capacitor?.Plugins?.Filesystem;
+        if (!sharePlugin) { alert("Sharing is not available on this build."); return; }
+        if (shareBtn) { shareBtn.disabled = true; shareBtn.textContent = "Preparing…"; }
+        try {
+            // Instagram/Facebook (Story and Feed alike) never read the EXTRA_TEXT
+            // we pass in — that's a platform restriction, not something a share
+            // intent can override. Copying to the clipboard means it's a paste,
+            // not a re-type, once the target app opens.
+            try { await navigator.clipboard.writeText(caption); } catch (e) { console.warn("Clipboard copy failed:", e); }
+
+            let files = [];
+            if (fsPlugin) {
+                // Download each selected photo into the app's cache so the native
+                // share sheet has real local files to attach — most share targets
+                // (Instagram/Facebook included) won't pick up a remote https URL.
+                for (let i = 0; i < this.selected.length; i++) {
+                    try {
+                        const resp = await fetch(this.selected[i]);
+                        const blob = await resp.blob();
+                        const base64 = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = e => resolve(e.target.result.split(",")[1]);
+                            reader.readAsDataURL(blob);
+                        });
+                        const fileName = `tileiq-social-${Date.now()}-${i}.jpg`;
+                        await fsPlugin.writeFile({ path: fileName, data: base64, directory: "CACHE" });
+                        const uriResult = await fsPlugin.getUri({ path: fileName, directory: "CACHE" });
+                        if (uriResult?.uri) files.push(uriResult.uri);
+                    } catch (e) {
+                        console.error("Failed to prepare photo for sharing:", e);
+                    }
+                }
+            }
+            await sharePlugin.share({
+                title: "Finished job",
+                text: caption,
+                files: files.length ? files : void 0,
+                dialogTitle: "Share to…"
+            });
+        } catch (e) {
+            // User backing out of the share sheet isn't an error worth alerting on.
+            const cancelled = /cancel/i.test(e?.message || "");
+            if (!cancelled) {
+                console.error("Share failed:", e);
+                alert("Sharing failed: " + (e.message || e.code || "please try again"));
+            }
+        } finally {
+            if (shareBtn) { shareBtn.disabled = false; shareBtn.textContent = "📤 Share"; }
+        }
+    }
+};
+function openSocialPostComposer() { SocialPost.open(); }
+function closeSocialPostComposer() { SocialPost.close(); }
+function generateSocialCaption() { SocialPost.generate(); }
+function shareSocialPost() { SocialPost.share(); }
+
+// Visual pill picker over the hidden #social-post-style <select>, which stays
+// the source of truth SocialPost.generate() reads from.
+const SOCIAL_STYLE_OPTIONS = [
+    { value: "friendly",     icon: "😊", label: "Friendly" },
+    { value: "professional", icon: "🤝", label: "Professional" },
+    { value: "short",        icon: "⚡", label: "Short" },
+    { value: "sales",        icon: "📣", label: "Sales-focused" }
+];
+function renderSocialStylePicker() {
+    const wrap = document.getElementById("social-post-style-picker");
+    const select = document.getElementById("social-post-style");
+    if (!wrap || !select) return;
+    const current = select.value || "friendly";
+    wrap.innerHTML = SOCIAL_STYLE_OPTIONS.map(opt => `
+        <button type="button" onclick="selectSocialStyle('${opt.value}')" style="display:flex;align-items:center;gap:7px;padding:10px 12px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;
+            background:${opt.value === current ? "var(--amber-lt)" : "var(--bg)"};
+            border:1.5px solid ${opt.value === current ? "#e6af2e" : "var(--border)"};
+            color:var(--ink);">
+            <span style="font-size:15px;">${opt.icon}</span>${opt.label}
+        </button>
+    `).join("");
+}
+function selectSocialStyle(value) {
+    const select = document.getElementById("social-post-style");
+    if (!select) return;
+    select.value = value;
+    renderSocialStylePicker();
+}
+
 function goJob(id) {
     if (id) currentJobId = id;
     renderJobView();
@@ -3883,6 +4365,8 @@ function renderJobView() {
     if (!job) { goDashboard(); return; }
 
     document.getElementById("job-header-title").textContent = job.customerName;
+    renderJobPhotos(job);
+    renderFinishedPhotos(job);
 
     const PIPELINE = [
         { key: "enquiry",     label: "Enquiry" },
@@ -3965,7 +4449,7 @@ function renderJobView() {
             <div style="margin-top:10px;">
                 <div style="font-size:11px;color:#64748b;margin-bottom:6px;">📷 Customer Photos</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    ${job.photos.map(url => `<img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #334155;cursor:pointer;" onclick="window.open('${url}','_blank')">`).join("")}
+                    ${job.photos.map(url => `<img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #334155;cursor:pointer;" onclick="viewPhoto('${url}')">`).join("")}
                 </div>
             </div>` : ""}
             <button onclick="goAddRoomFromEnquiry()" style="margin-top:12px;width:100%;background:#e07a2f;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;">+ Add Room & Quote</button>
@@ -4192,9 +4676,71 @@ function setJobStatus(status) {
     const job = getJob();
     if (!job) return;
     job.status = status;
+    if (status === "complete") stampReviewRequestDue(job);
     saveAll();
     renderJobView();
     renderDashboard();
+}
+
+// ── Google review request ─────────────────────────────────────────────
+// Deferred, not immediate: asking the moment a job is marked Complete is too
+// soon (the customer hasn't lived with the finished job yet) — so completion
+// just stamps *when* the request becomes due, and checkDueReviewRequests()
+// (called on dashboard load, see renderDashboard) does the actual sending
+// once that date has passed. Client-side-timer approach, not a real
+// scheduled job: it only fires the next time the tiler has the app open on
+// or after the due date, not at a guaranteed exact time — acceptable here
+// since a day or two of slack on a review request doesn't matter, and it
+// avoids needing any server-side cron/queue infrastructure.
+function stampReviewRequestDue(job) {
+    if (!settings.autoRequestReview || !settings.googleReviewLink || !job.email || job.reviewRequestSent) return;
+    const completedAt = new Date();
+    job.completedAt = completedAt.toISOString();
+    const due = new Date(completedAt);
+    due.setDate(due.getDate() + (settings.reviewRequestDelayDays ?? 3));
+    job.reviewRequestDueAt = due.toISOString();
+}
+
+// Scans all jobs for ones that are complete, past their due date, and not
+// yet sent, and fires the send for each. Cheap to call often — call it
+// wherever the dashboard renders (see renderDashboard) rather than trying
+// to run it on a timer while the app may not even be open.
+function checkDueReviewRequests() {
+    if (!Array.isArray(jobs) || !jobs.length) return;
+    const now = Date.now();
+    jobs.forEach(j => {
+        if (j.status !== "complete" || !j.reviewRequestDueAt || j.reviewRequestSent) return;
+        if (new Date(j.reviewRequestDueAt).getTime() > now) return;
+        sendReviewRequestEmail(j);
+    });
+}
+
+// The actual send — silent by design (no alert either way), since it's meant
+// to run unattended in the background rather than interrupt whatever the
+// tiler is doing when checkDueReviewRequests() happens to catch a due job.
+async function sendReviewRequestEmail(job) {
+    if (!settings.autoRequestReview || !settings.googleReviewLink || !job.email || job.reviewRequestSent) return;
+    job.reviewRequestSent = true; // set synchronously so the imminent saveAll() persists it, and can't double-fire
+    try {
+        const resp = await fetch(TILEIQ_WORKER_URL, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: "send_review_request_email",
+                to: job.email, customerName: job.customerName,
+                reviewLink: settings.googleReviewLink,
+                companyName: settings.companyName || "", companyPhone: settings.companyPhone || "",
+                replyTo: settings.companyEmail || currentUser?.email || "",
+                fromName: settings.companyName || "TileIQ Pro",
+                verifiedDomain: (settings.verifiedDomain && settings.domainStatus === "verified") ? settings.verifiedDomain : null,
+                fromEmail: (settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null
+            })
+        });
+        if (!resp.ok) { job.reviewRequestSent = false; saveAll(); }
+    } catch (e) {
+        console.error("Review request email failed:", e);
+        job.reviewRequestSent = false;
+        saveAll();
+    }
 }
 
 function toggleExtraWork(jobId, idx, checked) {
@@ -4212,6 +4758,7 @@ function advanceStatus() {
     const idx = PIPELINE.indexOf(job.status);
     if (idx < PIPELINE.length - 1) {
         job.status = PIPELINE[idx + 1];
+        if (job.status === "complete") stampReviewRequestDue(job);
         saveAll();
         renderJobView();
         renderDashboard();
@@ -4323,16 +4870,27 @@ const TILE_TYPE_LABELS = {
 };
 
 function updateTileTypeNote() {
+    // Floor Only / Wall Only / Shower each got their own visible Tile Type
+    // selector, but the actual calculation still runs off the single shared
+    // #rm-tile-type value (see rmCalc) — keep every mirror in sync here,
+    // the one place already called after every programmatic change to it,
+    // rather than touching every call site that sets #rm-tile-type.
     const el   = document.getElementById("rm-tile-type-rate-note");
     const type = document.getElementById("rm-tile-type")?.value || "ceramic";
+    ["rm-f-tile-type", "rm-w-tile-type", "rm-sh-tile-type"].forEach(id => {
+        const mirror = document.getElementById(id);
+        if (mirror && mirror.value !== type) mirror.value = type;
+    });
     const mult = (settings.tileRates || {})[type] || 1.0;
     const baseFloor = settings.labourM2Floor || 28;
     const baseWall  = settings.labourM2Wall  || 35;
     const isStone = type === "natural_stone";
 
-    // Auto-apply stone install + sealer for all relevant surfaces
+    // Auto-apply stone install + sealer for all relevant surfaces. Room-type
+    // floor is excluded here — it has its own independent Tile Type field
+    // (#rm-r-ftile-type) now, handled by updateRoomFloorTileType() instead,
+    // since this master field only governs walls for that room type.
     const stoneIds = [
-        { stone: "rm-r-stone",  sealer: "rm-r-sealer",  sealerRow: "rm-r-sealer-row",  toggle: rmToggleStoneR  },
         { stone: "rm-r-wstone", sealer: "rm-r-wsealer", sealerRow: "rm-r-wsealer-row", toggle: () => {
             const c = document.getElementById("rm-r-wstone")?.checked;
             const row = document.getElementById("rm-r-wsealer-row");
@@ -4377,6 +4935,42 @@ function updateTileTypeNote() {
     rmCalc();
 }
 
+// Full Room's floor has its own independent Tile Type field, separate from
+// the shared #rm-tile-type (which governs the walls) — same auto-apply
+// stone install + sealer convenience as updateTileTypeNote(), just scoped
+// to the floor's own stone/sealer checkboxes.
+function updateRoomFloorTileType() {
+    const type = document.getElementById("rm-r-ftile-type")?.value || "porcelain";
+    const isStone = type === "natural_stone";
+    if (isStone) {
+        const stoneEl = document.getElementById("rm-r-stone");
+        if (stoneEl && !stoneEl.checked) { stoneEl.checked = true; rmToggleStoneR(); }
+        const sealerEl = document.getElementById("rm-r-sealer");
+        if (sealerEl) sealerEl.checked = true;
+        const rowEl = document.getElementById("rm-r-sealer-row");
+        if (rowEl) rowEl.classList.remove("hidden");
+    }
+    const el = document.getElementById("rm-r-ftile-type-rate-note");
+    if (el) {
+        const mult = (settings.tileRates || {})[type] || 1.0;
+        const baseFloor = settings.labourM2Floor || 28;
+        if (isStone) {
+            const stoneRate  = parseFloat(settings.stoneSurcharge) || 8.00;
+            const sealerRate = parseFloat(settings.sealerPrice)    || 5.00;
+            el.innerHTML =
+                `<span style="color:var(--accent);font-weight:600;">🪨 Natural Stone selected</span><br>` +
+                `<span style="color:#059669;font-size:12px;font-weight:600;">` +
+                `✓ Natural Stone Install labour added — £${stoneRate.toFixed(2)}/m²<br>` +
+                `✓ Stone Sealer added — £${sealerRate.toFixed(2)}/m²</span>`;
+        } else {
+            el.textContent = mult === 1.0
+                ? `${TILE_TYPE_LABELS[type]} — standard rate`
+                : `${TILE_TYPE_LABELS[type]} — ${mult}× multiplier (£${(baseFloor * mult).toFixed(2)}/m²)`;
+        }
+    }
+    rmCalc();
+}
+
 function goAddRoom() {
     currentRoomIdx    = null;
     currentSurfType   = "room";
@@ -4390,6 +4984,9 @@ function goAddRoom() {
     document.getElementById("rm-adh-colour").value = "grey";
     document.getElementById("rm-adh-type").value   = "standard";
     updateTileTypeNote();
+    const rFTileTypeEl = document.getElementById("rm-r-ftile-type");
+    if (rFTileTypeEl) rFTileTypeEl.value = "porcelain";
+    updateRoomFloorTileType();
     document.getElementById("rm-days").value = "";
     clearRoomInputs();
     setLabourType("m2");
@@ -4426,6 +5023,9 @@ function goAddRoomFromEnquiry() {
     const tileType = (hasFloor && !hasWalls) ? "porcelain" : "ceramic";
     document.getElementById("rm-tile-type").value = tileType;
     updateTileTypeNote();
+    const rFTileTypeEl = document.getElementById("rm-r-ftile-type");
+    if (rFTileTypeEl) rFTileTypeEl.value = "porcelain";
+    updateRoomFloorTileType();
 
     clearRoomInputs();
     setLabourType("m2");
@@ -4512,7 +5112,7 @@ function goEditRoom(idx) {
         renderNiches(nicheZoneEdit);
     }
     setLabourType(currentLabourType);
-    rmSelectType(currentSurfType);
+    rmSelectType(currentSurfType, true);
     restoreRoomInputs(room);
     // Restore saved deductions
     wallDeducts  = (room.wallDeducts  || []).slice();
@@ -4524,25 +5124,37 @@ function goEditRoom(idx) {
 }
 
 /* Show the right measurement form, highlight the right button */
-function rmSelectType(type) {
+function rmSelectType(type, isEdit) {
     currentSurfType = type;
     ["room","floor","wall","shower"].forEach(t => {
         document.getElementById("rm-form-" + t).classList.toggle("hidden", t !== type);
         document.getElementById("stype-btn-" + t).classList.toggle("stype-active", t === type);
     });
+    syncRoomJumpNavOffset();
+    rmVisitedSections = new Set();
+    rmActiveSection = null;
+    renderRoomJumpNav();
+    renderRoomSummary();
     // Close all collapsible panels when switching type
-    ["walltiles","sealant","extrawork","trim","room-labour","room-wall-opts","room-wall-prep","room-floor-opts","room-floor-tile","room-floor-prep",
+    ["room-tile-type","walltiles","sealant","extrawork","trim","room-labour","room-wall-opts","room-wall-prep","room-floor-opts","room-floor-tile","room-floor-prep",
      "floor-tile","floor-prep","wall-tile","wall-prep",
-     "shower-wall-tile","shower-wall-prep","shower-floor-tile","shower-floor-prep",
+     "shower-wall-tile","shower-wall-prep","shower-floor-opts","shower-floor-tile",
      "niches-sh","extrawork-sh","extrawork-f","trim-f","trim-w","wetroom-f","room-extra-floors","room-extra-walls","room-extra-floors","room-extra-walls","room-extra-floors","room-extra-walls"].forEach(k => closeCollapse(k));
-    // Default to porcelain for floor-only, ceramic for wall/room/shower
+    syncRoomSectionCards();
+    // Default to porcelain for floor-only, ceramic for wall/room/shower —
+    // skipped when editing an existing room, otherwise this would clobber
+    // a just-restored saved tileType (e.g. porcelain) straight back to the
+    // type's generic default the moment the room screen opened.
     const tileTypeEl = document.getElementById("rm-tile-type");
-    if (tileTypeEl && (tileTypeEl.value === "ceramic" || tileTypeEl.value === "porcelain")) {
+    if (!isEdit && tileTypeEl && (tileTypeEl.value === "ceramic" || tileTypeEl.value === "porcelain")) {
         tileTypeEl.value = (type === "floor") ? "porcelain" : "ceramic";
         updateTileTypeNote();
     }
-    // Auto-open wall and floor options for full room
-    if (type === "room") { openCollapse("room-wall-opts"); openCollapse("room-floor-opts"); }
+    // Nothing auto-opens for any room type any more — Full Room used to
+    // auto-open Wall Options, but that meant it was already open by the
+    // time you reached the screen, so the first tap on it (meant to open
+    // it) actually closed it instead. Every type now starts fully
+    // collapsed and consistent: tap a section to open it, first time works.
     // Pre-tick tanking for shower
     if (type === "shower") {
         const st = document.getElementById("rm-sh-tanking"); if (st) st.checked = true;
@@ -4654,7 +5266,7 @@ function clearRoomInputs() {
      "rm-sh-wprimer","rm-sh-wstone","rm-sh-wsealer","rm-sh-levelling","rm-sh-primer","rm-sh-inclfloor","rm-sh-tray"].forEach(id => {
         const el = document.getElementById(id); if (el) el.checked = false;
     });
-    ["rm-r-sealer-row","rm-r-wsealer-row","rm-f-sealer-row","rm-w-sealer-row","rm-sh-wsealer-row","rm-sh-floor-opts","rm-sh-tray-price-row"].forEach(id => {
+    ["rm-r-sealer-row","rm-r-wsealer-row","rm-f-sealer-row","rm-w-sealer-row","rm-sh-wsealer-row","rm-sh-floor-opts","rm-sh-tray-size-row"].forEach(id => {
         document.getElementById(id)?.classList.add("hidden");
     });
     clearNiches();
@@ -4710,6 +5322,9 @@ function restoreRoomInputs(room) {
     } else if (room.savedType === "wall") {
         set("rm-w-extra-desc", room.extraWorkDesc || "");
         set("rm-w-extra-cost", room.extraWorkCost || "");
+    } else if (room.savedType === "shower") {
+        set("rm-sh-extra-desc", room.extraWorkDesc || "");
+        set("rm-sh-extra-cost", room.extraWorkCost || "");
     }
 
     if (currentSurfType === "room") {
@@ -4740,6 +5355,8 @@ function restoreRoomInputs(room) {
         }
         if (floors.length) {
             setCb("rm-r-inclfloor", true);
+            set("rm-r-ftile-type", floors[0].tileType || "porcelain");
+            updateRoomFloorTileType();
             set("rm-r-ftilew", floors[0].tileW);
             set("rm-r-ftileh", floors[0].tileH);
             set("rm-r-ftilethick", floors[0].tileThick || 10);
@@ -4807,6 +5424,56 @@ function restoreRoomInputs(room) {
         setCb("rm-w-stone",   walls[0].stone);
         setCb("rm-w-sealer",  walls[0].sealer);
         if (walls[0].stone) document.getElementById("rm-w-sealer-row").classList.remove("hidden");
+    } else if (currentSurfType === "shower" && walls.length) {
+        // Width/Height come from the "Back Wall" (always present), Depth from
+        // the "Side Wall"/"Left Wall" (always the 2nd wall regardless of a
+        // 2- or 3-wall enclosure) — read from the walls array rather than a
+        // saved room-level width/height, since those only get saved at all
+        // when the shower has a floor (see saveRoom()'s sealL/sealW), so a
+        // floorless shower (the common case) would otherwise restore blank.
+        set("rm-sh-width",  walls[0].width);
+        set("rm-sh-height", walls[0].height);
+        set("rm-sh-depth",  walls[1]?.width);
+        set("rm-sh-walls",  walls.length);
+        set("rm-sh-tile-type", room.tileType || "ceramic");
+        set("rm-sh-wwastage", walls[0].wastage || 15);
+        set("rm-sh-wtilecost", walls[0].tileCostOverride || "");
+        set("rm-sh-wtilew",  walls[0].tileW);
+        set("rm-sh-wtileh",  walls[0].tileH);
+        set("rm-sh-wtilethick", walls[0].tileThick || 8);
+        set("rm-sh-wgrout", walls[0].grout);
+        setCb("rm-sh-tanking", walls[0].tanking);
+        setCb("rm-sh-wprimer", walls[0].primer);
+        setCb("rm-sh-wstone",  walls[0].stone);
+        setCb("rm-sh-wsealer", walls[0].sealer);
+        if (walls[0].stone) document.getElementById("rm-sh-wsealer-row").classList.remove("hidden");
+        if (floors.length) {
+            setCb("rm-sh-inclfloor", true);
+            document.getElementById("rm-sh-floor-opts")?.classList.remove("hidden");
+            set("rm-sh-fwastage", floors[0].wastage || 10);
+            set("rm-sh-ftilecost", floors[0].tileCostOverride || "");
+            set("rm-sh-ftilew",  floors[0].tileW);
+            set("rm-sh-ftileh",  floors[0].tileH);
+            set("rm-sh-ftilethick", floors[0].tileThick || 10);
+            set("rm-sh-fgrout", floors[0].grout);
+            setCb("rm-sh-ftanking", floors[0].tanking);
+            setCb("rm-sh-levelling", floors[0].levelling);
+            setCb("rm-sh-primer", floors[0].primer);
+            if (floors[0].levelling) {
+                set("rm-sh-leveldepth", floors[0].levelDepth || 2);
+                document.getElementById("rm-sh-level-depth")?.classList.remove("hidden");
+            }
+            setCb("rm-sh-tray", floors[0].wetRoomTray);
+            if (floors[0].wetRoomTray) {
+                set("rm-sh-tray-price", floors[0].wetRoomTrayPrice);
+                set("rm-sh-tray-w", floors[0].wetRoomTrayW);
+                set("rm-sh-tray-d", floors[0].wetRoomTrayD);
+                document.getElementById("rm-sh-tray-size-row")?.classList.remove("hidden");
+            }
+        } else {
+            setCb("rm-sh-inclfloor", false);
+            document.getElementById("rm-sh-floor-opts")?.classList.add("hidden");
+        }
     }
 
     // Restore extra surfaces (all beyond the primary one)
@@ -4830,22 +5497,29 @@ function restoreRoomInputs(room) {
         if (hasWallDeduct || hasFloorDeduct) openDeductPanel("r");
         if (hasFloorDeduct && currentSurfType === "floor") openDeductPanel("f");
         if (hasWallDeductW) openDeductPanel("w");
-        // Auto-open collapsible panels if they have values
+        // Sections that already have saved data show straight away as done
+        // breadcrumbs rather than force-expanded — same as if the tiler had
+        // already been through and moved on from them. Marking several done
+        // at once here (rather than opening each) avoids them closing one
+        // another via the one-section-open-at-a-time rule below.
         const hasSealant = (room.sealantEnabled !== false && room.sealantEnabled !== "false") ||
                            (parseFloat(room.sealantCorners) > 0);
         const hasExtraWork = room.extraWorkDesc || parseFloat(room.extraWorkCost) > 0;
-        if (hasSealant) openCollapse("sealant");
+        if (hasSealant) rmVisitedSections.add("sealant");
         if (hasExtraWork) {
-            if (currentSurfType === "floor") openCollapse("extrawork-f");
-            else if (currentSurfType === "wall") openCollapse("extrawork-w");
-            else openCollapse("extrawork");
+            if (currentSurfType === "floor") rmVisitedSections.add("extrawork-f");
+            else if (currentSurfType === "wall") rmVisitedSections.add("extrawork-w");
+            else if (currentSurfType === "shower") rmVisitedSections.add("extrawork-sh");
+            else rmVisitedSections.add("extrawork");
         }
         const hasTrim = room.trimLengths > 0;
         if (hasTrim) {
             const trimPanelKey = currentSurfType === "floor" ? "trim-f" : currentSurfType === "wall" ? "trim-w" : "trim";
-            openCollapse(trimPanelKey);
+            rmVisitedSections.add(trimPanelKey);
             updateTrimBadge(currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : "r");
         }
+        renderRoomJumpNav();
+        renderRoomSummary();
         if (currentSurfType === "room") { updateWallTilesBadge(); }
     }, 50);
 }
@@ -4985,6 +5659,10 @@ function addExtraSurface(type) {
     extraSurfaces.push({
         type,
         label: isFloor ? `Floor ${i + 2}` : `Wall ${i + 2}`,
+        // Each extra surface gets its own tile type — a feature wall or a
+        // second floor area often isn't the same tile as the rest of the
+        // room. Defaults to whatever the room's currently set to.
+        tileType: document.getElementById("rm-tile-type")?.value || "ceramic",
         // floor fields
         length: "", width: "",
         tileW: isFloor ? 600 : 300, tileH: isFloor ? 600 : 600,
@@ -5015,6 +5693,13 @@ function updateExtra(i, field, value) {
     if (field === "levelling") {
         const depthRow = document.getElementById(`extra-depth-${i}`);
         if (depthRow) depthRow.style.display = value ? "" : "none";
+    }
+    // Natural Stone on an extra surface should get the same install surcharge
+    // + sealer the main room's own fields auto-apply (see updateTileTypeNote) —
+    // extras have no separate stone/sealer checkboxes of their own to toggle.
+    if (field === "tileType" && value === "natural_stone") {
+        extraSurfaces[i].stone = true;
+        extraSurfaces[i].sealer = true;
     }
 }
 
@@ -5049,6 +5734,12 @@ function renderExtraSurfaces() {
         oninput="updateExtra(${i},'label',this.value)">
     </span>
     <button class="btn-remove-surface" onclick="removeExtraSurface(${i})" title="Remove">✕</button>
+  </div>
+  <div class="field-group"><label>Tile Type</label>
+    <select onchange="updateExtra(${i},'tileType',this.value);rmCalc()">
+      ${["ceramic","porcelain","natural_stone","modular","herringbone","mosaic"].map(v =>
+        `<option value="${v}"${s.tileType===v?" selected":""}>${TILE_TYPE_LABELS[v]}</option>`).join("")}
+    </select>
   </div>
   <div class="field-row">
     <div class="field-group"><label>Length (m)</label>
@@ -5117,6 +5808,12 @@ function renderExtraSurfaces() {
         oninput="updateExtra(${i},'label',this.value)">
     </span>
     <button class="btn-remove-surface" onclick="removeExtraSurface(${i})" title="Remove">✕</button>
+  </div>
+  <div class="field-group"><label>Tile Type</label>
+    <select onchange="updateExtra(${i},'tileType',this.value);rmCalc()">
+      ${["ceramic","porcelain","natural_stone","modular","herringbone","mosaic"].map(v =>
+        `<option value="${v}"${s.tileType===v?" selected":""}>${TILE_TYPE_LABELS[v]}</option>`).join("")}
+    </select>
   </div>
   <div class="field-row">
     <div class="field-group"><label>Width (m)</label>
@@ -5230,6 +5927,7 @@ function buildExtraSurfaces() {
                 return {
                     type:"floor", label: s.label || "Floor",
                     length:L, width:W,
+                    tileType: s.tileType || "ceramic",
                     tileW:s.tileW||600, tileH:s.tileH||600, tileThick:s.tileThick||10,
                     grout:s.grout||2, deduct:s.deduct||0,
                     ufh:!!s.ufh, cementBoard:!!s.cementBoard, membrane:!!s.membrane,
@@ -5244,6 +5942,7 @@ function buildExtraSurfaces() {
                 return {
                     type:"wall", label: s.label || "Wall",
                     width:W, height:H,
+                    tileType: s.tileType || "ceramic",
                     tileW:s.tileW||300, tileH:s.tileH||600, tileThick:s.tileThick||8,
                     grout:s.grout||2, tanking:!!s.tanking,
                     primer:!!s.primer, stone:!!s.stone, sealer:!!s.sealer,
@@ -5263,13 +5962,26 @@ function rmToggleShowerFloor() {
 }
 function rmShTrayToggle() {
     const checked = document.getElementById("rm-sh-tray")?.checked;
-    const row = document.getElementById("rm-sh-tray-price-row");
+    const row = document.getElementById("rm-sh-tray-size-row");
     if (row) row.classList.toggle("hidden", !checked);
     if (checked) {
         const inp = document.getElementById("rm-sh-tray-price");
         if (inp && !inp.value) inp.value = settings.wetRoomTrayRate || 150;
+        rmShSyncTrayDims();
     }
     rmCalc();
+}
+// Tray Width/Depth take their default straight from the shower's own
+// measurements (m -> mm) rather than being typed in again — kept in sync
+// whenever those change too, for as long as the tray option is ticked.
+function rmShSyncTrayDims() {
+    if (!document.getElementById("rm-sh-tray")?.checked) return;
+    const w = parseFloat(document.getElementById("rm-sh-width")?.value) || 0;
+    const d = parseFloat(document.getElementById("rm-sh-depth")?.value) || 0;
+    const wEl = document.getElementById("rm-sh-tray-w");
+    const dEl = document.getElementById("rm-sh-tray-d");
+    if (wEl && w > 0) wEl.value = Math.round(w * 1000);
+    if (dEl && d > 0) dEl.value = Math.round(d * 1000);
 }
 function rmToggleLevelSh() {
     const checked = document.getElementById("rm-sh-levelling")?.checked;
@@ -5458,6 +6170,7 @@ function buildSurfaces() {
             const rFTanking  = rWetRoom && cb("rm-r-ftanking");
             surfaces.push({
                 type:"floor", label: rWetRoom ? "Wet Room Floor" : "Floor", length:rL, width:rW,
+                tileType: document.getElementById("rm-r-ftile-type")?.value || "porcelain",
                 tileCostOverride: rFTileCost,
                 wastage: floorWastage,
                 tileW:   g("rm-r-ftilew") || 600,
@@ -5974,18 +6687,34 @@ function clearDeducts() {
 // Sections grouped by form — opening one closes others in the same group
 const COLLAPSE_GROUPS = {
     roomMain:   ["room-labour","room-wall-opts","room-floor-opts"],
-    roomWall:   ["walltiles","room-wall-prep"],
-    roomFloor:  ["room-floor-tile","room-floor-prep"],
+    roomWall:   ["room-tile-type","walltiles","room-wall-prep","niches-r"],
+    roomFloor:  ["room-floor-tile","room-floor-prep","ufh-r"],
     floor:      ["floor-tile","floor-prep"],
     wallTile:   ["wall-tile","wall-prep"],
-    shower:     ["shower-wall-tile","shower-wall-prep","shower-floor-tile","shower-floor-prep"],
+    shower:       ["shower-wall-tile","shower-wall-prep"],
 };
+
+// The top-level sections shown as jump-nav chips / breadcrumbs per room type —
+// same keys used by the jump-nav buttons and the collapsible panels themselves.
+const RM_JUMP_SECTIONS = {
+    room:   [["room-wall-opts","Wall Options"], ["room-floor-opts","Floor Options"], ["sealant","Sealant"], ["extrawork","Extra Work"], ["trim","Tile Trim"], ["room-extra-floors","+ Floors"], ["room-extra-walls","+ Walls"]],
+    floor:  [["floor-tile","Tile"], ["floor-prep","Floor Prep"], ["ufh-f","UFH"], ["wetroom-f","Wetroom Tray"], ["extrawork-f","Extra Work"], ["trim-f","Tile Trim"]],
+    wall:   [["wall-tile","Tile"], ["wall-prep","Wall Prep"], ["niches-w","Niches"], ["extrawork-w","Extra Work"], ["trim-w","Tile Trim"]],
+    shower: [["shower-wall-tile","Wall Tiles"], ["shower-wall-prep","Wall Prep"], ["shower-floor-opts","Wetroom Tray"], ["niches-sh","Niches"], ["extrawork-sh","Extra Work"]],
+};
+let rmVisitedSections = new Set(); // top-level sections the tiler has opened + moved on from
+let rmActiveSection = null;        // top-level section currently open, if any
+
+function rmJumpKeysForCurrentType() {
+    return (RM_JUMP_SECTIONS[currentSurfType] || []).map(([k]) => k);
+}
 
 function toggleCollapse(key) {
     const panel  = document.getElementById("collapse-panel-" + key);
     const arrow  = document.getElementById("collapse-arrow-" + key);
     const toggle = document.getElementById("collapse-toggle-" + key);
     if (!panel) return;
+    const isTopLevel = rmJumpKeysForCurrentType().includes(key);
     const isHidden = panel.classList.contains("hidden");
     if (isHidden) {
         // Opening — close siblings in the same group first
@@ -5995,6 +6724,13 @@ function toggleCollapse(key) {
                 break;
             }
         }
+        // One top-level section open at a time — the previous one collapses
+        // into a breadcrumb (marked visited) as soon as you move to another.
+        if (isTopLevel && rmActiveSection && rmActiveSection !== key) {
+            closeCollapse(rmActiveSection);
+            rmVisitedSections.add(rmActiveSection);
+        }
+        if (isTopLevel) rmActiveSection = key;
         panel.classList.remove("hidden");
         if (arrow) arrow.textContent = "▾";
         if (toggle) toggle.classList.add("active");
@@ -6002,7 +6738,109 @@ function toggleCollapse(key) {
         panel.classList.add("hidden");
         if (arrow) arrow.textContent = "▸";
         if (toggle) toggle.classList.remove("active");
+        if (isTopLevel) {
+            rmVisitedSections.add(key);
+            if (rmActiveSection === key) rmActiveSection = null;
+        }
     }
+    if (isTopLevel) { renderRoomJumpNav(); renderRoomSummary(); }
+    syncRoomSectionCards();
+}
+
+// While one top-level section is open, every other top-level section for
+// this room type disappears completely — not just its collapsed body, its
+// header row too — so nothing from another section sits in the scroll flow
+// "underneath" the one you're actually working on. Once nothing is open
+// (untouched or all done) everything reappears as normal collapsed rows,
+// same as before.
+//
+// Some top-level sections physically share one .form-card with a sibling
+// (e.g. Floor Only's Extra Work / Tile Trim / Tile / UFH / Floor Prep are
+// all one box) — hiding each inactive section's own header+panel row still
+// works there (the shared box just shows fewer rows), but the box itself
+// should only vanish once ALL the sections inside it are inactive, or a
+// card that happens to hold only the active section would blank out too.
+function syncRoomSectionCards() {
+    const keys = rmJumpKeysForCurrentType();
+    if (!keys.length) return;
+    const cardKeys = new Map(); // .form-card element -> [keys sharing it]
+    keys.forEach(key => {
+        const toggle = document.getElementById("collapse-toggle-" + key);
+        if (!toggle) return;
+        toggle.classList.toggle("hidden", !!rmActiveSection && key !== rmActiveSection);
+        const card = toggle.closest(".form-card");
+        if (!card) return;
+        if (!cardKeys.has(card)) cardKeys.set(card, []);
+        cardKeys.get(card).push(key);
+    });
+    cardKeys.forEach((keysInCard, card) => {
+        card.classList.toggle("hidden", !!rmActiveSection && !keysInCard.includes(rmActiveSection));
+    });
+}
+
+// Jump nav at the top of each room form — opens the section (so its own
+// nested toggles, if any, become visible too) and scrolls it into view,
+// instead of making the tiler hunt through a long list of collapsed panels.
+function jumpToSection(key) {
+    if (document.getElementById("collapse-panel-" + key)?.classList.contains("hidden")) {
+        toggleCollapse(key);
+    }
+    document.getElementById("collapse-toggle-" + key)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Re-renders the jump-nav for the current room type: untouched sections are
+// plain chips, the one currently open is highlighted, and anything the
+// tiler's already been into and moved on from shows as a done breadcrumb.
+function renderRoomJumpNav() {
+    const container = document.getElementById("rm-jump-nav-" + currentSurfType);
+    if (!container) return;
+    const sections = RM_JUMP_SECTIONS[currentSurfType] || [];
+    container.innerHTML = sections.map(([key, label]) => {
+        const isActive = key === rmActiveSection;
+        const isDone   = !isActive && rmVisitedSections.has(key);
+        const cls = isActive ? "rm-jump-active" : isDone ? "rm-jump-done" : "";
+        return `<button type="button" onclick="jumpToSection('${key}')" class="${cls}">${isDone ? "✓ " : ""}${label}</button>`;
+    }).join("");
+    // Chip text/wrapping just changed, which can change the nav's own height —
+    // re-measure so scroll-margin-top stays accurate for the next jump.
+    syncRoomJumpNavOffset();
+}
+
+// Editable preview near the bottom of the form — everything set so far,
+// tap any row to jump straight back and change it.
+function renderRoomSummary() {
+    const container = document.getElementById("rm-summary");
+    if (!container) return;
+    const sections = (RM_JUMP_SECTIONS[currentSurfType] || []).filter(([key]) => rmVisitedSections.has(key));
+    if (!sections.length) {
+        container.classList.add("hidden");
+        container.innerHTML = "";
+        return;
+    }
+    container.classList.remove("hidden");
+    container.innerHTML = `<div class="form-section-label" style="margin-bottom:4px;">What you've set</div>` +
+        sections.map(([key, label]) =>
+            `<div class="rm-summary-row" onclick="jumpToSection('${key}')">
+                <span>✓ ${label}</span><span class="rm-summary-edit">Edit ›</span>
+            </div>`
+        ).join("");
+}
+
+// The jump nav is sticky just below the room screen's own header so it
+// stays reachable while scrolling — no jumping to a section near the
+// bottom, then having to scroll all the way back up to reach another one.
+// Header height varies by device (status bar / notch); the nav's own height
+// varies by how many lines its chips wrap onto — measure both real rendered
+// heights rather than guess a fixed offset. --room-sticky-h (header + nav
+// together) is what .rm-section-toggle's scroll-margin-top actually uses,
+// so a jumped-to section lands clear of both instead of underneath them.
+function syncRoomJumpNavOffset() {
+    const header = document.querySelector("#screen-room .app-header");
+    const headerH = header ? header.offsetHeight : 0;
+    if (header) document.documentElement.style.setProperty("--room-header-h", headerH + "px");
+    const nav = document.getElementById("rm-jump-nav-" + currentSurfType);
+    const navH = (nav && !nav.closest(".hidden")) ? nav.offsetHeight : 0;
+    document.documentElement.style.setProperty("--room-sticky-h", (headerH + navH) + "px");
 }
 
 function openCollapse(key) {
@@ -6180,7 +7018,11 @@ function rmCalc() {
     settings._adhUnitPrice = isRapid
         ? (isWhite ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
         : (isWhite ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
-    surfaces.forEach(s => { s.tileType = tileTypeVal; calcSurface(s, ct, labourOpts); });
+    // Extra floors/walls carry their own tileType (set from their own Tile Type
+    // dropdown) so a feature wall or a second floor area can be a different tile
+    // from the rest of the room — only fall back to the shared room-level value
+    // for the main surfaces, which never set their own.
+    surfaces.forEach(s => { s.tileType = s.tileType || tileTypeVal; calcSurface(s, ct, labourOpts); });
 
     const extraCostId = currentSurfType === "floor"  ? "rm-f-extra-cost"
                       : currentSurfType === "wall"   ? "rm-w-extra-cost"
@@ -6304,7 +7146,13 @@ function saveRoom() {
     settings._adhUnitPrice = isRapidSR
         ? (isWhiteSR ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
         : (isWhiteSR ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
-    surfaces.forEach(s => { s.tileType = tileType; calcSurface(s, ct, labourOpts); });
+    // Extra floors/walls and Full Room's floor carry their own independent
+    // tileType (set from their own Tile Type dropdown) — only fall back to
+    // the shared room-level value for surfaces that never set their own,
+    // same as the live rmCalc() preview already does. This used to
+    // unconditionally overwrite every surface, silently discarding those
+    // per-surface choices the moment the room was actually saved.
+    surfaces.forEach(s => { s.tileType = s.tileType || tileType; calcSurface(s, ct, labourOpts); });
 
     const extraDescId = currentSurfType === "floor" ? "rm-f-extra-desc"
                       : currentSurfType === "wall"   ? "rm-w-extra-desc"
@@ -7050,6 +7898,12 @@ function goSettings() {
     if (docTypeEl) docTypeEl.value = s.docType || "quote";
     const hideBreakdownEl = document.getElementById("set-hide-breakdown");
     if (hideBreakdownEl) hideBreakdownEl.value = s.hideCostBreakdown ? "true" : "false";
+    const autoReviewEl = document.getElementById("set-auto-review");
+    if (autoReviewEl) autoReviewEl.value = s.autoRequestReview ? "true" : "false";
+    const reviewLinkEl = document.getElementById("set-google-review-link");
+    if (reviewLinkEl) reviewLinkEl.value = s.googleReviewLink || "";
+    const reviewDelayEl = document.getElementById("set-review-delay-days");
+    if (reviewDelayEl) reviewDelayEl.value = s.reviewRequestDelayDays ?? 3;
     document.getElementById("set-bank-name")?.setAttribute("value", s.bankName || "");
     if (document.getElementById("set-bank-name")) document.getElementById("set-bank-name").value = s.bankName || "";
     if (document.getElementById("set-bank-account-name")) document.getElementById("set-bank-account-name").value = s.bankAccountName || "";
@@ -7447,6 +8301,9 @@ function saveSettings() {
         quoteReminderDays: parseInt(document.getElementById("set-reminder-days").value) || 0,
         docType:       document.getElementById("set-doc-type")?.value || "quote",
         hideCostBreakdown: document.getElementById("set-hide-breakdown")?.value === "true",
+        autoRequestReview: document.getElementById("set-auto-review")?.value === "true",
+        googleReviewLink:  (document.getElementById("set-google-review-link")?.value || "").trim(),
+        reviewRequestDelayDays: parseInt(document.getElementById("set-review-delay-days")?.value) || 0,
         bankName:          (document.getElementById("set-bank-name")?.value || "").trim(),
         bankAccountName:   (document.getElementById("set-bank-account-name")?.value || "").trim(),
         bankSortCode:      (document.getElementById("set-bank-sort-code")?.value || "").trim(),

@@ -1181,3 +1181,24 @@ html, body {
 .ios .ios-hide, html.ios .ios-hide {
     display: none !important;
 }
+
+/* ── SOCIAL POST: "laying tiles" loading animation while the AI caption
+   generates ─────────────────────────────────────────────────────────── */
+.tile-loader { display: flex; gap: 6px; justify-content: center; align-items: flex-end; height: 30px; }
+.tile-loader .chip {
+    width: 16px; height: 16px; border-radius: 3px;
+    background: linear-gradient(135deg, #E6AF2E, #C8900E);
+    box-shadow: 0 2px 4px rgba(0,0,0,.2);
+    opacity: 0;
+    animation: tileDrop 1.3s ease-in-out infinite;
+}
+.tile-loader .chip:nth-child(2) { animation-delay: .16s; }
+.tile-loader .chip:nth-child(3) { animation-delay: .32s; }
+.tile-loader .chip:nth-child(4) { animation-delay: .48s; }
+@keyframes tileDrop {
+    0%   { transform: translateY(-16px) scale(.7); opacity: 0; }
+    30%  { transform: translateY(0)     scale(1);  opacity: 1; }
+    55%  { transform: translateY(0)     scale(1);  opacity: 1; }
+    78%  { transform: translateY(1px)   scale(.96); opacity: .85; }
+    100% { transform: translateY(-16px) scale(.7);  opacity: 0; }
+}
