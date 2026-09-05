@@ -50,13 +50,16 @@ body {
 
 /* Built mobile-first for the native app — on a PC-width browser window this
    would otherwise stretch a phone UI edge-to-edge across the whole screen.
-   Constrain it to a phone-width column, centered, above a certain viewport
-   width, same idea as the /app/demo.html phone frame but without the
-   decorative bezel, since this is the real app, not the sandboxed demo. */
-@media (min-width: 700px) {
+   This is meant to be genuinely usable as a desktop tool though (tilers
+   checking/editing quotes from home or the office), not just a shrunk-down
+   phone mockup — so it's capped at a real working width, not a phone-narrow
+   column. Every other fixed-width thing in this stylesheet is a percentage
+   or a small in-context element (badges, chips), so nothing else needed
+   adjusting to fill the wider space. */
+@media (min-width: 1000px) {
     body { display: flex; justify-content: center; background: #1b1f24; }
     #app {
-        max-width: 460px;
+        max-width: 860px;
         box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 30px 80px rgba(0,0,0,.5);
     }
 }
