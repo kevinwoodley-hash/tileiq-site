@@ -1581,6 +1581,13 @@ function setDevicesFilter(filter) {
   renderDevices();
 }
 
+// OneSignal's current /players response has no notification_types field (that's a
+// legacy field this code originally relied on) — the real signal for "has a working
+// push subscription" is a non-null identifier (the actual push token) whose
+// invalid_identifier flag is false. A device can have a stale identifier string with
+// invalid_identifier:true (token revoked), so both conditions matter, not just presence.
+function isSubscribed(s) { return !!s.identifier && s.invalid_identifier === false; }
+
 function renderDevices() {
   const el = document.getElementById('devices-list');
   if (!el) return;
@@ -1590,7 +1597,7 @@ function renderDevices() {
     <button onclick="setDevicesFilter('subscribed')" style="background:${_devicesFilter==='subscribed' ? 'var(--amber)' : '#1e293b'};color:${_devicesFilter==='subscribed' ? '#000' : '#94a3b8'};border:1px solid #334155;border-radius:8px;padding:6px 14px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Subscribed only</button>
   </div>`;
   if (!subs.length) { el.innerHTML = toggle + '<div style="color:#94a3b8;font-size:13px;">No devices registered</div>'; return; }
-  const visible = _devicesFilter === 'subscribed' ? subs.filter(s => s.notification_types > 0) : subs;
+  const visible = _devicesFilter === 'subscribed' ? subs.filter(s => isSubscribed(s)) : subs;
   if (!visible.length) { el.innerHTML = toggle + '<div style="color:#94a3b8;font-size:13px;">No subscribed devices</div>'; return; }
   // Group by platform, then by device model within each platform
   const platforms = {
@@ -1604,7 +1611,7 @@ function renderDevices() {
     if (!p.groups[key]) p.groups[key] = { count: 0, enabled: 0, lastActive: 0 };
     p.groups[key].count++;
     p.total++;
-    if (s.notification_types > 0) p.groups[key].enabled++;
+    if (isSubscribed(s)) p.groups[key].enabled++;
     if (s.last_active > p.groups[key].lastActive) p.groups[key].lastActive = s.last_active;
   }
   const columns = Object.values(platforms).filter(p => p.total > 0).map(p => {
