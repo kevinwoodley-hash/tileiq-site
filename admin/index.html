@@ -1568,23 +1568,31 @@ async function loadDevices() {
     const data = await resp.json();
     const subs = data.players || [];
     if (!subs.length) { el.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No devices registered</div>'; return; }
-    // Group by device model
-    const groups = {};
+    // Group by platform, then by device model within each platform
+    const platforms = {
+      android: { label: '🤖 Android', groups: {}, total: 0 },
+      ios:     { label: '🍎 iOS',     groups: {}, total: 0 },
+      other:   { label: '📱 Other',   groups: {}, total: 0 }
+    };
     for (const s of subs) {
-      const platform = s.device_type === 1 ? '🤖 Android' : s.device_type === 0 ? '🍎 iOS' : '📱';
-      const key = `${platform} ${s.device_model || 'Unknown'}`;
-      if (!groups[key]) groups[key] = { count: 0, enabled: 0, lastActive: 0 };
-      groups[key].count++;
-      if (s.notification_types > 0) groups[key].enabled++;
-      if (s.last_active > groups[key].lastActive) groups[key].lastActive = s.last_active;
+      const p = s.device_type === 1 ? platforms.android : s.device_type === 0 ? platforms.ios : platforms.other;
+      const key = s.device_model || 'Unknown';
+      if (!p.groups[key]) p.groups[key] = { count: 0, enabled: 0, lastActive: 0 };
+      p.groups[key].count++;
+      p.total++;
+      if (s.notification_types > 0) p.groups[key].enabled++;
+      if (s.last_active > p.groups[key].lastActive) p.groups[key].lastActive = s.last_active;
     }
-    el.innerHTML = Object.entries(groups).sort((a,b) => b[1].count - a[1].count).map(([name, g]) => {
-      const lastActive = g.lastActive ? new Date(g.lastActive * 1000).toLocaleDateString('en-GB') : '—';
-      const status = g.enabled > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
-      return `<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
-        <div style="color:#f1f5f9">${status} ${name} <span style="color:#94a3b8;font-size:11px;">(${g.count} installs, ${g.enabled} subscribed)</span></div>
-        <div style="color:#94a3b8">Last active: ${lastActive}</div>
-      </div>`;
+    el.innerHTML = Object.values(platforms).filter(p => p.total > 0).map(p => {
+      const rows = Object.entries(p.groups).sort((a,b) => b[1].count - a[1].count).map(([name, g]) => {
+        const lastActive = g.lastActive ? new Date(g.lastActive * 1000).toLocaleDateString('en-GB') : '—';
+        const status = g.enabled > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
+        return `<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="color:#f1f5f9">${status} ${name} <span style="color:#94a3b8;font-size:11px;">(${g.count} installs, ${g.enabled} subscribed)</span></div>
+          <div style="color:#94a3b8">Last active: ${lastActive}</div>
+        </div>`;
+      }).join('');
+      return `<div style="font-size:14px;font-weight:700;color:#f1f5f9;margin:18px 0 8px;">${p.label} <span style="color:#94a3b8;font-weight:500;font-size:12px;">(${p.total} devices)</span></div>${rows}`;
     }).join('');
   } catch(e) {
     el.innerHTML = '<div style="color:#ef4444;font-size:13px;">Failed to load devices: ' + e.message + '</div>';
