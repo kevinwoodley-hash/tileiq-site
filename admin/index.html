@@ -1558,6 +1558,9 @@ async function deleteAnnouncement(id) {
 }
 
 // ── Stats ──────────────────────────────────────────────────────
+let _devicesCache = null;
+let _devicesFilter = 'all'; // 'all' | 'subscribed'
+
 async function loadDevices() {
   const el = document.getElementById('devices-list');
   if (!el) return;
@@ -1566,37 +1569,59 @@ async function loadDevices() {
       headers: { 'x-admin-secret': ADMIN_SECRET }
     });
     const data = await resp.json();
-    const subs = data.players || [];
-    if (!subs.length) { el.innerHTML = '<div style="color:#94a3b8;font-size:13px;">No devices registered</div>'; return; }
-    // Group by platform, then by device model within each platform
-    const platforms = {
-      android: { label: '🤖 Android', groups: {}, total: 0 },
-      ios:     { label: '🍎 iOS',     groups: {}, total: 0 },
-      other:   { label: '📱 Other',   groups: {}, total: 0 }
-    };
-    for (const s of subs) {
-      const p = s.device_type === 1 ? platforms.android : s.device_type === 0 ? platforms.ios : platforms.other;
-      const key = s.device_model || 'Unknown';
-      if (!p.groups[key]) p.groups[key] = { count: 0, enabled: 0, lastActive: 0 };
-      p.groups[key].count++;
-      p.total++;
-      if (s.notification_types > 0) p.groups[key].enabled++;
-      if (s.last_active > p.groups[key].lastActive) p.groups[key].lastActive = s.last_active;
-    }
-    el.innerHTML = Object.values(platforms).filter(p => p.total > 0).map(p => {
-      const rows = Object.entries(p.groups).sort((a,b) => b[1].count - a[1].count).map(([name, g]) => {
-        const lastActive = g.lastActive ? new Date(g.lastActive * 1000).toLocaleDateString('en-GB') : '—';
-        const status = g.enabled > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
-        return `<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
-          <div style="color:#f1f5f9">${status} ${name} <span style="color:#94a3b8;font-size:11px;">(${g.count} installs, ${g.enabled} subscribed)</span></div>
-          <div style="color:#94a3b8">Last active: ${lastActive}</div>
-        </div>`;
-      }).join('');
-      return `<div style="font-size:14px;font-weight:700;color:#f1f5f9;margin:18px 0 8px;">${p.label} <span style="color:#94a3b8;font-weight:500;font-size:12px;">(${p.total} devices)</span></div>${rows}`;
-    }).join('');
+    _devicesCache = data.players || [];
+    renderDevices();
   } catch(e) {
     el.innerHTML = '<div style="color:#ef4444;font-size:13px;">Failed to load devices: ' + e.message + '</div>';
   }
+}
+
+function setDevicesFilter(filter) {
+  _devicesFilter = filter;
+  renderDevices();
+}
+
+function renderDevices() {
+  const el = document.getElementById('devices-list');
+  if (!el) return;
+  const subs = _devicesCache || [];
+  const toggle = `<div style="display:flex;gap:8px;margin-bottom:14px;">
+    <button onclick="setDevicesFilter('all')" style="background:${_devicesFilter==='all' ? 'var(--amber)' : '#1e293b'};color:${_devicesFilter==='all' ? '#000' : '#94a3b8'};border:1px solid #334155;border-radius:8px;padding:6px 14px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">All devices</button>
+    <button onclick="setDevicesFilter('subscribed')" style="background:${_devicesFilter==='subscribed' ? 'var(--amber)' : '#1e293b'};color:${_devicesFilter==='subscribed' ? '#000' : '#94a3b8'};border:1px solid #334155;border-radius:8px;padding:6px 14px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Subscribed only</button>
+  </div>`;
+  if (!subs.length) { el.innerHTML = toggle + '<div style="color:#94a3b8;font-size:13px;">No devices registered</div>'; return; }
+  const visible = _devicesFilter === 'subscribed' ? subs.filter(s => s.notification_types > 0) : subs;
+  if (!visible.length) { el.innerHTML = toggle + '<div style="color:#94a3b8;font-size:13px;">No subscribed devices</div>'; return; }
+  // Group by platform, then by device model within each platform
+  const platforms = {
+    android: { label: '🤖 Android', groups: {}, total: 0 },
+    ios:     { label: '🍎 iOS',     groups: {}, total: 0 },
+    other:   { label: '📱 Other',   groups: {}, total: 0 }
+  };
+  for (const s of visible) {
+    const p = s.device_type === 1 ? platforms.android : s.device_type === 0 ? platforms.ios : platforms.other;
+    const key = s.device_model || 'Unknown';
+    if (!p.groups[key]) p.groups[key] = { count: 0, enabled: 0, lastActive: 0 };
+    p.groups[key].count++;
+    p.total++;
+    if (s.notification_types > 0) p.groups[key].enabled++;
+    if (s.last_active > p.groups[key].lastActive) p.groups[key].lastActive = s.last_active;
+  }
+  const columns = Object.values(platforms).filter(p => p.total > 0).map(p => {
+    const rows = Object.entries(p.groups).sort((a,b) => b[1].count - a[1].count).map(([name, g]) => {
+      const lastActive = g.lastActive ? new Date(g.lastActive * 1000).toLocaleDateString('en-GB') : '—';
+      const status = g.enabled > 0 ? '<span style="color:#22c55e">●</span>' : '<span style="color:#ef4444">●</span>';
+      return `<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;">
+        <div style="color:#f1f5f9">${status} ${name}</div>
+        <div style="color:#94a3b8;font-size:11px;margin-top:4px;">${g.count} installs, ${g.enabled} subscribed · Last active: ${lastActive}</div>
+      </div>`;
+    }).join('');
+    return `<div>
+      <div style="font-size:14px;font-weight:700;color:#f1f5f9;margin-bottom:8px;">${p.label} <span style="color:#94a3b8;font-weight:500;font-size:12px;">(${p.total} devices)</span></div>
+      ${rows}
+    </div>`;
+  }).join('');
+  el.innerHTML = toggle + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">${columns}</div>`;
 }
 
 async function loadStats() {
