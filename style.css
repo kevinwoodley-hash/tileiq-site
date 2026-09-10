@@ -765,6 +765,9 @@ footer{border-top-color:#173033}
    Mobile-first navigation + responsive improvements
    ========================================================= */
 .nav-actions-mobile{display:flex;align-items:center;gap:10px}
+.header-phone{color:#8f969d;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;margin-right:4px}
+.header-phone:hover{color:var(--yellow)}
+@media(max-width:640px){.header-phone{display:none}}
 .mobile-menu-btn{
   display:none;
   width:44px;
