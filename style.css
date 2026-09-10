@@ -765,8 +765,8 @@ footer{border-top-color:#173033}
    Mobile-first navigation + responsive improvements
    ========================================================= */
 .nav-actions-mobile{display:flex;align-items:center;gap:10px}
-.header-phone{color:#8f969d;font-size:16px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;transition:color .15s}
-.header-phone:hover{color:var(--yellow)}
+.header-cta-phone{white-space:nowrap}
+@media(max-width:480px){.header-cta-phone{padding:9px 12px;font-size:12px}}
 .mobile-menu-btn{
   display:none;
   width:44px;
