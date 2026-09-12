@@ -874,13 +874,26 @@ async function authSignIn() {
     }
 }
 
-// Google / Apple sign-in — opens Supabase's hosted OAuth flow in the system
-// browser (so it can share the device's existing Google/Apple session), then
-// tileiq://oauth-callback hands the tokens back to handleDeepLink() above.
+// Google / Apple sign-in.
+// Native: opens Supabase's hosted OAuth flow in the system browser (so it can
+// share the device's existing Google/Apple session), then tileiq://oauth-callback
+// hands the tokens back to handleDeepLink() above.
+// Web: there's no custom-scheme handler or system browser to hand off to, so
+// instead let Supabase navigate this same tab straight to the provider and
+// back to this page's own URL — detectSessionInUrl (set on the client above)
+// picks the returned tokens up from the URL automatically on reload.
 async function authSocialSignIn(provider, screenPrefix) {
     const errorId = screenPrefix === "su" ? "signup-error" : "signin-error";
     authHideError(errorId);
     try {
+        if (!IS_NATIVE) {
+            const { error } = await sb.auth.signInWithOAuth({
+                provider,
+                options: { redirectTo: window.location.origin + window.location.pathname }
+            });
+            if (error) authShowError(errorId, error.message || `Could not start ${provider === "google" ? "Google" : "Apple"} sign in.`);
+            return;
+        }
         const { data, error } = await sb.auth.signInWithOAuth({
             provider,
             options: {
