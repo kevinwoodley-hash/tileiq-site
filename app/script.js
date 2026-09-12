@@ -795,6 +795,27 @@ async function authSignIn() {
     }
 }
 
+// ── Google / Apple sign-in — both routed through Supabase Auth's OAuth
+// providers (must be enabled in the Supabase dashboard: Authentication →
+// Providers → Google / Apple), so no separate token-exchange code is
+// needed here beyond kicking off the redirect. ──
+async function authOAuthSignIn(provider, errorId) {
+    authHideError(errorId);
+    try {
+        const { error } = await sb.auth.signInWithOAuth({
+            provider,
+            options: {
+                redirectTo: IS_NATIVE ? "com.tileiqpro.android://" : window.location.origin + window.location.pathname
+            }
+        });
+        if (error) authShowError(errorId, error.message || `Could not sign in with ${provider === "google" ? "Google" : "Apple"}.`);
+    } catch (e) {
+        authShowError(errorId, `Could not sign in with ${provider === "google" ? "Google" : "Apple"}.`);
+    }
+}
+function authGoogleSignIn(errorId) { return authOAuthSignIn("google", errorId); }
+function authAppleSignIn(errorId)  { return authOAuthSignIn("apple", errorId); }
+
 let _captchaAnswer = 0;
 
 function generateCaptcha() {
