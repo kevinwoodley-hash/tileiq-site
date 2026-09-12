@@ -48,22 +48,6 @@ body {
 
 #app { width: 100%; height: 100vh; overflow: hidden; position: relative; }
 
-/* Built mobile-first for the native app — on a PC-width browser window this
-   would otherwise stretch a phone UI edge-to-edge across the whole screen.
-   This is meant to be genuinely usable as a desktop tool though (tilers
-   checking/editing quotes from home or the office), not just a shrunk-down
-   phone mockup — so it's capped at a real working width, not a phone-narrow
-   column. Every other fixed-width thing in this stylesheet is a percentage
-   or a small in-context element (badges, chips), so nothing else needed
-   adjusting to fill the wider space. */
-@media (min-width: 1000px) {
-    body { display: flex; justify-content: center; background: #1b1f24; }
-    #app {
-        max-width: 860px;
-        box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 30px 80px rgba(0,0,0,.5);
-    }
-}
-
 
 
 /* ── SCREENS ──────────────────────────────────────────────── */
@@ -1035,6 +1019,45 @@ textarea { resize: vertical; }
 }
 .btn-biometric:active { background: rgba(230,175,46,0.08); }
 
+/* Google/Apple sign-in */
+.auth-divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 18px 0; color: rgba(255,255,255,0.3);
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.6px;
+}
+.auth-divider::before, .auth-divider::after {
+    content: ""; flex: 1; height: 1px;
+    background: rgba(255,255,255,0.1);
+}
+.btn-social {
+    width: 100%; margin-top: 10px; padding: 14px;
+    font-size: 14px; font-weight: 600;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all .15s;
+    letter-spacing: 0.3px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.btn-social:first-of-type { margin-top: 0; }
+.btn-social svg { flex-shrink: 0; }
+/* Google and Apple both mandate their own button colors/icon in their brand
+   guidelines — don't merge these back into one generic style. */
+.btn-google {
+    background: #131314; color: #e3e3e3;
+    border: 1px solid #8e918f;
+}
+.btn-google:active { background: #1b1b1c; }
+.btn-google .g-logo-chip {
+    width: 18px; height: 18px; background: #fff; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+}
+.btn-apple {
+    background: #000; color: #fff;
+    border: 1px solid rgba(255,255,255,0.15);
+}
+.btn-apple:active { background: #1c1c1e; }
+
 /* Links */
 .auth-links {
     margin-top: 40px; text-align: center;
@@ -1125,6 +1148,12 @@ textarea { resize: vertical; }
 #screen-verify.screen {
     padding-bottom: env(safe-area-inset-bottom, 0px);
     padding-top: env(safe-area-inset-top, 0px);
+    /* .screen's own background is the theme variable (light by default, before
+       login/theme detection), but .auth-wrap inside it is always dark by design.
+       The safe-area padding above reveals .screen's own background, not
+       .auth-wrap's — match it here so edge-to-edge doesn't show a stray light
+       strip behind the status bar on these always-dark auth screens. */
+    background: #111214;
 }
 
 .auth-wrap {
@@ -1201,4 +1230,13 @@ html, body {
     55%  { transform: translateY(0)     scale(1);  opacity: 1; }
     78%  { transform: translateY(1px)   scale(.96); opacity: .85; }
     100% { transform: translateY(-16px) scale(.7);  opacity: 0; }
+}
+
+/* ── HOME: "Let's get started!" new-user card — bolder colour + a gentle
+   pulse on top of the tile-drop icon animation, since a static card this
+   important was easy to skim past. */
+.get-started-pulse { animation: getStartedPulse 2.4s ease-in-out infinite; }
+@keyframes getStartedPulse {
+    0%, 100% { box-shadow: 0 4px 14px rgba(230,175,46,.35); }
+    50%      { box-shadow: 0 4px 22px rgba(230,175,46,.7); }
 }

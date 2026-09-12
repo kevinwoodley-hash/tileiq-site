@@ -40,8 +40,6 @@ window.onerror = function(msg, src, line) {
 };
 
 /* ─── BLOCK WEB BROWSER ACCESS ──────────────────────────────── */
-/* Disabled here (native-only gate) — this deployment IS the intentional
-   browser/web version of the app, at tile-iq.com/app/. */
 if (false && (!window.Capacitor || !window.Capacitor.isNativePlatform())) {
   document.body.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;background:#0f172a;color:#f1f5f9;text-align:center;padding:2rem;">
@@ -91,6 +89,9 @@ let settings = {
     autoRequestReview: false, // when true, emails the customer a Google-review request reviewRequestDelayDays after a job is marked Complete
     googleReviewLink: "",     // the tiler's own "leave a review" link, required for autoRequestReview to actually send
     reviewRequestDelayDays: 3, // days to wait after completion before sending — 0 sends as soon as the app next checks
+    paymentTermsDays: 30, // days after invoicedAt before an unpaid invoice counts as overdue
+    staleEnquiryDays: 5, // days an enquiry can sit with no quote sent before Your Day flags it as going cold
+    demoJobsSeeded: false, // one-shot flag — once true, the two demo jobs are never re-seeded even if all real jobs are later deleted
     // tile type labour multipliers
     tileRates: {
         ceramic:      1.0,
@@ -128,9 +129,9 @@ let settings = {
     vatNumber:     "",
     quoteReminderDays: 3,  // days before chasing a pending quote
     terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.",
-    quotesCreatedLifetime: 0,  // lifetime counter, kept for reference/analytics — no longer used to enforce the free-tier limit
+    quotesCreatedLifetime: 0,  // lifetime counter, kept for reference/analytics only — nothing is gated on it
     quotesMonthKey: null,      // "YYYY-M" the quotesThisMonth counter applies to
-    quotesThisMonth: 0,        // free-tier counter: quotes created in the current calendar month, resets monthly
+    quotesThisMonth: 0,        // informational only (was the old free-tier monthly cap) — resets monthly, not enforced
     dashboardWidgets: null  // ordered list of visible home-dashboard widget ids; null = use default order/visibility
 };
 const DEFAULT_SETTINGS = { ...settings }; // snapshot of defaults for reset on sign out
@@ -215,6 +216,15 @@ function getDirections(jobId) {
     // Universal Google Maps link: opens the Maps app via deep link where installed,
     // falls back to the Google Maps website otherwise. geo:/maps:// custom schemes
     // don't work outside the native app shell, so avoid them.
+    window.open("https://www.google.com/maps/search/?api=1&query=" + query, "_system");
+}
+
+function getCustomerDirections(id) {
+    const c = getSavedCustomers().find(x => String(x.id) === String(id));
+    if (!c) return;
+    const parts = [c.addr, c.city, c.postcode].filter(Boolean);
+    if (!parts.length) { alert("No address saved for this customer."); return; }
+    const query = encodeURIComponent(parts.join(", "));
     window.open("https://www.google.com/maps/search/?api=1&query=" + query, "_system");
 }
 
@@ -501,6 +511,15 @@ const sb = supabase.createClient(SB_URL, SB_KEY, {
     }
 });
 
+// In-app admin screen access — kept as an id check (an existing admin
+// account) OR'd with an email check for info@tile-iq.com, so adding the
+// email doesn't remove access from whoever already uses the id-based one.
+const ADMIN_USER_ID = "621cf673-20e9-4cb4-bcde-140d7c80958c";
+const ADMIN_EMAIL = "info@tile-iq.com";
+function isAppAdmin(user) {
+    return !!user && (user.id === ADMIN_USER_ID || (user.email || "").toLowerCase() === ADMIN_EMAIL);
+}
+
 // Handle deep link for password reset
 function handleDeepLink(url) {
     if (!url) return;
@@ -555,6 +574,37 @@ function handleDeepLink(url) {
         return;
     }
 
+    // Google Calendar connect callback — gcal-callback.html (a static page on
+    // tile-iq.com, not this worker/app) forwards the raw ?code= here, same
+    // as handleQBOCallback's redirect page. Exchange it via the gcal_token
+    // worker action (needs the client secret) rather than expecting the
+    // callback page itself to have already done it.
+    if (url.startsWith("tileiq://gcal-connected")) {
+        handleGCalCallback(url);
+        return;
+    }
+
+    // Google/Apple sign-in callback — Supabase redirects back here with the
+    // session tokens in the fragment (#access_token=...&refresh_token=...),
+    // same shape as the reset-password link above.
+    if (url.startsWith("tileiq://oauth-callback")) {
+        try {
+            const urlObj = new URL(url.replace("tileiq://oauth-callback", "https://tileiq.app/oauth"));
+            const fromQuery = urlObj.searchParams;
+            const fromHash  = new URLSearchParams(urlObj.hash.replace("#", ""));
+            const accessToken  = fromQuery.get("access_token")  || fromHash.get("access_token");
+            const refreshToken = fromQuery.get("refresh_token") || fromHash.get("refresh_token");
+            const expiresIn    = fromQuery.get("expires_in")    || fromHash.get("expires_in");
+            const errorDesc    = fromQuery.get("error_description") || fromHash.get("error_description");
+            if (accessToken) {
+                completeOAuthSignIn(accessToken, refreshToken, expiresIn);
+            } else if (errorDesc) {
+                alert("Sign in failed: " + errorDesc);
+            }
+        } catch(e) { console.error("OAuth deeplink error:", e); }
+        return;
+    }
+
 }
 
 // Register deep link listeners
@@ -579,7 +629,17 @@ function initDeepLinks() {
         if (!App) { setTimeout(initDeepLinks, 500); return; }
         App.getLaunchUrl().then(r => { if (r && r.url) handleDeepLink(r.url); }).catch(() => {});
         App.addListener("appUrlOpen", d => { if (d && d.url) handleDeepLink(d.url); });
-        App.addListener("appStateChange", ({ isActive }) => { if (isActive) setTimeout(checkJobReminders, 500); });
+        App.addListener("appStateChange", ({ isActive }) => {
+            if (!isActive) return;
+            setTimeout(checkJobReminders, 500);
+            // Tapping a notification while the app was already logged in and just
+            // backgrounded (not killed) resumes it via this same event — but
+            // checkPendingPushNav() was only ever wired to sign-in/session-restore
+            // flows, never to a plain resume. The Android native side always
+            // stores the tapped notification's data the same way regardless of
+            // whether the app was cold or warm, so it just sat there unread.
+            setTimeout(checkPendingPushNav, 500);
+        });
     }
 }
 
@@ -608,7 +668,13 @@ if (typeof Capacitor !== "undefined") {
             const { StatusBar } = window.Capacitor?.Plugins || {};
             if (!StatusBar) return;
             await StatusBar.setOverlaysWebView({ overlay: true });
-            await StatusBar.setStyle({ style: "Dark" });
+            // Style.Dark ("light text for dark backgrounds") is correct for our dark
+            // app background, but the native Android plugin does a case-sensitive
+            // check against the literal string "DARK" — passing "Dark" (title case)
+            // silently failed that check and fell through to light-icon mode, showing
+            // as a stray light strip behind the status bar under Android 15+
+            // edge-to-edge. Must be the exact enum value, all caps.
+            await StatusBar.setStyle({ style: "DARK" });
             const info = await StatusBar.getInfo();
             const h = info?.statusBarHeight || 24;
             document.documentElement.style.setProperty('--status-bar-height', h + 'px');
@@ -656,10 +722,16 @@ function tryOfflineLogin(email, password) {
         currentUser = session.user;
         _proStatus = null;
         _rcAppUserId = null;
-        if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
+        // Request push permission immediately at sign-in rather than waiting for the
+        // delayed initPushNotifications() call later in this flow (which can be
+        // missed if the app backgrounds/closes within that window) — was also
+        // previously Android-only (checked for the OneSignalPlugin name specifically),
+        // silently skipping iOS entirely since it registers as OneSignalCapacitor.
+        // initPushNotifications() itself branches correctly per platform.
+        if (currentUser?.id) { initPushNotifications().catch(e => console.warn('OneSignal init error:', e)); }
         // Show admin button for admin user only
         const adminBtn = document.getElementById("btn-admin");
-        if (adminBtn) adminBtn.style.display = currentUser.id === "621cf673-20e9-4cb4-bcde-140d7c80958c" ? "flex" : "none";
+        if (adminBtn) adminBtn.style.display = isAppAdmin(currentUser) ? "flex" : "none";
         try {
             const localJobs = localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id));
             if (localJobs) jobs = JSON.parse(localJobs);
@@ -731,10 +803,16 @@ async function authSignIn() {
         );
 
         currentUser = json.body.user;
-        if (currentUser?.id && window.Capacitor?.Plugins?.OneSignalPlugin) { try { window.Capacitor.Plugins.OneSignalPlugin.login({userId: currentUser.id}); window.Capacitor.Plugins.OneSignalPlugin.requestPermission(); } catch(e) { console.warn('OneSignal login error:', e); } }
+        // Request push permission immediately at sign-in rather than waiting for the
+        // delayed initPushNotifications() call later in this flow (which can be
+        // missed if the app backgrounds/closes within that window) — was also
+        // previously Android-only (checked for the OneSignalPlugin name specifically),
+        // silently skipping iOS entirely since it registers as OneSignalCapacitor.
+        // initPushNotifications() itself branches correctly per platform.
+        if (currentUser?.id) { initPushNotifications().catch(e => console.warn('OneSignal init error:', e)); }
         // Show admin button for admin user only
         const adminBtn = document.getElementById("btn-admin");
-        if (adminBtn) adminBtn.style.display = currentUser.id === "621cf673-20e9-4cb4-bcde-140d7c80958c" ? "flex" : "none";
+        if (adminBtn) adminBtn.style.display = isAppAdmin(currentUser) ? "flex" : "none";
 
         // Clear old user's in-memory data if a different user is logging in
         const cachedUserId = localStorage.getItem("tileiq-last-user");
@@ -770,6 +848,7 @@ async function authSignIn() {
             .catch(e => console.error("setSession error:", e));
 
         loadUserData().then(() => {
+            seedDemoJobsIfNeeded();
             isLoadingJobs = false;
             renderHomeScreen();
             renderDashboard();
@@ -792,6 +871,124 @@ async function authSignIn() {
         if (tryOfflineLogin(email, password)) return;
 
         authShowError("signin-error", "Could not connect. Check your internet connection and try again.");
+    }
+}
+
+// Google / Apple sign-in — opens Supabase's hosted OAuth flow in the system
+// browser (so it can share the device's existing Google/Apple session), then
+// tileiq://oauth-callback hands the tokens back to handleDeepLink() above.
+async function authSocialSignIn(provider, screenPrefix) {
+    const errorId = screenPrefix === "su" ? "signup-error" : "signin-error";
+    authHideError(errorId);
+    try {
+        const { data, error } = await sb.auth.signInWithOAuth({
+            provider,
+            options: {
+                redirectTo: "tileiq://oauth-callback",
+                skipBrowserRedirect: true
+            }
+        });
+        if (error || !data?.url) {
+            authShowError(errorId, error?.message || `Could not start ${provider === "google" ? "Google" : "Apple"} sign in.`);
+            return;
+        }
+        const { Browser } = window.Capacitor?.Plugins || {};
+        if (Browser?.open) await Browser.open({ url: data.url, presentationStyle: "popover" });
+        else if (window.AndroidBridge?.open) window.AndroidBridge.open(data.url);
+        else window.open(data.url, "_system");
+    } catch(e) {
+        authShowError(errorId, "Could not connect. Check your internet connection and try again.");
+    }
+}
+
+// Finishes a Google/Apple sign-in once tileiq://oauth-callback delivers the
+// tokens — mirrors authSignIn()'s success path (session storage, cached-user
+// handling, home screen + full data load) since there's no password here.
+async function completeOAuthSignIn(accessToken, refreshToken, expiresIn) {
+    try {
+        const json = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", "https://lzwmqabxpxuuznhbpewm.supabase.co/auth/v1/user");
+            xhr.setRequestHeader("apikey", SB_KEY);
+            xhr.setRequestHeader("Authorization", "Bearer " + accessToken);
+            xhr.timeout = 8000;
+            xhr.onload = () => {
+                try { resolve({ status: xhr.status, body: JSON.parse(xhr.responseText) }); }
+                catch(e) { reject(new Error("Bad JSON: " + xhr.responseText.slice(0,100))); }
+            };
+            xhr.onerror   = () => reject(new Error("No internet connection"));
+            xhr.ontimeout = () => reject(new Error("Connection timed out — check your internet and try again"));
+            xhr.send();
+        });
+
+        if (json.status !== 200 || json.body.error) {
+            alert("Sign in failed: " + (json.body.error_description || json.body.message || json.body.error || "Unknown error (status " + json.status + ")"));
+            return;
+        }
+
+        const user = json.body;
+        const expiresInNum = parseInt(expiresIn, 10) || 3600;
+
+        // Store session directly — same shape/key as authSignIn()
+        const sessionData = {
+            access_token:  accessToken,
+            refresh_token: refreshToken || "",
+            expires_at:    Math.floor(Date.now() / 1000) + expiresInNum,
+            expires_in:    expiresInNum,
+            token_type:    "bearer",
+            user
+        };
+        localStorage.setItem("sb-lzwmqabxpxuuznhbpewm-auth-token", JSON.stringify(sessionData));
+
+        currentUser = user;
+        if (currentUser?.id) { initPushNotifications().catch(e => console.warn('OneSignal init error:', e)); }
+        const adminBtn = document.getElementById("btn-admin");
+        if (adminBtn) adminBtn.style.display = isAppAdmin(currentUser) ? "flex" : "none";
+
+        // Clear old user's in-memory data if a different user is logging in
+        const cachedUserId = localStorage.getItem("tileiq-last-user");
+        if (cachedUserId && cachedUserId !== currentUser.id) {
+            jobs         = [];
+            settings     = { ...DEFAULT_SETTINGS };
+            _proStatus   = null;
+            _rcAppUserId = null;
+        } else {
+            try {
+                const localJobs = localStorage.getItem(LOCAL_JOBS_KEY(currentUser.id));
+                if (localJobs) jobs = JSON.parse(localJobs);
+                const localSet = localStorage.getItem(LOCAL_SETTINGS_KEY(currentUser.id));
+                if (localSet) settings = { ...DEFAULT_SETTINGS, ...JSON.parse(localSet) };
+            } catch(e) {}
+        }
+        localStorage.setItem("tileiq-last-user", currentUser.id);
+        localStorage.removeItem("tileiq-signed-out");
+
+        show("screen-home");
+        isLoadingJobs = true;
+        renderHomeScreen();
+        updatePrepPriceBadges();
+
+        sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+            .catch(e => console.error("setSession error:", e));
+
+        loadUserData().then(() => {
+            seedDemoJobsIfNeeded();
+            isLoadingJobs = false;
+            renderHomeScreen();
+            renderDashboard();
+            updatePrepPriceBadges();
+            stripPhotosFromJobs();
+            setTimeout(syncAllQuoteStatuses, 500);
+            setTimeout(checkPendingPushNav, 3000);
+            setTimeout(initPushNotifications, 1000);
+            setTimeout(checkJobReminders, 2000);
+            setTimeout(initRevenueCat, 1500);
+            setTimeout(startBackgroundSync, 3000);
+            setTimeout(updateNotificationBadge, 2500);
+        }).catch(e => { isLoadingJobs = false; renderHomeScreen(); console.error(e); });
+
+    } catch(e) {
+        alert("Could not complete sign in. Check your internet connection and try again.");
     }
 }
 
@@ -1706,6 +1903,7 @@ async function loadUserData() {
                                 sb.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token }).catch(() => {}),
                                 loadUserData()
                             ]);
+                            seedDemoJobsIfNeeded();
                             isLoadingJobs = false;
                             renderHomeScreen();
                             renderDashboard();
@@ -2370,6 +2568,7 @@ function rmToggleStoneW()  { const c = document.getElementById("rm-w-stone").che
 function goCustomers() {
     show('screen-customers');
     renderCustomersScreen('');
+    renderTipCard("customers");
     setTimeout(() => { const el = document.getElementById('customers-search'); if (el) el.value = ''; }, 50);
 }
 
@@ -2447,37 +2646,67 @@ function renderCustomersScreen(query = '') {
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                 <div style="flex:1;">
                     <div style="font-size:16px;font-weight:700;color:var(--text);">${esc(c.name)}</div>
-                    ${c.addr ? `<div style="font-size:13px;color:var(--muted);margin-top:3px;">📍 ${esc(c.addr)}${c.city ? ', ' + esc(c.city) : ''}${c.postcode ? ' ' + esc(c.postcode) : ''}</div>` : ''}
-                    ${c.phone ? `<div style="font-size:13px;color:var(--muted);margin-top:2px;">📞 ${esc(c.phone)}</div>` : ''}
                     ${c.email ? `<div style="font-size:13px;color:var(--muted);margin-top:2px;">✉️ ${esc(c.email)}</div>` : ''}
                     ${c.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:4px;font-style:italic;">${esc(c.notes)}</div>` : ''}
                 </div>
-                <div style="display:flex;flex-direction:column;gap:6px;margin-left:10px;">
-                    <button onclick="event.stopPropagation();newJobFromCustomer('${c.id}')" 
-                        style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
-                        + Job
-                    </button>
-                    <button onclick="event.stopPropagation();deleteCustomer('${c.id}')" 
-                        style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">
-                        🗑
-                    </button>
-                </div>
+                <button onclick="event.stopPropagation();deleteCustomer('${c.id}')"
+                    style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;margin-left:10px;">
+                    🗑
+                </button>
+            </div>
+            ${c.addr ? `<button onclick="event.stopPropagation();getCustomerDirections('${c.id}')"
+                style="display:block;width:100%;text-align:left;margin-top:10px;background:var(--amber-lt);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:8px 10px;font-size:13px;font-weight:600;cursor:pointer;">
+                📍 ${esc(c.addr)}${c.city ? ', ' + esc(c.city) : ''}${c.postcode ? ' ' + esc(c.postcode) : ''}
+            </button>` : ''}
+            ${c.phone ? `<button onclick="event.stopPropagation();window.open('tel:${esc(c.phone)}','_system')"
+                style="display:block;width:100%;text-align:left;margin-top:8px;background:var(--amber-lt);border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:8px 10px;font-size:13px;font-weight:600;cursor:pointer;">
+                📞 ${esc(c.phone)}
+            </button>` : ''}
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button onclick="event.stopPropagation();goAddCustomer('${c.id}')"
+                    style="flex:1;background:transparent;color:var(--ink);border:1.5px solid var(--border);border-radius:8px;padding:9px 10px;font-size:13px;font-weight:600;cursor:pointer;">
+                    ✏️ Edit
+                </button>
+                <button onclick="event.stopPropagation();newJobFromCustomer('${c.id}')"
+                    style="flex:1;background:var(--accent);color:#000;border:none;border-radius:8px;padding:9px 10px;font-size:13px;font-weight:700;cursor:pointer;">
+                    + Job
+                </button>
             </div>
         </div>`).join('');
 }
 
 function newJobFromCustomer(id) {
+    // Used to go via the New Job form (pre-filled, still needing a "Next →"
+    // tap) — the customer's details are already saved, so there's nothing
+    // left to review there. Creates the job directly and goes straight to
+    // Add Room, same as createJob() does for a job started from scratch.
     const c = getSavedCustomers().find(x => String(x.id) === String(id));
     if (!c) return;
-    goNewJob();
-    setTimeout(() => {
-        const set = (field, val) => { const el = document.getElementById('nj-' + field); if (el && val) el.value = val; };
-        set('name', c.name);
-        set('phone', c.phone);
-        set('email', c.email);
-        set('address', c.addr);
-        set('city', c.city);
-    }, 100);
+
+    const job = {
+        id:           uid(),
+        customerName: c.name,
+        phone:        c.phone || "",
+        email:        c.email || "",
+        address:      c.addr || "",
+        city:         c.city || "",
+        postcode:     c.postcode || "",
+        description:  "",
+        status:       "enquiry",
+        tileSupply:   "customer",
+        areaMeta:     null,
+        workType:     null,
+        rooms:        [],
+        createdAt:    new Date().toISOString(),
+        updatedAt:    new Date().toISOString()
+    };
+
+    jobs.unshift(job);
+    incrementMonthlyQuoteCount();
+    saveAll();
+    currentJobId = job.id;
+    renderJobView();
+    goAddRoom();
 }
 
 function deleteCustomer(id) {
@@ -2489,12 +2718,172 @@ function deleteCustomer(id) {
     document.getElementById('saved-customers-modal')?.remove();
 }
 
+// ── New-user tip cards ────────────────────────────────────────────────────
+// One shared card style (reused from the social post "laying tiles" loader)
+// shown across the main tabs for a brand new user's first few jobs, each
+// with a short blurb about what that page does. Dismissible per-page;
+// disappears everywhere once the user has 3+ jobs regardless.
+const TIP_CARD_CONTENT = {
+    home:      { title: "Let's get started!", body: "Create your first job to start using TileIQ and see how much time it can save you.", action: () => goNewJob() },
+    jobs:      { title: "Your jobs, all in one place", body: "Every job lives here from first enquiry to final invoice — filter by status and see what needs your attention." },
+    customers: { title: "Save time on repeat customers", body: "Store customer details once, then reuse them for future jobs — no retyping names, addresses or phone numbers." },
+    calendar:  { title: "Plan your week", body: "See scheduled jobs at a glance, and tap any day to see what's on." },
+    settings:  { title: "Set up your business", body: "Add your logo, default pricing and company details here so every quote and invoice looks professional." }
+};
+
+function _tipDismissedKey() { return `tileiq-tips-dismissed-${currentUser?.id || "anon"}`; }
+
+function _getTipDismissed() {
+    try { return JSON.parse(localStorage.getItem(_tipDismissedKey()) || "{}"); } catch(e) { return {}; }
+}
+
+function dismissTip(zone, ev) {
+    if (ev) ev.stopPropagation();
+    const d = _getTipDismissed();
+    d[zone] = true;
+    localStorage.setItem(_tipDismissedKey(), JSON.stringify(d));
+    const el = document.getElementById(`tip-card-${zone}`);
+    if (el) el.style.display = "none";
+}
+
+function renderTipCard(zone) {
+    const el = document.getElementById(`tip-card-${zone}`);
+    const content = TIP_CARD_CONTENT[zone];
+    if (!el || !content) return;
+    const dismissed = _getTipDismissed();
+    if (dismissed[zone] || getRealJobs().length >= 3) { el.style.display = "none"; return; }
+    el.className = "get-started-pulse";
+    el.style.cssText = `display:flex;background:linear-gradient(135deg,#fef3c7,#fde68a);border:2px solid #E6AF2E;border-radius:14px;padding:16px;align-items:center;gap:14px;cursor:${content.action ? "pointer" : "default"};`;
+    el.onclick = content.action || null;
+    el.innerHTML = `
+        <div class="tile-loader" style="height:34px;gap:5px;flex-shrink:0;">
+            <div class="chip" style="width:13px;height:13px;"></div>
+            <div class="chip" style="width:13px;height:13px;"></div>
+            <div class="chip" style="width:13px;height:13px;"></div>
+            <div class="chip" style="width:13px;height:13px;"></div>
+        </div>
+        <div style="flex:1;">
+            <div style="font-size:16px;font-weight:800;color:#78350f;">${content.title}</div>
+            <div style="font-size:12px;color:#92400e;margin-top:2px;line-height:1.4;">${content.body}</div>
+        </div>
+        ${content.action ? `<span style="background:#E6AF2E;color:#78350f;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;flex-shrink:0;">→</span>` : ""}
+        <button onclick="dismissTip('${zone}', event)" title="Dismiss" style="background:none;border:none;color:#92400e;opacity:.6;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;flex-shrink:0;align-self:flex-start;">×</button>
+    `;
+}
+
+// ── "Your Day" — a prioritised action list on the home dashboard. Hidden
+// entirely when there's nothing needing attention.
+function renderYourDay() {
+    const el = document.getElementById("your-day-card");
+    if (!el) return;
+
+    const needSending  = getQuotesNeedSending();
+    const needChasing   = getOverdueQuotes();
+    const needBooking   = getAcceptedNeedsBooking();
+    const today         = getJobsToday();
+    const tomorrow      = getJobsStartingTomorrow();
+    const overdueInv     = getOverdueInvoices();
+    const overdueTotal   = overdueInv.reduce((sum, j) => {
+        let grand = 0;
+        (j.rooms || []).forEach(room => (room.surfaces || []).forEach(s => { grand += parseFloat(s.total || 0); }));
+        return sum + grand;
+    }, 0);
+    const needInvoicing  = getNeedInvoicing();
+    const staleEnquiries = getStaleEnquiries();
+    const noReview       = getCompletedNoReviewAsked();
+    const readyForPost   = getCompletedPhotosReadyForPost();
+
+    const lines = [];
+    if (needSending.length) lines.push({
+        icon: "🔴", text: `${needSending.length} quote${needSending.length !== 1 ? "s" : ""} need${needSending.length === 1 ? "s" : ""} sending`,
+        action: () => { document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
+    });
+    if (needChasing.length) lines.push({
+        icon: "🟠", text: `${needChasing.length} quote${needChasing.length !== 1 ? "s" : ""} need${needChasing.length === 1 ? "s" : ""} following up`,
+        action: () => { document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
+    });
+    if (needBooking.length) lines.push({
+        icon: "✅", text: needBooking.length === 1
+            ? `${needBooking[0].customerName || "1 job"}'s quote accepted, needs booking in`
+            : `${needBooking.length} quotes accepted, need booking in`,
+        action: needBooking.length === 1
+            ? () => goJob(needBooking[0].id)
+            : () => { document.getElementById("jobs-quote-filter").value = "accepted"; goDashboard(); }
+    });
+    today.forEach(j => lines.push({
+        icon: "🔨", text: `${j.customerName || "Job"} — on site today`,
+        action: () => goJob(j.id)
+    }));
+    tomorrow.forEach(j => lines.push({
+        icon: "📅", text: `${j.customerName || "Job"} starts tomorrow`,
+        action: () => goJob(j.id)
+    }));
+    if (overdueInv.length) lines.push({
+        icon: "💷", text: `£${overdueTotal.toLocaleString("en-GB", {maximumFractionDigits:0})} overdue`,
+        action: () => { document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
+    });
+    if (needInvoicing.length) lines.push({
+        icon: "🧾", text: `${needInvoicing.length} completed job${needInvoicing.length !== 1 ? "s" : ""} need${needInvoicing.length === 1 ? "s" : ""} invoicing`,
+        action: () => { document.getElementById("jobs-quote-filter").value = "needs_invoicing"; goDashboard(); }
+    });
+    if (staleEnquiries.length) lines.push({
+        icon: "❄️", text: `${staleEnquiries.length} enquir${staleEnquiries.length !== 1 ? "ies" : "y"} going cold, no quote sent yet`,
+        action: () => { document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
+    });
+    if (noReview.length) lines.push({
+        icon: "⭐", text: `${noReview.length} completed job${noReview.length !== 1 ? "s" : ""} haven't been asked for a review`,
+        action: () => { document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
+    });
+    if (readyForPost.length) lines.push({
+        icon: "📸", text: `${readyForPost.length} completed job${readyForPost.length !== 1 ? "s" : ""} ${readyForPost.length === 1 ? "has" : "have"} photos ready for a social post`,
+        action: () => { goJob(readyForPost[0].id); setTimeout(openSocialPostComposer, 300); }
+    });
+    if (_cachedCustomerUnreadCount > 0) lines.push({
+        icon: "💬", text: `${_cachedCustomerUnreadCount} customer message${_cachedCustomerUnreadCount !== 1 ? "s" : ""} waiting for a reply`,
+        action: () => goVoicemails()
+    });
+    if (_cachedInboxUnreadCount > 0) lines.push({
+        icon: "✉️", text: `${_cachedInboxUnreadCount} unread message${_cachedInboxUnreadCount !== 1 ? "s" : ""}`,
+        action: () => goInbox()
+    });
+
+    el.style.display = "block";
+    if (!lines.length) {
+        el.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">✅</span>
+                <div>
+                    <div style="font-size:15px;font-weight:800;color:var(--ink);">You're all up to date</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:1px;">Nothing needs your attention right now.</div>
+                </div>
+            </div>`;
+        return;
+    }
+    // Built via data-index + a real onclick assignment below, not an inline
+    // onclick string — stringifying these closures would lose the captured
+    // job references (j, readyForPost[0], etc).
+    el.innerHTML = `
+        <div style="font-size:15px;font-weight:800;color:var(--ink);margin-bottom:10px;">Your day</div>
+        ${lines.map((l, i) => `
+            <div data-your-day-line="${i}" style="display:flex;align-items:center;gap:10px;padding:9px 0;${i < lines.length - 1 ? "border-bottom:1px solid var(--border);" : ""}cursor:pointer;">
+                <span style="font-size:16px;flex-shrink:0;">${l.icon}</span>
+                <span style="font-size:13px;color:var(--ink);flex:1;">${esc(l.text)}</span>
+                <span style="color:var(--muted);flex-shrink:0;">→</span>
+            </div>`).join("")}
+    `;
+    el.querySelectorAll("[data-your-day-line]").forEach(row => {
+        row.onclick = lines[parseInt(row.dataset.yourDayLine)].action;
+    });
+}
+
 function goHome() {
     show("screen-home");
     renderHomeScreen();
 }
 
 function renderHomeScreen() {
+    updateInboxBadge();
+    updateNotificationBadge();
     // Greeting
     const greetEl = document.getElementById("home-greeting");
     if (greetEl) {
@@ -2520,16 +2909,22 @@ function renderHomeScreen() {
             tierEl.innerHTML = isAccessCode
                 ? `<span style="background:#7c3aed;color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">✨ PRO (Access Code)</span>`
                 : `<span style="background:#f59e0b;color:#000;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">⭐ PRO</span>`;
+        } else if (isTrialActive()) {
+            const daysLeft = trialDaysLeft();
+            const showCountdown = daysLeft <= TRIAL_REMINDER_DAYS;
+            // No badge at all for most of the trial — the app just works
+            // normally. Only the last week shows a quiet countdown.
+            tierEl.innerHTML = showCountdown
+                ? `<div style="font-size:12px;color:${daysLeft <= 2 ? "#f59e0b" : "var(--text-muted)"};font-weight:${daysLeft <= 2 ? "700" : "400"};">⏳ ${daysLeft} day${daysLeft !== 1 ? "s" : ""} left in your trial</div>`
+                : "";
         } else {
-            const used = getQuotesUsedThisMonth();
-            const left = Math.max(0, FREE_JOB_LIMIT - used);
-            const quotaText = left > 0
-                ? `${left} of ${FREE_JOB_LIMIT} free quotes left this month`
-                : `Free quote limit reached this month`;
-            tierEl.innerHTML = `<span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Free Plan</span>
-                <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${quotaText}</div>`;
+            // Trial's run out — soft nag only, nothing is actually blocked.
+            tierEl.innerHTML = `<span style="background:#7f1d1d;color:#fca5a5;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Trial ended</span>
+                <div onclick="showPaywall('trial_ended')" style="font-size:12px;color:#f59e0b;font-weight:700;margin-top:6px;text-decoration:underline;cursor:pointer;">Subscribe to keep using TileIQ →</div>`;
         }
     }
+
+    if (!isLoadingJobs) { renderYourDay(); renderTipCard("home"); }
 
     // Job count
     const countEl = document.getElementById("home-job-count");
@@ -2553,6 +2948,7 @@ function goDashboard() {
     if (!document.getElementById("ptr-indicator")) initPullToRefresh();
     show("screen-dashboard");
     renderDashboard();
+    renderTipCard("jobs");
     // If FreeAgent just connected via URL redirect, show confirmation
     if (window._faJustConnected) {
         window._faJustConnected = false;
@@ -2596,7 +2992,7 @@ function renderQuoteTotals() {
 
     let acceptedTotal = 0, pendingTotal = 0;
 
-    jobs.forEach(j => {
+    getRealJobs().forEach(j => {
         let grand = 0;
         (j.rooms || []).forEach(room => {
             (room.surfaces || []).forEach(s => { grand += parseFloat(s.total || 0); });
@@ -2623,12 +3019,85 @@ function renderQuoteTotals() {
         </div>` : ""}`;
 }
 
+// Jobs that haven't had a quote sent yet — still sitting at enquiry/surveyed,
+// nothing yet at "quoted" or later.
+// All of the Your Day / dashboard aggregates below deliberately run over
+// getRealJobs() rather than jobs — demo jobs must never show up in figures
+// like "quotes need sending" or contribute to revenue/quote-value totals.
+function getQuotesNeedSending() {
+    const PIPELINE = ["enquiry","surveyed","quoted","accepted","scheduled","in_progress","complete"];
+    return getRealJobs().filter(j => {
+        if (j.jobArchived) return false;
+        if (j.quoteToken || j.quoteSentAt) return false;
+        const idx = PIPELINE.indexOf(j.status || "enquiry");
+        return idx >= 0 && idx < PIPELINE.indexOf("quoted");
+    });
+}
+
+function getJobsStartingTomorrow() {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = toDateStr(tomorrow);
+    return getRealJobs().filter(j => {
+        if (j.jobArchived || !j.jobStartDate) return false;
+        return j.jobStartDate.split("T")[0] === tomorrowStr;
+    });
+}
+
+// Jobs whose scheduled window (jobStartDate..jobEndDate) covers today —
+// covers both "starts today" and multi-day jobs already under way.
+function getJobsToday() {
+    const todayStr = toDateStr(new Date());
+    return getRealJobs().filter(j => {
+        if (j.jobArchived || !j.jobStartDate) return false;
+        const start = j.jobStartDate.split("T")[0];
+        const end   = (j.jobEndDate || j.jobStartDate).split("T")[0];
+        return todayStr >= start && todayStr <= end;
+    });
+}
+
+// Enquiries with no quote sent yet that have sat untouched past the
+// configured threshold — a lead that risks going cold unnoticed.
+function getStaleEnquiries() {
+    const days = parseInt(settings.staleEnquiryDays) || 5;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return getRealJobs().filter(j => {
+        if (j.jobArchived) return false;
+        if ((j.status || "enquiry") !== "enquiry") return false;
+        if (j.quoteToken || j.quoteSentAt) return false;
+        const created = j.createdAt ? new Date(j.createdAt).getTime() : null;
+        return created && created < cutoff;
+    });
+}
+
+// Same rule the "Need invoicing" dashboard tile uses — completed jobs
+// with no invoice raised yet.
+function getNeedInvoicing() {
+    return getRealJobs().filter(j => !j.jobArchived && (j.status || "enquiry") === "complete" && !j.invoicedAt);
+}
+
+// Complete jobs that haven't had a review request sent — regardless of
+// whether auto-request is switched on, so this still surfaces the
+// opportunity for tilers who prefer asking manually.
+function getCompletedNoReviewAsked() {
+    return getRealJobs().filter(j => !j.jobArchived && j.status === "complete" && j.email && !j.reviewRequestSent);
+}
+
+function getCompletedPhotosReadyForPost() {
+    return getRealJobs().filter(j => !j.jobArchived && !j.socialPostSharedAt && j.status === "complete" && Array.isArray(j.finishedPhotos) && j.finishedPhotos.length > 0);
+}
+
+function getAcceptedNeedsBooking() {
+    // Customer accepted the quote but no start date has been booked in yet.
+    return getRealJobs().filter(j => !j.jobArchived && j.quoteStatus === "accepted" && !j.jobStartDate);
+}
+
 function getOverdueQuotes() {
     const days = parseInt(settings.quoteReminderDays) || 0;
     if (!days) return [];
     const now    = Date.now();
     const cutoff = days * 24 * 60 * 60 * 1000;
-    return jobs.filter(j => {
+    return getRealJobs().filter(j => {
         if (j.jobArchived || !j.quoteToken || j.quoteStatus) return false; // no quote sent, or already responded
         const sentAt = j.quoteSentAt ? new Date(j.quoteSentAt).getTime() : null;
         if (!sentAt) return false;
@@ -2706,7 +3175,7 @@ function renderHomeDashboard() {
     const sourceCounts = {};
 
     jobs.forEach(j => {
-        if (j.jobArchived) return;
+        if (j.jobArchived || j.isDemo) return; // demo jobs never touch dashboard figures
         const grand = (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
         if (j.quoteStatus === "accepted" && j.quoteRespondedAt) {
             const d = new Date(j.quoteRespondedAt);
@@ -2991,6 +3460,8 @@ function stopBackgroundSync() {
     if (bgSyncInterval) { clearInterval(bgSyncInterval); bgSyncInterval = null; }
 }
 
+let _cachedCustomerUnreadCount = 0; // unread customer replies specifically — read synchronously by renderYourDay()
+
 async function computeNotificationBadge() {
     const enquiryJobs = jobs.filter(j => !j.jobArchived &&
         ["web_form", "ai_receptionist", "voicemail", "missed_call"].includes(j.source) &&
@@ -3012,24 +3483,67 @@ async function computeNotificationBadge() {
         }
     } catch(e) { console.warn("Notification badge fetch failed:", e.message); }
 
+    _cachedCustomerUnreadCount = unreadMsgCount;
     return enquiryJobs.length + unreadMsgCount;
 }
 
 async function updateNotificationBadge() {
     const badge = document.getElementById("notif-badge");
-    if (!badge) return;
     const count = await computeNotificationBadge();
-    if (count > 0) {
-        badge.textContent = count > 99 ? "99+" : count;
-        badge.style.display = "flex";
-    } else {
-        badge.style.display = "none";
+    if (badge) {
+        if (count > 0) {
+            badge.textContent = count > 99 ? "99+" : count;
+            badge.style.display = "flex";
+        } else {
+            badge.style.display = "none";
+        }
     }
+    renderYourDay(); // no-op if Home isn't the current screen
+}
+
+function _inboxAccessToken() {
+    try { const s = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token"); if (s) return JSON.parse(s).access_token || ""; } catch(e) {}
+    return "";
+}
+
+async function computeInboxBadge() {
+    if (!currentUser) return 0;
+    const accessToken = _inboxAccessToken();
+    let count = 0;
+    try {
+        const resp = await fetch(`${AI_PROXY_URL}/api/announcements`, { headers: { "Authorization": "Bearer " + accessToken } });
+        const data = await resp.json().catch(() => ({}));
+        count += (data.announcements || []).filter(a => !a.read).length;
+    } catch(e) {}
+    try {
+        const resp = await fetch(`${AI_PROXY_URL}/api/support/conversation`, { headers: { "Authorization": "Bearer " + accessToken } });
+        const data = await resp.json().catch(() => ({}));
+        count += (data.messages || []).filter(m => m.sender === "admin" && !m.read).length;
+    } catch(e) {}
+    return count;
+}
+
+let _cachedInboxUnreadCount = 0; // read synchronously by renderYourDay(); computeInboxBadge() itself is async
+
+async function updateInboxBadge() {
+    const badge = document.getElementById("inbox-badge");
+    const count = await computeInboxBadge();
+    _cachedInboxUnreadCount = count;
+    if (badge) {
+        if (count > 0) {
+            badge.textContent = count > 99 ? "99+" : count;
+            badge.style.display = "flex";
+        } else {
+            badge.style.display = "none";
+        }
+    }
+    renderYourDay(); // no-op if Home isn't the current screen — it just checks the card exists
 }
 
 async function backgroundSync() {
     if (!currentUser?.id || !navigator.onLine) return;
     updateNotificationBadge();
+    updateInboxBadge();
     try {
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
@@ -3218,7 +3732,7 @@ function renderDashboard() {
             ${j.jobArchived ? `<div style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:0.05em;margin-bottom:8px;">📦 ARCHIVED</div>` : ""}
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                 <div style="flex:1;min-width:0;">
-                    <div class="job-card-name">${j.customerName ? j.customerName.replace(/&/g,"&amp;").replace(/</g,"&lt;") : ""}</div>
+                    <div class="job-card-name">${j.customerName ? j.customerName.replace(/&/g,"&amp;").replace(/</g,"&lt;") : ""}${j.isDemo ? ` <span style="background:#1e40af;color:#dbeafe;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;vertical-align:middle;">DEMO</span>` : ""}</div>
                     ${addr ? `<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">📍 ${addr.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
                     ${j.phone ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📞 ${j.phone.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
                     ${(j.source === "voicemail" || j.source === "call" || j.source === "ai_receptionist") && j.areaMeta ? ballparkHtml(j, true) : ""}
@@ -3482,7 +3996,6 @@ async function extractCustomerFromText() {
 }
 
 function goNewJob() {
-    if (!checkJobLimit()) return;
     ["nj-name","nj-phone","nj-email","nj-address","nj-city","nj-postcode","nj-desc",]
         .forEach(id => document.getElementById(id).value = "");
     document.getElementById("nj-status").value = "enquiry";
@@ -3532,6 +4045,253 @@ function createJob() {
     currentJobId = job.id;
     renderJobView();
     goAddRoom();
+}
+
+/* ================================================================
+   DEMO JOBS — onboarding: two seeded jobs so a new (or long-stuck,
+   zero-job) user can see and try TileIQ without inventing a customer
+   or finding real measurements first. Never re-seeded once
+   settings.demoJobsSeeded is true, even if both get deleted.
+================================================================ */
+function isRealJob(j) { return !j || !j.isDemo; }
+function getRealJobs() { return jobs.filter(isRealJob); }
+
+function buildDemoJobComplete() {
+    const job = {
+        id:           uid(),
+        isDemo:       true,
+        demoKind:     "complete",
+        customerName: "Demo Job (worked example)",
+        phone:        "07700 900123",
+        email:        "demo@example.com",
+        address:      "12 Sample Street",
+        city:         "Demo City",
+        postcode:     "DE1 1MO",
+        description:  "A finished example — have a look around, nothing here is real.",
+        status:       "quoted",
+        tileSupply:   "contractor",
+        areaMeta:     null,
+        workType:     "bathroom",
+        rooms:        [],
+        createdAt:    new Date().toISOString(),
+        updatedAt:    new Date().toISOString()
+    };
+    const surface = {
+        type: "floor", label: "Floor",
+        length: 3, width: 4, area: 12,
+        tileType: "porcelain",
+        tileW: 600, tileH: 600, grout: 3, tileThick: 10,
+        wastage: 10
+    };
+    calcSurface(surface, false, null);
+    const room = {
+        name: "Bathroom floor",
+        length: 3, width: 4, height: 2.4,
+        sealantEnabled: false, sealantFloorPerim: true, sealantCorners: 0,
+        extraWorkCost: 0, extraWorkItems: [],
+        trimCost: 0,
+        wallDeducts: [], floorDeducts: [],
+        savedType: "floor", labourType: "m2",
+        tileType: "porcelain", adhColour: "grey", adhType: "standard",
+        type: "floor", tileSupply: "contractor",
+        surfaces: [surface],
+        area: 12,
+        niches: [],
+        total: parseFloat(surface.total).toFixed(2),
+        ufh: false,
+        tiles: surface.tiles || 0,
+        adhBags: Math.ceil((surface.adhKg || 0) / 20),
+        groutKg: surface.groutKg || 0
+    };
+    job.rooms = [room];
+    return job;
+}
+
+function buildDemoJobPartial() {
+    return {
+        id:              uid(),
+        isDemo:          true,
+        demoKind:        "partial",
+        customerName:    "Demo Bathroom",
+        phone:           "07700 900456",
+        email:           "demo.bathroom@example.com",
+        address:         "45 Practice Avenue",
+        city:            "Demo City",
+        postcode:        "DE2 2MO",
+        description:     "Your turn — add the tiling work to finish this quote.",
+        status:          "enquiry",
+        tileSupply:      "contractor",
+        areaMeta:        null,
+        workType:        "bathroom",
+        rooms:           [],
+        demoRoomPrefill: { name: "Bathroom floor", length: 3, width: 2.5 },
+        createdAt:       new Date().toISOString(),
+        updatedAt:       new Date().toISOString()
+    };
+}
+
+// Called once jobs have finished loading, both for a brand-new signup and
+// for an existing account that has never had a single real job. Idempotent —
+// settings.demoJobsSeeded flips permanently once seeded, cloud-synced via
+// saveSettingsLocal/_syncToCloud like every other setting.
+function seedDemoJobsIfNeeded() {
+    if (!currentUser || settings.demoJobsSeeded) return false;
+    if (jobs.length > 0) {
+        // Already has real jobs (or somehow already has demo jobs) — nothing
+        // to seed, just make sure we never revisit this check again.
+        settings.demoJobsSeeded = true;
+        saveSettingsLocal();
+        return false;
+    }
+    jobs.push(buildDemoJobComplete(), buildDemoJobPartial());
+    settings.demoJobsSeeded = true;
+    saveSettingsLocal();
+    saveAll();
+    return true;
+}
+
+function _demoDismissKey(name) { return `tileiq-${name}-${currentUser?.id || "anon"}`; }
+
+function deleteDemoJobs() {
+    if (!confirm("Delete both demo jobs? This can't be undone.")) return;
+    const demoIds = jobs.filter(j => j.isDemo).map(j => j.id);
+    jobs = jobs.filter(isRealJob);
+    saveAll();
+    // Same per-row cleanup deleteJob() does — without this, the demo jobs
+    // just reappear next time the cloud jobs are pulled down and merged in,
+    // since removing them from the bulk save/d1_save_jobs payload alone
+    // doesn't delete their individual D1/Supabase rows.
+    if (currentUser) {
+        demoIds.forEach(id => {
+            fetch(AI_PROXY_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "d1_delete_job", user_id: currentUser.id, job_id: id })
+            }).catch(e => console.error("deleteDemoJobs D1 error:", e));
+            const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+            fetch(SB_URL + "/rest/v1/jobs?id=eq." + id + "&user_id=eq." + currentUser.id, {
+                method: "DELETE",
+                headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY) }
+            }).catch(e => console.error("deleteDemoJobs Supabase error:", e));
+        });
+    }
+    renderDashboard();
+    renderHomeScreen();
+    goDashboard();
+}
+
+// Guided tour shown only on the "complete" demo job — one small dismissible
+// card at a time, sequenced via a per-user localStorage step counter so it
+// picks up where it left off (or stays finished) across visits.
+const DEMO_TOUR_STEPS = [
+    { anchor: "top",   icon: "📐", text: "See how TileIQ calculates the area." },
+    { anchor: "top",   icon: "🧾", text: "Prep, tiling, materials and extras are all kept together." },
+    { anchor: "quote", icon: "👉", text: "Tap here to see the finished quote." }
+];
+
+function _demoTourStep()      { return parseInt(localStorage.getItem(_demoDismissKey("demo-tour-step")) || "0", 10); }
+function _setDemoTourStep(n)  { localStorage.setItem(_demoDismissKey("demo-tour-step"), String(n)); }
+function advanceDemoTour() {
+    _setDemoTourStep(_demoTourStep() + 1);
+    const job = getJob();
+    if (job) renderDemoJobUI(job);
+}
+
+function renderDemoJobUI(job) {
+    const banner    = document.getElementById("demo-job-banner");
+    const tourTop   = document.getElementById("demo-tour-top");
+    const tourQuote = document.getElementById("demo-tour-quote");
+    const checklist = document.getElementById("demo-partial-checklist");
+    const emptyEl   = document.getElementById("job-rooms-empty");
+    if (!banner || !tourTop || !tourQuote || !checklist) return;
+
+    if (!job || !job.isDemo) {
+        banner.style.display    = "none";
+        tourTop.style.display   = "none";
+        tourQuote.style.display = "none";
+        checklist.style.display = "none";
+        return;
+    }
+
+    // Permanent banner — always shown on a demo job. "Delete demo jobs" only
+    // once there's at least one real job, so it never leaves someone stuck
+    // with an empty Jobs list before they've tried the real thing.
+    const canDelete = getRealJobs().length > 0;
+    banner.style.display = "block";
+    banner.innerHTML = `
+        <div style="background:linear-gradient(135deg,#1e3a8a,#1e40af);border-radius:12px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div style="font-size:13px;font-weight:700;color:#dbeafe;">🎓 DEMO JOB — Have a play. You can't break anything.</div>
+            ${canDelete ? `<button onclick="deleteDemoJobs()" style="background:rgba(255,255,255,.15);color:#dbeafe;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🗑 Delete demo jobs</button>` : ""}
+        </div>`;
+
+    if (job.demoKind === "partial") {
+        tourTop.style.display   = "none";
+        tourQuote.style.display = "none";
+        if (!(job.rooms || []).length) {
+            if (emptyEl) emptyEl.style.display = "none";
+            checklist.style.display = "block";
+            checklist.innerHTML = `
+                <div style="background:var(--surface);border:2px dashed #f59e0b;border-radius:12px;padding:14px 16px;margin-top:10px;">
+                    <div style="font-size:13px;color:var(--muted);line-height:2;">
+                        <span style="color:#10b981;font-weight:700;">Customer ✓</span> ·
+                        <span style="color:#10b981;font-weight:700;">Measurements ✓</span> ·
+                        <span style="color:#10b981;font-weight:700;">Areas ✓</span>
+                    </div>
+                    <div onclick="goAddRoomFromDemo()" style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+                        <span style="font-size:15px;font-weight:800;color:var(--ink);">Now add the tiling work</span>
+                        <span style="font-size:18px;color:#f59e0b;font-weight:800;">→</span>
+                    </div>
+                </div>`;
+        } else {
+            checklist.style.display = "none";
+            const celebratedKey = _demoDismissKey("demo2-celebrated");
+            if (!localStorage.getItem(celebratedKey)) {
+                checklist.style.display = "block";
+                checklist.innerHTML = `
+                    <div style="background:linear-gradient(135deg,#065f46,#047857);border-radius:12px;padding:14px 16px;margin-top:10px;">
+                        <div style="font-size:14px;font-weight:800;color:#fff;margin-bottom:8px;">Nice. You've just built your first TileIQ quote.</div>
+                        <div onclick="localStorage.setItem('${celebratedKey}','1');goNewJob();" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:rgba(255,255,255,.15);border-radius:8px;padding:10px 12px;">
+                            <span style="font-size:14px;font-weight:700;color:#fff;">Now try one of your own</span>
+                            <span style="font-size:16px;color:#fff;">→</span>
+                        </div>
+                        <div onclick="localStorage.setItem('${celebratedKey}','1');renderJobView();" style="text-align:center;margin-top:8px;font-size:12px;color:#a7f3d0;cursor:pointer;">Dismiss</div>
+                    </div>`;
+            }
+        }
+        return;
+    }
+
+    // demoKind === "complete" — guided 3-step tour, one card at a time.
+    checklist.style.display = "none";
+    const step = _demoTourStep();
+    if (step >= DEMO_TOUR_STEPS.length) {
+        if (step === DEMO_TOUR_STEPS.length) {
+            tourTop.style.display   = "none";
+            tourQuote.style.display = "block";
+            tourQuote.innerHTML = `
+                <div style="background:linear-gradient(135deg,#f59e0b,#eab308);border-radius:12px;padding:14px 16px;margin:10px 0;">
+                    <div style="font-size:14px;font-weight:800;color:#1c1400;margin-bottom:8px;">Ready to price your own job?</div>
+                    <div onclick="_setDemoTourStep(${DEMO_TOUR_STEPS.length + 1});goNewJob();" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#1c1400;border-radius:8px;padding:10px;cursor:pointer;">
+                        <span style="font-size:14px;font-weight:800;color:#fff;">+ Create my first job</span>
+                    </div>
+                </div>`;
+        } else {
+            tourTop.style.display   = "none";
+            tourQuote.style.display = "none";
+        }
+        return;
+    }
+    const s        = DEMO_TOUR_STEPS[step];
+    const targetEl = s.anchor === "quote" ? tourQuote : tourTop;
+    const otherEl  = s.anchor === "quote" ? tourTop   : tourQuote;
+    otherEl.style.display  = "none";
+    targetEl.style.display = "block";
+    targetEl.innerHTML = `
+        <div onclick="advanceDemoTour()" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:2px solid #E6AF2E;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;align-items:center;gap:10px;cursor:pointer;">
+            <span style="font-size:18px;">${s.icon}</span>
+            <span style="flex:1;font-size:13px;font-weight:700;color:#78350f;">${s.text}</span>
+            <span style="color:#92400e;font-weight:800;">→</span>
+        </div>`;
 }
 
 /* ================================================================
@@ -3610,6 +4370,7 @@ function saveSchedule() {
     saveAll();
     renderJobQuoteStatusBar();
     autoAddToDeviceCalendar(j);
+    syncJobToGCal(j);
 }
 
 async function saveAndSendSchedule() {
@@ -3625,6 +4386,7 @@ async function saveAndSendSchedule() {
     saveAll();
     renderJobQuoteStatusBar();
     autoAddToDeviceCalendar(j);
+    syncJobToGCal(j);
 
     // If no email just close
     if (!j.email) {
@@ -3860,6 +4622,154 @@ async function goMessages() {
     } catch(e) {
         if (loading) loading.style.display = "none";
         if (list) { list.innerHTML = '<div style="padding:20px;color:#ef4444;text-align:center;">Failed to load messages.</div>'; list.style.display = "block"; }
+    }
+}
+
+/* TileIQ announcements + support replies — the screen a customer_message-style
+   push with type "announcement"/"support_reply" (screen: "screen-inbox") is
+   meant to land on. Backend (/api/announcements, /api/announcements/read)
+   already existed; this was the missing client-side screen. */
+// Announcements have no per-user "delete" on the backend (deleting the row
+// would remove it for every tiler it was broadcast to, not just this one) —
+// dismissing sets a per-user flag instead (server-side, in announcement_reads),
+// so the backend's own GET /api/announcements excludes it from then on,
+// on every device, same as marking it read already does.
+function dismissAnnouncement(id) {
+    _lastInboxAnnouncements = (_lastInboxAnnouncements || []).filter(a => a.id !== id);
+    renderInboxAnnouncements(_lastInboxAnnouncements);
+    fetch(`${AI_PROXY_URL}/api/announcements/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _inboxAccessToken() },
+        body: JSON.stringify({ announcement_id: id })
+    }).catch(() => {});
+}
+let _lastInboxAnnouncements = [];
+function renderInboxAnnouncements(announcements) {
+    const list  = document.getElementById("inbox-list");
+    const empty = document.getElementById("inbox-empty");
+    if (!announcements.length) {
+        if (list)  { list.innerHTML = ""; list.style.display = "none"; }
+        if (empty) empty.style.display = "block";
+        return;
+    }
+    if (empty) empty.style.display = "none";
+    if (!list) return;
+    list.style.display = "block";
+    list.innerHTML = announcements.map(a => `
+        <div class="form-card" style="margin-bottom:10px;${a.read ? "" : "border-left:4px solid var(--amber);"}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                <div style="font-weight:700;font-size:15px;">${esc(a.title || "")}</div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    ${a.read ? "" : '<span style="background:var(--amber);color:#2b1e05;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;">NEW</span>'}
+                    <button onclick="dismissAnnouncement('${a.id}')" title="Delete" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 2px;">🗑</button>
+                </div>
+            </div>
+            <div style="font-size:14px;color:var(--ink);margin-top:6px;white-space:pre-wrap;">${esc(a.body || "")}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:8px;">${new Date(a.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+        </div>`).join("");
+}
+
+async function goInbox() {
+    show("screen-inbox");
+    const loading = document.getElementById("inbox-loading");
+    const list    = document.getElementById("inbox-list");
+    const empty   = document.getElementById("inbox-empty");
+    if (loading) loading.style.display = "block";
+    if (list)    { list.innerHTML = ""; list.style.display = "none"; }
+    if (empty)   empty.style.display = "none";
+    const accessToken = _inboxAccessToken();
+    try {
+        const resp = await fetch(`${AI_PROXY_URL}/api/announcements`, {
+            headers: { "Authorization": "Bearer " + accessToken }
+        });
+        const data = await resp.json().catch(() => ({}));
+        const announcements = data.announcements || [];
+        _lastInboxAnnouncements = announcements;
+        if (loading) loading.style.display = "none";
+        renderInboxAnnouncements(announcements);
+        // Mark newly-seen ones as read (fire and forget)
+        announcements.filter(a => !a.read).forEach(a => {
+            fetch(`${AI_PROXY_URL}/api/announcements/read`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+                body: JSON.stringify({ announcement_id: a.id })
+            }).catch(() => {});
+        });
+    } catch(e) {
+        if (loading) loading.style.display = "none";
+        if (empty) { empty.style.display = "block"; }
+    }
+    loadSupportThread(accessToken);
+    updateInboxBadge();
+}
+
+async function loadSupportThread(accessToken) {
+    const thread = document.getElementById("inbox-support-thread");
+    if (!thread) return;
+    thread.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;">Loading…</div>';
+    try {
+        const resp = await fetch(`${AI_PROXY_URL}/api/support/conversation`, {
+            headers: { "Authorization": "Bearer " + accessToken }
+        });
+        const data = await resp.json().catch(() => ({}));
+        const messages = data.messages || [];
+        const conversation = data.conversation;
+        if (!messages.length) {
+            thread.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px;">No messages yet — ask us anything below.</div>';
+        } else {
+            thread.innerHTML = messages.map(m => `
+                <div id="support-msg-${m.id}" style="display:flex;${m.sender === "admin" ? "justify-content:flex-start;" : "justify-content:flex-end;"}margin-bottom:8px;gap:6px;">
+                    ${m.sender === "admin" ? "" : `<button onclick="deleteSupportMessage('${m.id}')" title="Delete" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0;align-self:flex-end;">🗑</button>`}
+                    <div style="max-width:80%;background:${m.sender === "admin" ? "var(--surface)" : "var(--amber-lt)"};border:1px solid var(--border);border-radius:12px;padding:8px 12px;">
+                        <div style="font-size:14px;color:var(--ink);white-space:pre-wrap;">${esc(m.body || "")}</div>
+                        <div style="font-size:11px;color:var(--muted);margin-top:4px;">${m.sender === "admin" ? "TileIQ Support" : "You"} · ${new Date(m.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+                    </div>
+                    ${m.sender === "admin" ? `<button onclick="deleteSupportMessage('${m.id}')" title="Delete" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0;align-self:flex-end;">🗑</button>` : ""}
+                </div>`).join("");
+        }
+        if (conversation?.id) {
+            fetch(`${AI_PROXY_URL}/api/support/read`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+                body: JSON.stringify({ conversation_id: conversation.id })
+            }).catch(() => {});
+        }
+    } catch(e) {
+        thread.innerHTML = '<div style="text-align:center;padding:16px;color:var(--red);font-size:13px;">Could not load support messages.</div>';
+    }
+}
+
+function deleteSupportMessage(id) {
+    document.getElementById("support-msg-" + id)?.remove();
+    fetch(`${AI_PROXY_URL}/api/support/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + _inboxAccessToken() },
+        body: JSON.stringify({ message_id: id })
+    }).catch(() => {});
+}
+
+async function sendSupportMessage() {
+    const input = document.getElementById("inbox-support-input");
+    const body = input?.value.trim();
+    if (!body) return;
+    const btn = input.nextElementSibling;
+    if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+    const accessToken = _inboxAccessToken();
+    try {
+        const stored = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token");
+        const userName = stored ? (JSON.parse(stored).user?.user_metadata?.full_name || "") : "";
+        const resp = await fetch(`${AI_PROXY_URL}/api/support/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+            body: JSON.stringify({ body, userName })
+        });
+        if (!resp.ok) throw new Error();
+        input.value = "";
+        await loadSupportThread(accessToken);
+    } catch(e) {
+        alert("Couldn't send your message — please try again.");
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Send"; }
     }
 }
 
@@ -4303,6 +5213,14 @@ const SocialPost = {
                 files: files.length ? files : void 0,
                 dialogTitle: "Share to…"
             });
+            // Share sheet was actually handed off (not backed out of) — stop
+            // nagging about this job on Your Day.
+            const sharedJob = this._job();
+            if (sharedJob) {
+                sharedJob.socialPostSharedAt = new Date().toISOString();
+                saveAll();
+                renderYourDay();
+            }
         } catch (e) {
             // User backing out of the share sheet isn't an error worth alerting on.
             const cancelled = /cancel/i.test(e?.message || "");
@@ -4319,6 +5237,18 @@ function openSocialPostComposer() { SocialPost.open(); }
 function closeSocialPostComposer() { SocialPost.close(); }
 function generateSocialCaption() { SocialPost.generate(); }
 function shareSocialPost() { SocialPost.share(); }
+
+// Manual escape hatch for jobs already posted outside the in-app Share flow
+// (or from before this tracking existed) — clears the Your Day nudge without
+// needing to go through Share again.
+function markSocialPostDone() {
+    const job = SocialPost._job();
+    if (!job) return;
+    job.socialPostSharedAt = new Date().toISOString();
+    saveAll();
+    renderYourDay();
+    SocialPost.close();
+}
 
 // Visual pill picker over the hidden #social-post-style <select>, which stays
 // the source of truth SocialPost.generate() reads from.
@@ -4470,6 +5400,7 @@ function renderJobView() {
         roomsEl.innerHTML = ballparkHtml(job, false) || "";
         emptyEl.style.display = "";
         totalEl.classList.add("hidden");
+        renderDemoJobUI(job);
         return;
     }
 
@@ -4505,7 +5436,8 @@ function renderJobView() {
 
         const mats       = surfaces.reduce((a, s) => a + (s.materialSell  || 0), 0);
         const lab        = surfaces.reduce((a, s) => a + (s.labour        || 0), 0);
-        const prep       = surfaces.reduce((a, s) => a + (s.prepCost      || 0), 0);
+        const prepMat    = surfaces.reduce((a, s) => a + (s.prepMatCost   || 0), 0);
+        const prepLab    = surfaces.reduce((a, s) => a + (s.prepLabCost   || 0), 0);
         const ufh        = surfaces.reduce((a, s) => a + (s.ufhCost       || 0), 0);
         const adhKg      = surfaces.reduce((a, s) => a + (s.adhKg         || 0), 0);
         const adhBags    = Math.ceil(adhKg / 20);
@@ -4550,9 +5482,8 @@ function renderJobView() {
                 <span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${mats.toFixed(2)}</span></span>
                 <span class="rcb-sep">|</span>
                 <span class="rcb-item"><span class="rcb-label">Labour</span><span class="rcb-value">£${lab.toFixed(2)}</span></span>
-                ${hasTanking ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Tanking</span><span class="rcb-value">£${tankingCost.toFixed(2)}</span></span>` : ""}
-                ${hasPrimer  ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Primer</span><span class="rcb-value">£${primerCost.toFixed(2)}</span></span>` : ""}
-                ${(prep - tankingCost - primerCost) > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep</span><span class="rcb-value">£${(prep - tankingCost - primerCost).toFixed(2)}</span></span>` : ""}
+                ${prepMat > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep Materials</span><span class="rcb-value">£${prepMat.toFixed(2)}</span></span>` : ""}
+                ${prepLab > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep Labour</span><span class="rcb-value">£${prepLab.toFixed(2)}</span></span>` : ""}
                 ${ufh  > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">UFH</span><span class="rcb-value">£${ufh.toFixed(2)}</span></span>` : ""}
             </div>
             ${matSchedule ? `<div class="room-mat-schedule">${matSchedule}</div>` : ""}
@@ -4566,8 +5497,8 @@ function renderJobView() {
 
     const grandTotal = rooms.reduce((a, r) => a + (r.surfaces||[]).reduce((b,s) => b + parseFloat(s.total||0), 0) + parseFloat(r.extraWorkCost||0), 0);
 
-    // Build prep breakdown across all rooms
-    let totalMats = 0, totalLabour = 0, totalTanking = 0, totalPrep = 0;
+    // Build cost breakdown across all rooms — internal only, never shown to the customer
+    let totalMats = 0, totalLabour = 0, totalPrepMat = 0, totalPrepLab = 0;
     rooms.forEach(r => {
         const ct = r.tileSupply === "customer";
         const totalArea = (r.surfaces||[]).reduce((a,s) => a+(s.area||0), 0);
@@ -4575,16 +5506,15 @@ function renderJobView() {
         (r.surfaces||[]).forEach(s => { s.tileType = s.tileType || r.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
         totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0);
         totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0);
-        totalTanking += (r.surfaces||[]).reduce((a,s) => { if (!s.tanking) return a; const kits = Math.ceil((s.area||0) / 6); return a + kits * (parseFloat(settings?.tanking)||45) + (s.area||0) * (parseFloat(settings?.tankingLabour)||8); }, 0);
-        totalPrep    += (r.surfaces||[]).reduce((a,s) => a+(s.prepCost||0), 0);
+        totalPrepMat += (r.surfaces||[]).reduce((a,s) => a+(s.prepMatCost||0), 0);
+        totalPrepLab += (r.surfaces||[]).reduce((a,s) => a+(s.prepLabCost||0), 0);
     });
-    const otherPrep = totalPrep - totalTanking;
 
     const prepBreakdown = [
-        totalMats    > 0 ? `Materials £${totalMats.toFixed(2)}`    : "",
-        totalLabour  > 0 ? `Labour £${totalLabour.toFixed(2)}`      : "",
-        totalTanking > 0 ? `Tanking £${totalTanking.toFixed(2)}`    : "",
-        otherPrep    > 0.01 ? `Prep £${otherPrep.toFixed(2)}`       : "",
+        totalMats    > 0    ? `Materials £${totalMats.toFixed(2)}`       : "",
+        totalLabour  > 0    ? `Labour £${totalLabour.toFixed(2)}`        : "",
+        totalPrepMat > 0.01 ? `Prep Materials £${totalPrepMat.toFixed(2)}` : "",
+        totalPrepLab > 0.01 ? `Prep Labour £${totalPrepLab.toFixed(2)}`    : "",
     ].filter(Boolean).join(" · ");
 
     totalEl.classList.remove("hidden");
@@ -4670,6 +5600,8 @@ function renderJobView() {
         aiInfoEl.style.display = "none";
         aiInfoEl.innerHTML = "";
     }
+
+    renderDemoJobUI(job);
 }
 
 function setJobStatus(status) {
@@ -4709,7 +5641,7 @@ function checkDueReviewRequests() {
     if (!Array.isArray(jobs) || !jobs.length) return;
     const now = Date.now();
     jobs.forEach(j => {
-        if (j.status !== "complete" || !j.reviewRequestDueAt || j.reviewRequestSent) return;
+        if (j.isDemo || j.status !== "complete" || !j.reviewRequestDueAt || j.reviewRequestSent) return;
         if (new Date(j.reviewRequestDueAt).getTime() > now) return;
         sendReviewRequestEmail(j);
     });
@@ -4784,6 +5716,7 @@ function deleteJob() {
         if (!confirm(`Delete job for ${job.customerName}? This cannot be undone.`)) return;
     }
     const deletedId = currentJobId;
+    if (job.gcalEventId) deleteGCalEvent(job.gcalEventId);
     jobs = jobs.filter(j => j.id !== deletedId);
     currentJobId = null;
     saveAll(); // update localStorage immediately so totals recalculate correctly
@@ -5088,6 +6021,26 @@ function goAddRoomFromEnquiry() {
     show("screen-room");
     setTimeout(() => document.getElementById("rm-name").focus(), 100);
 }
+
+// The partial demo job's "Now add the tiling work →" CTA — pre-fills the
+// room name and floor dimensions (Measurements/Areas already "done" per the
+// demo's own checklist) then drops the tiler into the same real Add Room
+// flow everyone else uses, so Tile/Floor Prep/Labour choices are entirely
+// their own and the resulting room is a genuinely real, correctly-costed one.
+function goAddRoomFromDemo() {
+    const job = getJob();
+    const prefill = job?.demoRoomPrefill;
+    goAddRoom();
+    if (!prefill) return;
+    document.getElementById("rm-name").value = prefill.name || "Bathroom floor";
+    rmSelectType("floor");
+    const lEl = document.getElementById("rm-f-length");
+    const wEl = document.getElementById("rm-f-width");
+    if (lEl) lEl.value = prefill.length;
+    if (wEl) wEl.value = prefill.width;
+    rmCalc();
+}
+
 function goEditRoom(idx) {
     const room = getJob().rooms[idx];
     currentRoomIdx    = idx;
@@ -5139,7 +6092,8 @@ function rmSelectType(type, isEdit) {
     ["room-tile-type","walltiles","sealant","extrawork","trim","room-labour","room-wall-opts","room-wall-prep","room-floor-opts","room-floor-tile","room-floor-prep",
      "floor-tile","floor-prep","wall-tile","wall-prep",
      "shower-wall-tile","shower-wall-prep","shower-floor-opts","shower-floor-tile",
-     "niches-sh","extrawork-sh","extrawork-f","trim-f","trim-w","wetroom-f","room-extra-floors","room-extra-walls","room-extra-floors","room-extra-walls","room-extra-floors","room-extra-walls"].forEach(k => closeCollapse(k));
+     "niches-sh","extrawork-sh","extrawork-f","trim-f","trim-w","wetroom-f","room-extra-floors","room-extra-walls",
+     "sealant-f","sealant-w","sealant-sh","shower-extra","floor-extra","wall-extra"].forEach(k => closeCollapse(k));
     syncRoomSectionCards();
     // Default to porcelain for floor-only, ceramic for wall/room/shower —
     // skipped when editing an existing room, otherwise this would clobber
@@ -5225,7 +6179,7 @@ function clearRoomInputs() {
         "rm-r-length","rm-r-width","rm-r-height","rm-r-deduct",
         "rm-f-length","rm-f-width","rm-f-area-direct",
         "rm-w-width","rm-w-height","rm-w-area-direct",
-        "rm-sh-width","rm-sh-depth","rm-sh-height","rm-sh-extra-desc","rm-sh-extra-cost","rm-sh-tray-price"
+        "rm-sh-width","rm-sh-depth","rm-sh-height","rm-sh-tray-price"
     ];
     ids.forEach(id => document.getElementById(id).value = "");
     document.getElementById("rm-r-inclfloor").checked = true;
@@ -5243,15 +6197,17 @@ function clearRoomInputs() {
     const rSizeRow = document.getElementById("rm-r-tray-size-row"); if (rSizeRow) rSizeRow.classList.add("hidden");
     const fSizeRow = document.getElementById("rm-f-tray-size-row"); if (fSizeRow) fSizeRow.classList.add("hidden");
     document.getElementById("rm-r-ufh").checked       = false;
-    const se = document.getElementById("rm-sealant-enabled"); if (se) se.value = "true";
-    const sf = document.getElementById("rm-sealant-floorperim"); if (sf) sf.checked = true;
-    const sc = document.getElementById("rm-sealant-corners"); if (sc) sc.value = "";
-    const exd = document.getElementById("rm-extra-desc"); if (exd) exd.value = "";
-    const exc = document.getElementById("rm-extra-cost"); if (exc) exc.value = "";
-    const fexd = document.getElementById("rm-f-extra-desc"); if (fexd) fexd.value = "";
-    const fexc = document.getElementById("rm-f-extra-cost"); if (fexc) fexc.value = "";
-    const wexd = document.getElementById("rm-w-extra-desc"); if (wexd) wexd.value = "";
-    const wexc = document.getElementById("rm-w-extra-cost"); if (wexc) wexc.value = "";
+    // Sealant — every room type has its own fields now
+    ["rm-sealant-enabled","rm-f-sealant-enabled","rm-w-sealant-enabled","rm-sh-sealant-enabled"].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = "true";
+    });
+    ["rm-sealant-floorperim","rm-f-sealant-floorperim","rm-sh-sealant-floorperim"].forEach(id => {
+        const el = document.getElementById(id); if (el) el.checked = true;
+    });
+    ["rm-sealant-corners","rm-w-sealant-corners","rm-sh-sealant-corners"].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = "";
+    });
+    // Extra Work is now a repeatable list (see clearExtraWork()), not single fields
     ["rm-trim-lengths","rm-trim-price","rm-f-trim-lengths","rm-f-trim-price","rm-w-trim-lengths","rm-w-trim-price"]
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
     ["trim-r-badge","trim-f-badge","trim-w-badge"].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ""; });
@@ -5270,6 +6226,7 @@ function clearRoomInputs() {
         document.getElementById(id)?.classList.add("hidden");
     });
     clearNiches();
+    clearExtraWork();
     document.getElementById("rm-r-level-depth").classList.add("hidden");
     document.getElementById("rm-f-level-depth").classList.add("hidden");
     // reset tile defaults
@@ -5307,28 +6264,42 @@ function restoreRoomInputs(room) {
     const set   = (id, v) => { const _e = document.getElementById(id); if (_e && v !== undefined && v !== null) _e.value = v; };
     const setCb = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
 
-    // Sealant fields
-    set("rm-sealant-enabled", (room.sealantEnabled === false) ? "false" : "true");
-    set("rm-sealant-corners", room.sealantCorners || "");
-    const sf = document.getElementById("rm-sealant-floorperim"); if (sf) sf.checked = (room.sealantFloorPerim !== false);
-
-    // Extra work
-    set("rm-extra-desc", room.extraWorkDesc || "");
-    set("rm-extra-cost", (room.extraWorkCost || room.extraWorkCost === 0) ? room.extraWorkCost : "");
-    // floor/wall extra work — same value stored in room, applied to the right form on restore
-    if (room.savedType === "floor") {
-        set("rm-f-extra-desc", room.extraWorkDesc || "");
-        set("rm-f-extra-cost", room.extraWorkCost || "");
-    } else if (room.savedType === "wall") {
-        set("rm-w-extra-desc", room.extraWorkDesc || "");
-        set("rm-w-extra-cost", room.extraWorkCost || "");
-    } else if (room.savedType === "shower") {
-        set("rm-sh-extra-desc", room.extraWorkDesc || "");
-        set("rm-sh-extra-cost", room.extraWorkCost || "");
+    // Sealant fields — each room type has its own Sealant section/fields now
+    const sealEnabledId = currentSurfType === "floor" ? "rm-f-sealant-enabled"
+                        : currentSurfType === "wall"   ? "rm-w-sealant-enabled"
+                        : currentSurfType === "shower" ? "rm-sh-sealant-enabled"
+                        :                                "rm-sealant-enabled";
+    const sealCornersId = currentSurfType === "wall"   ? "rm-w-sealant-corners"
+                        : currentSurfType === "shower" ? "rm-sh-sealant-corners"
+                        :                                "rm-sealant-corners"; // floor has no corners field
+    const sealFloorPerimId = currentSurfType === "floor" ? "rm-f-sealant-floorperim"
+                           : currentSurfType === "shower" ? "rm-sh-sealant-floorperim"
+                           :                                "rm-sealant-floorperim"; // wall has no floor-perim field
+    set(sealEnabledId, (room.sealantEnabled === false) ? "false" : "true");
+    if (currentSurfType !== "floor") set(sealCornersId, room.sealantCorners || "");
+    if (currentSurfType !== "wall") {
+        const sf = document.getElementById(sealFloorPerimId); if (sf) sf.checked = (room.sealantFloorPerim !== false);
     }
 
+    // Extra Work — restore the saved list if this room has one (extraWorkItems);
+    // older saved rooms only have the flat extraWorkDesc/extraWorkCost pair, so
+    // fall back to a single row built from those instead of losing the data.
+    const ewZone = room.savedType === "floor" ? "f" : room.savedType === "wall" ? "w" : room.savedType === "shower" ? "sh" : "r";
+    if (Array.isArray(room.extraWorkItems) && room.extraWorkItems.length) {
+        extraWorkItems[ewZone] = JSON.parse(JSON.stringify(room.extraWorkItems));
+    } else if (room.extraWorkDesc || room.extraWorkCost) {
+        extraWorkItems[ewZone] = [{ desc: room.extraWorkDesc || "", cost: room.extraWorkCost || "" }];
+    } else {
+        extraWorkItems[ewZone] = [];
+    }
+    renderExtraWork(ewZone);
+
     if (currentSurfType === "room") {
-        const rRealDims = (room.length||0) > 0 && (room.width||0) > 0 && Math.abs((room.length||0)-(room.width||0)) > 0.01;
+        // A genuinely square room (length === width) used to fail this check and
+        // fall through to Direct Area instead — Length/Width just went blank on
+        // edit even though real values were saved. Any positive length+width is
+        // real data worth showing back, equal or not.
+        const rRealDims = (room.length||0) > 0 && (room.width||0) > 0;
         if (rRealDims && (room.height||0) > 0) {
             set("rm-r-length", room.length);
             set("rm-r-width",  room.width);
@@ -5380,7 +6351,9 @@ function restoreRoomInputs(room) {
             document.getElementById("rm-r-floor-opts").style.display = "none";
         }
     } else if (currentSurfType === "floor" && floors.length) {
-        const fRealDims = (floors[0].length||0) > 0 && Math.abs((floors[0].length||0)-(floors[0].width||0)) > 0.01;
+        // Same fix as rRealDims above — a genuinely square floor shouldn't be
+        // treated as fake/derived just because length equals width.
+        const fRealDims = (floors[0].length||0) > 0 && (floors[0].width||0) > 0;
         if (fRealDims) {
             set("rm-f-length", floors[0].length);
             set("rm-f-width",  floors[0].width);
@@ -5407,7 +6380,9 @@ function restoreRoomInputs(room) {
             document.getElementById("rm-f-level-depth").classList.remove("hidden");
         }
     } else if (currentSurfType === "wall" && walls.length) {
-        const wRealDims = (walls[0].width||0) > 0 && Math.abs((walls[0].width||0)-(walls[0].height||0)) > 0.01;
+        // Same fix again — a wall exactly as tall as it is wide shouldn't be
+        // treated as fake/derived either.
+        const wRealDims = (walls[0].width||0) > 0 && (walls[0].height||0) > 0;
         if (wRealDims) {
             set("rm-w-width",  walls[0].width);
             set("rm-w-height", walls[0].height);
@@ -5434,7 +6409,13 @@ function restoreRoomInputs(room) {
         set("rm-sh-width",  walls[0].width);
         set("rm-sh-height", walls[0].height);
         set("rm-sh-depth",  walls[1]?.width);
-        set("rm-sh-walls",  walls.length);
+        // walls.length includes any extra wall areas added beyond the base
+        // enclosure — showerNumWalls (saved explicitly) is the real count for
+        // this dropdown; older saved rooms without it fall back to walls.length,
+        // which is only wrong if they happen to also have extras (they can't,
+        // since this feature didn't exist yet when they were saved).
+        const shNumWalls = room.showerNumWalls || walls.length;
+        set("rm-sh-walls", shNumWalls);
         set("rm-sh-tile-type", room.tileType || "ceramic");
         set("rm-sh-wwastage", walls[0].wastage || 15);
         set("rm-sh-wtilecost", walls[0].tileCostOverride || "");
@@ -5482,8 +6463,14 @@ function restoreRoomInputs(room) {
         extraSurfaces = floors.slice(1).map(s => ({ ...s, type:"floor" }));
     } else if (currentSurfType === "wall" && walls.length > 1) {
         extraSurfaces = walls.slice(1).map(s => ({ ...s, type:"wall" }));
+    } else if (currentSurfType === "shower") {
+        const baseWalls = room.showerNumWalls || Math.min(walls.length, 2);
+        extraSurfaces = [
+            ...walls.slice(baseWalls).map(s => ({ ...s, type:"wall" })),
+            ...floors.slice(1).map(s => ({ ...s, type:"floor" })),
+        ];
     }
-    renderExtraSurfaces();
+    if (currentSurfType === "shower") renderExtraSurfacesShower(); else renderExtraSurfaces();
     // Restore trim
     if (room.trimLengths) {
         const lenId   = room.savedType === "floor" ? "rm-f-trim-lengths" : room.savedType === "wall" ? "rm-w-trim-lengths" : "rm-trim-lengths";
@@ -5651,6 +6638,30 @@ function renderExtraSurfacesRoom() {
                 wallContainer.appendChild(mainWallList.firstChild);
             }
         }
+    }
+}
+
+// Same relocate-into-a-dedicated-container trick as the Room wrapper above,
+// for Shower's own "+ Add Another Floor/Wall" (an extra tiled area beyond
+// the enclosure itself — e.g. a windowsill or a small adjoining wall).
+function addExtraSurfaceShower(type) {
+    addExtraSurface(type);
+    renderExtraSurfacesShower();
+}
+function renderExtraSurfacesShower() {
+    const floorContainer = document.getElementById("extra-floors-list-sh");
+    const wallContainer  = document.getElementById("extra-walls-list-sh");
+    if (!floorContainer && !wallContainer) return;
+    if (floorContainer) floorContainer.innerHTML = "";
+    if (wallContainer)  wallContainer.innerHTML  = "";
+    renderExtraSurfaces();
+    if (floorContainer) {
+        const mainFloorList = document.getElementById("extra-floors-list");
+        if (mainFloorList) { while (mainFloorList.firstChild) floorContainer.appendChild(mainFloorList.firstChild); }
+    }
+    if (wallContainer) {
+        const mainWallList = document.getElementById("extra-walls-list");
+        if (mainWallList) { while (mainWallList.firstChild) wallContainer.appendChild(mainWallList.firstChild); }
     }
 }
 function addExtraSurface(type) {
@@ -6084,6 +7095,60 @@ function clearNiches() {
     renderNiches("r");
 }
 
+/* ─── EXTRA WORK (repeatable list, per room type) ─── */
+let extraWorkItems = { r: [], f: [], w: [], sh: [] };
+
+function addExtraWorkItem(zone) {
+    extraWorkItems[zone].push({ desc: "", cost: "" });
+    renderExtraWork(zone);
+    rmCalc();
+}
+function removeExtraWorkItem(zone, i) {
+    extraWorkItems[zone].splice(i, 1);
+    renderExtraWork(zone);
+    rmCalc();
+}
+function updateExtraWorkItem(zone, i, field, value) {
+    const item = extraWorkItems[zone][i];
+    if (!item) return;
+    item[field] = field === "cost" ? value : value;
+    rmCalc();
+}
+function renderExtraWork(zone) {
+    const container = document.getElementById("extrawork-list-" + zone);
+    if (!container) return;
+    const items = extraWorkItems[zone];
+    if (!items.length) items.push({ desc: "", cost: "" }); // always show at least one row
+    container.innerHTML = items.map((item, i) => `
+        <div class="field-row" style="margin-bottom:8px;align-items:flex-end;">
+            <div class="field-group" style="flex:2;">
+                <label>Description</label>
+                <input type="text" placeholder="e.g. Remove &amp; refit toilet" value="${esc(item.desc || "").replace(/"/g, "&quot;")}"
+                    oninput="updateExtraWorkItem('${zone}',${i},'desc',this.value)">
+            </div>
+            <div class="field-group" style="flex:1;">
+                <label>Cost (£)</label>
+                <input type="number" step="0.01" placeholder="0" value="${item.cost || ""}"
+                    oninput="updateExtraWorkItem('${zone}',${i},'cost',this.value)">
+            </div>
+            ${items.length > 1 ? `<button type="button" onclick="removeExtraWorkItem('${zone}',${i})" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:0 4px 10px;">×</button>` : ""}
+        </div>
+    `).join("") + `<button type="button" class="btn-add-surface" onclick="addExtraWorkItem('${zone}')">+ Add Extra Work</button>`;
+}
+function extraWorkTotal(zone) {
+    return (extraWorkItems[zone] || []).reduce((a, it) => a + (parseFloat(it.cost) || 0), 0);
+}
+function extraWorkDescSummary(zone) {
+    return (extraWorkItems[zone] || []).map(it => (it.desc || "").trim()).filter(Boolean).join(", ");
+}
+function clearExtraWork() {
+    extraWorkItems = { r: [], f: [], w: [], sh: [] };
+    renderExtraWork("r");
+    renderExtraWork("f");
+    renderExtraWork("w");
+    renderExtraWork("sh");
+}
+
 function rmUpdateTileBadge(key, wId, hId, gId) {
     const w = document.getElementById(wId)?.value;
     const h = document.getElementById(hId)?.value;
@@ -6322,7 +7387,7 @@ function buildSurfaces() {
                 area: W * D
             });
         }
-        return surfaces;
+        return [...surfaces, ...buildExtraSurfaces()];
     }
 
     return null;
@@ -6416,8 +7481,13 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     // Wet room tray flat rate (per-job price overrides settings)
     s.trayCost = s.wetRoomTray ? (s.wetRoomTrayPrice || parseFloat(S.wetRoomTrayRate) || 150) : 0;
 
-    // Prep costs — all rates are £/m², multiplied by surface area
+    // Prep costs — all rates are £/m², multiplied by surface area.
+    // prepMatCost/prepLabCost split the same total for the tiler's own
+    // internal breakdown (never shown to the customer — their quote still
+    // sees prep folded into the one Materials line as before).
     s.prepCost = 0;
+    s.prepMatCost = 0;
+    s.prepLabCost = 0;
     s.prepLines = [];
     s.prepAdhKg  = 0;   // extra standard adhesive kg from prep (cement board bonding)
     s.rapidAdhKg = 0;   // rapid set adhesive kg for anti-crack membrane bed
@@ -6433,6 +7503,8 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             s.cementBoards  = boards;
             s.prepAdhKg    += adhKg;
             s.prepCost     += matCost + labCost;
+            s.prepMatCost  += matCost;
+            s.prepLabCost  += labCost;
             s.prepLines.push(`Cement Board: ${boards} board${boards !== 1 ? "s" : ""} · material £${matCost.toFixed(2)} · fitting labour £${labCost.toFixed(2)} · +${adhKg.toFixed(1)}kg adhesive`);
         }
         if (s.membrane) {
@@ -6447,6 +7519,8 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             const rapidCost   = rapidBags * rapidPrice * (1 + (parseFloat(S.markup) || 0) / 100);
             s.rapidAdhKg     += adhKg;
             s.prepCost       += matCost + labCost + rapidCost;
+            s.prepMatCost    += matCost + rapidCost; // rapid set adhesive is a material cost
+            s.prepLabCost    += labCost;
             s.prepLines.push(`Anti-Crack Membrane: material £${matCost.toFixed(2)} · fitting labour £${labCost.toFixed(2)} · rapid set adhesive ${rapidBags} bag${rapidBags!==1?"s":""} (${adhKg.toFixed(1)}kg) £${rapidCost.toFixed(2)}`);
         }
         if (s.levelling) {
@@ -6464,6 +7538,8 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             const totalCost = matCost + labCost;
             s.levelBags  = bags;
             s.prepCost += totalCost;
+            s.prepMatCost += matCost;
+            s.prepLabCost += labCost;
             s.prepLines.push(`Levelling Compound ${depth}mm: ${bags} bag${bags !== 1 ? "s" : ""} (£${bagPrice.toFixed(2)}/bag) + labour = £${totalCost.toFixed(2)}`);
         }
     }
@@ -6476,6 +7552,8 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         const labCost    = s.area * labRate;
         const c          = kitCost + labCost;
         s.prepCost += c;
+        s.prepMatCost += kitCost;
+        s.prepLabCost += labCost;
         s.tankingKits = kits;
         s.prepLines.push(`Tanking Kit: ${kits} kit${kits!==1?"s":""} × £${kitPrice} (covers ${kitCoverM2}m² each) = £${kitCost.toFixed(2)}`);
         s.prepLines.push(`Tanking Labour: ${s.area.toFixed(2)}m² × £${labRate}/m² = £${labCost.toFixed(2)}`);
@@ -6484,21 +7562,24 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     if (s.primer) {
         const rate = parseFloat(S.primerPrice) || 3.50;
         const c    = s.area * rate;
-        s.prepCost += c; s.prepLines.push(`Primer: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
+        s.prepCost += c; s.prepMatCost += c;
+        s.prepLines.push(`Primer: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
     }
-    // Natural stone install surcharge
+    // Natural stone install surcharge — extra labour for cutting/handling stone
     if (s.stone) {
         const rate = parseFloat(S.stoneSurcharge) || 8.00;
         const c    = s.area * rate;
         s.stoneInstallCost = c;
-        s.prepCost += c; s.prepLines.push(`Natural Stone Install: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
+        s.prepCost += c; s.prepLabCost += c;
+        s.prepLines.push(`Natural Stone Install: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
     }
     // Stone sealer (only available when stone is selected)
     if (s.stone && s.sealer) {
         const rate = parseFloat(S.sealerPrice) || 5.00;
         const c    = s.area * rate;
         s.stoneSealerCost = c;
-        s.prepCost += c; s.prepLines.push(`Stone Sealer: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
+        s.prepCost += c; s.prepMatCost += c;
+        s.prepLines.push(`Stone Sealer: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
     }
 
     // Clip/wedge cost — only when opted in via s.clips flag
@@ -6510,6 +7591,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         const wedgeRate = parseFloat(S.wedgePrice) || 8;
         s.clipCost = (clipBags * clipRate + wedgeBags * wedgeRate) * (1 + S.markup / 100);
         s.prepCost += s.clipCost;
+        s.prepMatCost += s.clipCost;
         s.prepLines.push(`Levelling Clips: ${s.levelClips} (${clipBags} × 200 bag${clipBags!==1?"s":""}) + Wedges: ${s.levelWedges} (${wedgeBags} × 200 bag${wedgeBags!==1?"s":""}) = £${s.clipCost.toFixed(2)}`);
     }
 
@@ -6698,9 +7780,9 @@ const COLLAPSE_GROUPS = {
 // same keys used by the jump-nav buttons and the collapsible panels themselves.
 const RM_JUMP_SECTIONS = {
     room:   [["room-wall-opts","Wall Options"], ["room-floor-opts","Floor Options"], ["sealant","Sealant"], ["extrawork","Extra Work"], ["trim","Tile Trim"], ["room-extra-floors","+ Floors"], ["room-extra-walls","+ Walls"]],
-    floor:  [["floor-tile","Tile"], ["floor-prep","Floor Prep"], ["ufh-f","UFH"], ["wetroom-f","Wetroom Tray"], ["extrawork-f","Extra Work"], ["trim-f","Tile Trim"]],
-    wall:   [["wall-tile","Tile"], ["wall-prep","Wall Prep"], ["niches-w","Niches"], ["extrawork-w","Extra Work"], ["trim-w","Tile Trim"]],
-    shower: [["shower-wall-tile","Wall Tiles"], ["shower-wall-prep","Wall Prep"], ["shower-floor-opts","Wetroom Tray"], ["niches-sh","Niches"], ["extrawork-sh","Extra Work"]],
+    floor:  [["floor-tile","Tile"], ["floor-prep","Floor Prep"], ["ufh-f","UFH"], ["wetroom-f","Wetroom Tray"], ["sealant-f","Sealant"], ["extrawork-f","Extra Work"], ["trim-f","Tile Trim"], ["floor-extra","+ Floors"]],
+    wall:   [["wall-tile","Tile"], ["wall-prep","Wall Prep"], ["niches-w","Niches"], ["sealant-w","Sealant"], ["extrawork-w","Extra Work"], ["trim-w","Tile Trim"], ["wall-extra","+ Walls"]],
+    shower: [["shower-wall-tile","Wall Tiles"], ["shower-wall-prep","Wall Prep"], ["shower-floor-opts","Wetroom Tray"], ["niches-sh","Niches"], ["sealant-sh","Sealant"], ["extrawork-sh","Extra Work"], ["shower-extra","+ Floors / Walls"]],
 };
 let rmVisitedSections = new Set(); // top-level sections the tiler has opened + moved on from
 let rmActiveSection = null;        // top-level section currently open, if any
@@ -6767,14 +7849,18 @@ function syncRoomSectionCards() {
     keys.forEach(key => {
         const toggle = document.getElementById("collapse-toggle-" + key);
         if (!toggle) return;
-        toggle.classList.toggle("hidden", !!rmActiveSection && key !== rmActiveSection);
+        // No section active yet is treated the same as "some other section is
+        // active" — every top-level header row stays hidden until its own
+        // blue jump-nav button is tapped, rather than sitting there restating
+        // the same label the button above it already shows.
+        toggle.classList.toggle("hidden", key !== rmActiveSection);
         const card = toggle.closest(".form-card");
         if (!card) return;
         if (!cardKeys.has(card)) cardKeys.set(card, []);
         cardKeys.get(card).push(key);
     });
     cardKeys.forEach((keysInCard, card) => {
-        card.classList.toggle("hidden", !!rmActiveSection && !keysInCard.includes(rmActiveSection));
+        card.classList.toggle("hidden", !keysInCard.includes(rmActiveSection));
     });
 }
 
@@ -6929,17 +8015,51 @@ function calcSealantCost(roomOrForm) {
     return base * (1 + (parseFloat(settings.markup) || 0) / 100);
 }
 
-/* Build a minimal room-like object from the current sealant form fields */
+/* Build a minimal room-like object from the current sealant form fields.
+   Each room type gets its own Sealant fields (only the controls relevant to
+   what that type actually has — Floor Only has no tiled walls so no corners
+   option, Wall Only has no floor so no floor-perimeter option). */
 function readSealantFromForm() {
-    if (currentSurfType !== "room") return null; // sealant only on full-room mode
-    return {
-        sealantEnabled:   (document.getElementById("rm-sealant-enabled")?.value || "true") !== "false",
-        sealantFloorPerim: document.getElementById("rm-sealant-floorperim")?.checked !== false,
-        sealantCorners:   parseInt(document.getElementById("rm-sealant-corners")?.value)   || 0,
-        length: parseFloat(document.getElementById("rm-r-length")?.value) || 0,
-        width:  parseFloat(document.getElementById("rm-r-width")?.value)  || 0,
-        height: parseFloat(document.getElementById("rm-r-height")?.value) || 0,
-    };
+    if (currentSurfType === "room") {
+        return {
+            sealantEnabled:    (document.getElementById("rm-sealant-enabled")?.value || "true") !== "false",
+            sealantFloorPerim: document.getElementById("rm-sealant-floorperim")?.checked !== false,
+            sealantCorners:    parseInt(document.getElementById("rm-sealant-corners")?.value) || 0,
+            length: parseFloat(document.getElementById("rm-r-length")?.value) || 0,
+            width:  parseFloat(document.getElementById("rm-r-width")?.value)  || 0,
+            height: parseFloat(document.getElementById("rm-r-height")?.value) || 0,
+        };
+    }
+    if (currentSurfType === "floor") {
+        return {
+            sealantEnabled:    (document.getElementById("rm-f-sealant-enabled")?.value || "true") !== "false",
+            sealantFloorPerim: document.getElementById("rm-f-sealant-floorperim")?.checked !== false,
+            sealantCorners: 0,
+            length: parseFloat(document.getElementById("rm-f-length")?.value) || 0,
+            width:  parseFloat(document.getElementById("rm-f-width")?.value)  || 0,
+            height: 0,
+        };
+    }
+    if (currentSurfType === "wall") {
+        return {
+            sealantEnabled:    (document.getElementById("rm-w-sealant-enabled")?.value || "true") !== "false",
+            sealantFloorPerim: false,
+            sealantCorners:    parseInt(document.getElementById("rm-w-sealant-corners")?.value) || 0,
+            length: 0, width: 0,
+            height: parseFloat(document.getElementById("rm-w-height")?.value) || 0,
+        };
+    }
+    if (currentSurfType === "shower") {
+        return {
+            sealantEnabled:    (document.getElementById("rm-sh-sealant-enabled")?.value || "true") !== "false",
+            sealantFloorPerim: document.getElementById("rm-sh-sealant-floorperim")?.checked !== false,
+            sealantCorners:    parseInt(document.getElementById("rm-sh-sealant-corners")?.value) || 0,
+            length: parseFloat(document.getElementById("rm-sh-width")?.value) || 0,
+            width:  parseFloat(document.getElementById("rm-sh-depth")?.value) || 0,
+            height: parseFloat(document.getElementById("rm-sh-height")?.value) || 0,
+        };
+    }
+    return null;
 }
 
 /* ─── LIVE CALCULATION ─── */
@@ -7024,11 +8144,8 @@ function rmCalc() {
     // for the main surfaces, which never set their own.
     surfaces.forEach(s => { s.tileType = s.tileType || tileTypeVal; calcSurface(s, ct, labourOpts); });
 
-    const extraCostId = currentSurfType === "floor"  ? "rm-f-extra-cost"
-                      : currentSurfType === "wall"   ? "rm-w-extra-cost"
-                      : currentSurfType === "shower" ? "rm-sh-extra-cost"
-                      :                               "rm-extra-cost";
-    const extraCost  = parseFloat(document.getElementById(extraCostId)?.value) || 0;
+    const extraZone  = currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : currentSurfType === "shower" ? "sh" : "r";
+    const extraCost  = extraWorkTotal(extraZone);
     const trimKey    = currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : "r";
     const trimData   = readTrimCost(trimKey);
     const trimCost   = trimData.cost;
@@ -7098,20 +8215,21 @@ function rmCalc() {
     if (totalLevelBags > 0) parts.push(`Levelling: ${totalLevelBags} × 20kg bag${totalLevelBags !== 1 ? "s" : ""}`);
     if (totalClips > 0) parts.push(`Clips: ${totalClips} / Wedges: ${totalWedges}${totalClipCost > 0 ? ` £${totalClipCost.toFixed(2)}` : ""}`);
 
-    // Stone install & sealer — show individually so they're clearly visible
+    // Quantities only here (£ figures now live in the two Prep Materials/Labour
+    // totals below) — avoids showing the same cost twice under different labels.
+    const totalTankingKits = surfaces.reduce((a, s) => a + (s.tankingKits || 0), 0);
+    if (totalTankingKits > 0) parts.push(`🪣 Tanking: ${totalTankingKits} kit${totalTankingKits!==1?"s":""}`);
     const stoneInstallCost = surfaces.reduce((a, s) => a + (s.stoneInstallCost || 0), 0);
     const stoneSealerCost  = surfaces.reduce((a, s) => a + (s.stoneSealerCost  || 0), 0);
-    if (stoneInstallCost > 0) parts.push(`🪨 Stone Install £${stoneInstallCost.toFixed(2)}`);
-    if (stoneSealerCost  > 0) parts.push(`🪨 Stone Sealer £${stoneSealerCost.toFixed(2)}`);
+    if (stoneInstallCost > 0) parts.push(`🪨 Stone Install`);
+    if (stoneSealerCost  > 0) parts.push(`🪨 Stone Sealer`);
 
-    const totalTankingKits = surfaces.reduce((a, s) => a + (s.tankingKits || 0), 0);
-    const totalTankingLabour = surfaces.filter(s => s.tanking).reduce((a, s) => a + s.area, 0);
-    const tankKitCost = totalTankingKits * (parseFloat(settings.tanking)||45);
-    const tankLabCost = totalTankingLabour * (parseFloat(settings.tankingLabour)||8);
-    if (totalTankingKits > 0) parts.push(`🪣 Tanking: ${totalTankingKits} kit${totalTankingKits!==1?"s":""} £${tankKitCost.toFixed(2)}`);
-    if (tankLabCost > 0) parts.push(`🪣 Tanking Labour £${tankLabCost.toFixed(2)}`);
-    const otherPrep = prep - stoneInstallCost - stoneSealerCost - tankKitCost - tankLabCost;
-    if (otherPrep > 0.01 && totalCBBoards === 0 && totalLevelBags === 0) parts.push(`Prep £${otherPrep.toFixed(2)}`);
+    // Internal-only split — the customer's quote still sees prep folded into
+    // the one Materials line, unaffected by this.
+    const totalPrepMat = surfaces.reduce((a, s) => a + (s.prepMatCost || 0), 0);
+    const totalPrepLab = surfaces.reduce((a, s) => a + (s.prepLabCost || 0), 0);
+    if (totalPrepMat > 0.01) parts.push(`Prep Materials £${totalPrepMat.toFixed(2)}`);
+    if (totalPrepLab > 0.01) parts.push(`Prep Labour £${totalPrepLab.toFixed(2)}`);
     if (sealTubes  > 0) parts.push(`Sealant: ${sealTubes} tube${sealTubes !== 1 ? "s" : ""} £${sealCost.toFixed(2)}`);
     if (trimCost   > 0) parts.push(`Trim: ${trimLengthsLive} length${trimLengthsLive !== 1 ? "s" : ""} £${trimCost.toFixed(2)}`);
     if (extraCost  > 0) parts.push(`Extra work £${extraCost.toFixed(2)}`);
@@ -7154,25 +8272,26 @@ function saveRoom() {
     // per-surface choices the moment the room was actually saved.
     surfaces.forEach(s => { s.tileType = s.tileType || tileType; calcSurface(s, ct, labourOpts); });
 
-    const extraDescId = currentSurfType === "floor" ? "rm-f-extra-desc"
-                      : currentSurfType === "wall"   ? "rm-w-extra-desc"
-                      : currentSurfType === "shower" ? "rm-sh-extra-desc"
-                      :                               "rm-extra-desc";
-    const extraCostId2 = currentSurfType === "floor" ? "rm-f-extra-cost"
-                       : currentSurfType === "wall"   ? "rm-w-extra-cost"
-                       : currentSurfType === "shower" ? "rm-sh-extra-cost"
-                       :                               "rm-extra-cost";
-    const extraWorkDesc = (document.getElementById(extraDescId)?.value || "").trim();
-    const extraWorkCost = parseFloat(document.getElementById(extraCostId2)?.value) || 0;
+    // Extra Work is a repeatable list now — combine the rows into the flat
+    // extraWorkDesc/extraWorkCost fields everything else (PDF, quote text,
+    // room cards) already reads, and separately save the raw list itself
+    // (extraWorkItemsSave) so editing the room can restore each row cleanly.
+    const extraZoneSave = currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : currentSurfType === "shower" ? "sh" : "r";
+    const extraWorkDesc = extraWorkDescSummary(extraZoneSave);
+    const extraWorkCost = extraWorkTotal(extraZoneSave);
+    const extraWorkItemsSave = JSON.parse(JSON.stringify(extraWorkItems[extraZoneSave] || []));
     const trimKey2  = currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : "r";
     const trimData  = readTrimCost(trimKey2);
     const trimLengths = trimData.lengths;
     const trimCostSave = trimData.cost;
 
     const area       = parseFloat(totalArea.toFixed(2));
-    const sealantEnabled = (document.getElementById("rm-sealant-enabled")?.value || "true") !== "false";
-    const sealantFloorPerim = document.getElementById("rm-sealant-floorperim")?.checked !== false;
-    const sealantCorners   = parseInt(document.getElementById("rm-sealant-corners")?.value) || 0;
+    // Every room type has its own Sealant section now — readSealantFromForm()
+    // pulls the right fields and dimensions for whichever type is active.
+    const sealForm = readSealantFromForm();
+    const sealantEnabled    = sealForm ? sealForm.sealantEnabled    : true;
+    const sealantFloorPerim = sealForm ? sealForm.sealantFloorPerim : true;
+    const sealantCorners    = sealForm ? sealForm.sealantCorners    : 0;
 
     const roomLen = parseFloat(document.getElementById("rm-r-length")?.value) || 0;
     const roomWid = parseFloat(document.getElementById("rm-r-width")?.value)  || 0;
@@ -7183,11 +8302,7 @@ function saveRoom() {
     const sealH = roomHei || (surfaces.find(s => s.type === "wall")?.height || 2.4);
 
     // Compute sealant cost now so it flows into room.total
-    const sealFormObj = (currentSurfType === "room" || currentSurfType === "floor") ? {
-        sealantEnabled, sealantFloorPerim, sealantCorners,
-        length: sealL, width: sealW, height: sealH
-    } : null;
-    const roomSealCost = sealFormObj ? calcSealantCost(sealFormObj) : 0;
+    const roomSealCost = sealForm ? calcSealantCost(sealForm) : 0;
 
     const total = surfaces.reduce((a, s) => a + parseFloat(s.total), 0) + extraWorkCost + trimCostSave + roomSealCost;
 
@@ -7205,10 +8320,15 @@ function saveRoom() {
         sealantCorners,
         extraWorkDesc: extraWorkDesc || undefined,
         extraWorkCost: extraWorkCost || 0,
+        extraWorkItems: extraWorkItemsSave,
         trimLengths:   trimLengths  || undefined,
         trimCost:      trimCostSave || 0,
         wallDeducts: wallDeducts.slice(),
         floorDeducts: floorDeducts.slice(),
+        // Shower's own enclosure wall count — saved explicitly so editing can
+        // tell the base 2/3 enclosure walls apart from any extra wall areas
+        // added afterwards (both are just "type:wall" surfaces once saved).
+        showerNumWalls: currentSurfType === "shower" ? (parseInt(document.getElementById("rm-sh-walls")?.value) || 2) : undefined,
         savedType:   currentSurfType,
         labourType:  currentLabourType,
         days:        currentLabourType === "day" ? days : undefined,
@@ -7287,7 +8407,7 @@ async function exportAllData() {
             "Start Date", "End Date", "Notes"
         ]);
 
-        jobs.forEach(j => {
+        getRealJobs().forEach(j => {
             const rooms   = j.rooms || [];
             const area    = rooms.reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + (s.area || 0), 0), 0);
             let totalMats = 0, totalLab = 0, totalPrep = 0;
@@ -7567,6 +8687,435 @@ function autoAddToDeviceCalendar(j) {
 }
 /* ─── END DEVICE CALENDAR AUTO-ADD ────────────────────────────── */
 
+/* ─── GOOGLE CALENDAR SYNC ───────────────────────────────────────
+   Two-way: jobs are pushed to Google Calendar when scheduled (create on
+   first sync, update by stored event id after), tagged via
+   extendedProperties.private so the pull side can filter them back out —
+   otherwise a job scheduled in TileIQ would show as two dots on its own
+   day. The user's own other Google Calendar events are pulled in read-only
+   alongside job dots so they can see other commitments while scheduling.
+   Direct client→Google REST calls (the Calendar API supports CORS) — the
+   worker is only needed for the OAuth code exchange/refresh, which needs
+   the client secret. */
+const GCAL_CLIENT_ID    = "1065209569926-4ms2qcf1ih8bah1k2so3ul4mim7krj5h.apps.googleusercontent.com";
+const GCAL_REDIRECT_URI = "https://tile-iq.com/gcal-callback";
+const GCAL_AUTH_URL     = "https://accounts.google.com/o/oauth2/v2/auth";
+const GCAL_SCOPE        = "https://www.googleapis.com/auth/calendar.events";
+
+async function googleCalendarConnect() {
+    const params = new URLSearchParams({
+        response_type: "code",
+        client_id: GCAL_CLIENT_ID,
+        redirect_uri: GCAL_REDIRECT_URI,
+        scope: GCAL_SCOPE,
+        access_type: "offline",
+        prompt: "consent" // force a refresh_token every time — see the gcal-connected deep link handler
+    });
+    const url = `${GCAL_AUTH_URL}?${params.toString()}`;
+    const { Browser } = window.Capacitor?.Plugins || {};
+    if (Browser?.open) await Browser.open({ url, presentationStyle: "popover" });
+    else if (window.AndroidBridge?.open) window.AndroidBridge.open(url);
+    else window.open(url, "_system");
+}
+
+// Called from handleDeepLink() on tileiq://gcal-connected — gcal-callback.html
+// forwards Google's raw ?code= (or ?error=) straight through, so the actual
+// token exchange (needs the client secret) happens here via the worker.
+async function handleGCalCallback(url) {
+    try {
+        const urlObj = new URL(url.replace("tileiq://gcal-connected", "https://tileiq.app/gcal"));
+        const code  = urlObj.searchParams.get("code");
+        const error = urlObj.searchParams.get("error");
+        if (error) { alert("Google Calendar connection failed: " + error); return; }
+        if (!code) return;
+        const resp = await fetch(AI_PROXY_URL, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "gcal_token", code })
+        });
+        const data = await resp.json();
+        if (!data.access_token) { alert("Google Calendar connection failed: " + (data.error || "unknown error")); return; }
+        let refreshToken = data.refresh_token;
+        if (!refreshToken) {
+            // Google omits refresh_token on a re-consent if one was already
+            // granted earlier — googleCalendarConnect() forces prompt=consent
+            // specifically to avoid this, but keep any refresh_token already
+            // on disk rather than clobber it with undefined if it still happens.
+            refreshToken = getGCalTokens()?.refresh_token;
+        }
+        localStorage.setItem("gcal-tokens", JSON.stringify({ access_token: data.access_token, refresh_token: refreshToken, expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600) }));
+        alert("✅ Google Calendar connected!");
+        updateGCalButton();
+        syncAllJobsToGCal();
+        pullGCalEvents();
+    } catch(e) { console.error("handleGCalCallback:", e); }
+}
+
+function getGCalTokens() {
+    try { return JSON.parse(localStorage.getItem("gcal-tokens") || "null"); } catch(e) { return null; }
+}
+
+function gcalDisconnect() {
+    localStorage.removeItem("gcal-tokens");
+    _gcalEventsCache = {};
+    updateGCalButton();
+    if (!document.getElementById("screen-calendar")?.classList.contains("hidden")) renderCalendar();
+}
+
+async function getValidGCalToken() {
+    const tokens = getGCalTokens();
+    if (!tokens || !tokens.refresh_token) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (tokens.expires_at > now + 60) return tokens;
+    try {
+        const resp = await fetch(AI_PROXY_URL, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "gcal_refresh", refresh_token: tokens.refresh_token })
+        });
+        const data = await resp.json();
+        if (data.access_token) {
+            const refreshed = { ...tokens, access_token: data.access_token, expires_at: now + (data.expires_in || 3600) };
+            localStorage.setItem("gcal-tokens", JSON.stringify(refreshed));
+            return refreshed;
+        }
+    } catch(e) {}
+    return null; // refresh failed — treat as disconnected rather than retry with a dead token on every call
+}
+
+function updateGCalButton() {
+    const btn = document.getElementById("btn-gcal");
+    if (!btn) return;
+    const tokens = getGCalTokens();
+    if (tokens) {
+        btn.textContent = "✅ Google Calendar connected — tap to disconnect";
+        btn.onclick = () => { if (confirm("Disconnect Google Calendar? Jobs already synced will stay on your Google Calendar until you remove them there.")) gcalDisconnect(); };
+    } else {
+        btn.textContent = "🔗 Connect Google Calendar";
+        btn.onclick = () => googleCalendarConnect();
+    }
+}
+
+// Google's all-day event end.date is EXCLUSIVE (the day after the job's
+// actual last day) — unlike jobEndDate, which is inclusive.
+function gcalAllDayEnd(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + 1);
+    return toDateStr(d);
+}
+
+// Push one job's schedule to Google Calendar. Create on first sync, update
+// (by the id Google gave back then) on every later change. No-ops silently
+// if not connected or not scheduled, so every call site can fire this
+// unconditionally without its own connected-check.
+async function syncJobToGCal(job) {
+    if (!job?.jobStartDate) { alert("GCal PUSH DEBUG: no jobStartDate"); return; }
+    const tokens = await getValidGCalToken();
+    if (!tokens) { alert("GCal PUSH DEBUG: no valid token (not connected)"); return; }
+    const start = job.jobStartDate.split("T")[0];
+    const end   = (job.jobEndDate || job.jobStartDate).split("T")[0];
+    const eventBody = {
+        summary: `${job.customerName || "Job"}${job.jobType ? " – " + job.jobType : ""}`,
+        description: [job.address, job.city, job.postcode].filter(Boolean).join(", ") || undefined,
+        start: { date: start },
+        end:   { date: gcalAllDayEnd(end) },
+        extendedProperties: { private: { tileiq_job_id: job.id } }
+    };
+    try {
+        let resp = null;
+        if (job.gcalEventId) {
+            resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${job.gcalEventId}`, {
+                method: "PATCH",
+                headers: { "Authorization": "Bearer " + tokens.access_token, "Content-Type": "application/json" },
+                body: JSON.stringify(eventBody)
+            });
+            if (resp.status === 404 || resp.status === 410) {
+                // Deleted on the Google side since we last synced — fall through and create a fresh one
+                job.gcalEventId = null;
+                resp = null;
+            }
+        }
+        if (!resp) {
+            resp = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+                method: "POST",
+                headers: { "Authorization": "Bearer " + tokens.access_token, "Content-Type": "application/json" },
+                body: JSON.stringify(eventBody)
+            });
+        }
+        const data = await resp.json();
+        alert("GCal PUSH DEBUG: status " + resp.status + " body: " + JSON.stringify(data).slice(0,300));
+        if (resp.ok && data.id && data.id !== job.gcalEventId) {
+            job.gcalEventId = data.id;
+            saveAll();
+        }
+    } catch(e) { alert("GCal PUSH DEBUG exception: " + e.message); }
+}
+
+async function deleteGCalEvent(eventId) {
+    const tokens = await getValidGCalToken();
+    if (!tokens || !eventId) return;
+    try {
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+            method: "DELETE",
+            headers: { "Authorization": "Bearer " + tokens.access_token }
+        });
+    } catch(e) { console.warn("deleteGCalEvent:", e.message); }
+}
+
+// One-off catch-up run right after connecting, so jobs scheduled before
+// Google Calendar was connected don't just sit un-synced until each one
+// happens to be re-saved individually.
+async function syncAllJobsToGCal() {
+    const tokens = await getValidGCalToken();
+    if (!tokens) return;
+    for (const j of getRealJobs()) {
+        if (j.jobStartDate) await syncJobToGCal(j);
+    }
+}
+
+// Pull — the user's other Google Calendar events, shown read-only alongside
+// job dots. Cached per visible month so flipping back to a month already
+// viewed this session doesn't re-fetch. _gcalFetchInFlight guards against
+// the render loop below asking for every day of the month in one pass —
+// without it, each of those ~30 calls would see the same cache miss and
+// fire its own duplicate fetch before the first one lands.
+let _gcalEventsCache = {};   // "YYYY-M" -> [{id, summary, start, end}] (both dates inclusive)
+let _gcalFetchInFlight = {}; // "YYYY-M" -> true while a pull is in progress
+
+async function pullGCalEvents(year, month) {
+    const tokens = await getValidGCalToken();
+    if (!tokens) return;
+    year  = year  ?? calYear;
+    month = month ?? calMonth;
+    const cacheKey = `${year}-${month}`;
+    if (_gcalFetchInFlight[cacheKey]) return;
+    _gcalFetchInFlight[cacheKey] = true;
+    const timeMin = new Date(year, month, 1).toISOString();
+    const timeMax = new Date(year, month + 1, 1).toISOString();
+    try {
+        const params = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "250" });
+        const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
+            headers: { "Authorization": "Bearer " + tokens.access_token }
+        });
+        const data = await resp.json();
+        if (!resp.ok) { console.warn("pullGCalEvents: status", resp.status, data); return; }
+        const events = (data.items || [])
+            .filter(e => !e.extendedProperties?.private?.tileiq_job_id) // don't double-show jobs we pushed ourselves
+            .filter(e => e.status !== "cancelled")
+            .map(e => {
+                const isAllDay = !!e.start?.date;
+                let endStr = (e.end?.date || e.end?.dateTime || "").split("T")[0];
+                if (isAllDay && endStr) endStr = toDateStr(new Date(new Date(endStr + "T00:00:00").getTime() - 86400000)); // exclusive → inclusive
+                const startStr = (e.start?.date || e.start?.dateTime || "").split("T")[0];
+                return { id: e.id, summary: e.summary || "(No title)", start: startStr, end: endStr || startStr };
+            });
+        _gcalEventsCache[cacheKey] = events;
+        if (year === calYear && month === calMonth) renderCalendar();
+    } catch(e) { console.warn("pullGCalEvents:", e.message); }
+    finally { delete _gcalFetchInFlight[cacheKey]; }
+}
+
+function getGCalEventsForDate(dateStr) {
+    const [y, m] = dateStr.split("-").map(Number);
+    const cacheKey = `${y}-${m - 1}`;
+    if (!(cacheKey in _gcalEventsCache)) { pullGCalEvents(y, m - 1); return []; } // triggers a fetch, renders again once it lands
+    return (_gcalEventsCache[cacheKey] || []).filter(e => dateStr >= e.start && dateStr <= e.end);
+}
+
+// Manual refresh — a month is only ever pulled once per app session
+// otherwise (see the cache check above), so an event added to Google
+// Calendar while TileIQ is already open wouldn't show up until the app
+// was restarted. This forces a re-fetch of the currently viewed month.
+async function refreshGCalForMonth() {
+    const btn = document.getElementById("cal-gcal-refresh-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    delete _gcalEventsCache[`${calYear}-${calMonth}`];
+    await pullGCalEvents(calYear, calMonth);
+    if (btn) { btn.disabled = false; btn.textContent = "↻"; }
+}
+
+/* ── Add/edit/delete a Google Calendar event directly from the day panel.
+     openGCalEventSheet(null, dateStr) adds a new one on that date;
+     openGCalEventSheet(eventId, dateStr) fetches the full event (the pull
+     cache only keeps summary/start/end date, not exact time or description)
+     and opens it pre-filled for editing. ── */
+let _gcalSheetEventId = null;
+
+async function openGCalEventSheet(eventId, dateStr) {
+    document.getElementById("gcal-event-sheet")?.remove();
+    _gcalSheetEventId = eventId;
+
+    let title = "", desc = "", location = "", allDay = false;
+    let startDate = dateStr, endDate = dateStr, startTime = "09:00", endTime = "10:00";
+
+    if (eventId) {
+        const tokens = await getValidGCalToken();
+        if (!tokens) { alert("Not connected to Google Calendar."); return; }
+        try {
+            const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+                headers: { "Authorization": "Bearer " + tokens.access_token }
+            });
+            const ev = await resp.json();
+            if (!resp.ok) { alert("Could not load event: " + (ev.error?.message || resp.status)); return; }
+            title    = ev.summary || "";
+            desc     = ev.description || "";
+            location = ev.location || "";
+            allDay   = !!ev.start?.date;
+            if (allDay) {
+                startDate = ev.start.date;
+                const endD = new Date(ev.end.date + "T00:00:00");
+                endD.setDate(endD.getDate() - 1); // exclusive → inclusive, matches gcalAllDayEnd's inverse
+                endDate = toDateStr(endD);
+            } else {
+                const s = new Date(ev.start.dateTime), e2 = new Date(ev.end.dateTime);
+                startDate = toDateStr(s); startTime = s.toTimeString().slice(0,5);
+                endDate   = toDateStr(e2); endTime   = e2.toTimeString().slice(0,5);
+            }
+        } catch(e) { alert("Could not load event: " + e.message); return; }
+    }
+
+    const sheet = document.createElement("div");
+    sheet.id = "gcal-event-sheet";
+    sheet.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end;";
+    sheet.innerHTML = `
+        <div onclick="closeGCalEventSheet()" style="flex:1;background:rgba(0,0,0,0.5);"></div>
+        <div style="background:#1e293b;border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom));max-height:85vh;overflow-y:auto;">
+            <div style="width:40px;height:4px;background:#334155;border-radius:2px;margin:0 auto 20px;"></div>
+            <div style="font-size:16px;font-weight:700;color:#e2e8f0;margin-bottom:16px;">📆 ${eventId ? "Edit" : "Add"} Google Calendar Event</div>
+
+            <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Title</label>
+            <input id="gcal-ev-title" value="${esc(title)}" placeholder="e.g. Quote — 4 Kings Walk"
+                style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:15px;margin-bottom:14px;box-sizing:border-box;">
+
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;color:#e2e8f0;font-size:14px;cursor:pointer;">
+                <input type="checkbox" id="gcal-ev-allday" ${allDay ? "checked" : ""} onchange="toggleGCalEvAllDay()" style="width:18px;height:18px;">
+                All day
+            </label>
+
+            <div id="gcal-ev-timed-fields" style="${allDay ? "display:none;" : ""}">
+                <div style="display:flex;gap:10px;margin-bottom:14px;">
+                    <div style="flex:1;">
+                        <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Start</label>
+                        <input type="date" id="gcal-ev-start-date" value="${startDate}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;margin-bottom:6px;box-sizing:border-box;">
+                        <input type="time" id="gcal-ev-start-time" value="${startTime}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;box-sizing:border-box;">
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">End</label>
+                        <input type="date" id="gcal-ev-end-date" value="${endDate}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;margin-bottom:6px;box-sizing:border-box;">
+                        <input type="time" id="gcal-ev-end-time" value="${endTime}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;box-sizing:border-box;">
+                    </div>
+                </div>
+            </div>
+            <div id="gcal-ev-allday-fields" style="${allDay ? "" : "display:none;"}margin-bottom:14px;">
+                <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Date</label>
+                <input type="date" id="gcal-ev-allday-date" value="${startDate}" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;box-sizing:border-box;">
+            </div>
+
+            <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Address (optional)</label>
+            <input id="gcal-ev-location" value="${esc(location)}" placeholder="e.g. 4 Kings Walk, Vale of White Horse"
+                style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:15px;margin-bottom:14px;box-sizing:border-box;">
+
+            <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Description (optional)</label>
+            <textarea id="gcal-ev-desc" rows="2" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;margin-bottom:16px;resize:none;box-sizing:border-box;">${esc(desc)}</textarea>
+
+            <div id="gcal-ev-error" style="color:#ef4444;font-size:13px;margin-bottom:10px;display:none;"></div>
+
+            <button onclick="saveGCalEventFromSheet()" id="gcal-ev-save-btn" style="width:100%;background:#4285F4;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;margin-bottom:10px;cursor:pointer;">💾 Save</button>
+            ${eventId ? `<button onclick="deleteGCalEventFromSheet()" style="width:100%;background:transparent;color:#ef4444;border:1px solid #ef4444;border-radius:12px;padding:14px;font-size:15px;font-weight:700;margin-bottom:10px;cursor:pointer;">🗑 Delete Event</button>` : ""}
+            <button onclick="closeGCalEventSheet()" style="width:100%;background:transparent;color:#64748b;border:none;padding:10px;font-size:15px;cursor:pointer;">Cancel</button>
+        </div>`;
+    document.body.appendChild(sheet);
+}
+
+function toggleGCalEvAllDay() {
+    const allDay = document.getElementById("gcal-ev-allday").checked;
+    document.getElementById("gcal-ev-timed-fields").style.display  = allDay ? "none"  : "block";
+    document.getElementById("gcal-ev-allday-fields").style.display = allDay ? "block" : "none";
+}
+
+function closeGCalEventSheet() {
+    document.getElementById("gcal-event-sheet")?.remove();
+    _gcalSheetEventId = null;
+}
+
+async function saveGCalEventFromSheet() {
+    const errorEl = document.getElementById("gcal-ev-error");
+    errorEl.style.display = "none";
+    const title = document.getElementById("gcal-ev-title").value.trim();
+    if (!title) { errorEl.textContent = "Enter a title"; errorEl.style.display = "block"; return; }
+    const allDay = document.getElementById("gcal-ev-allday").checked;
+    const desc = document.getElementById("gcal-ev-desc").value.trim();
+    const location = document.getElementById("gcal-ev-location").value.trim();
+
+    let body;
+    if (allDay) {
+        const dateVal = document.getElementById("gcal-ev-allday-date").value;
+        if (!dateVal) { errorEl.textContent = "Enter a date"; errorEl.style.display = "block"; return; }
+        body = { summary: title, start: { date: dateVal }, end: { date: gcalAllDayEnd(dateVal) } };
+    } else {
+        const startDate = document.getElementById("gcal-ev-start-date").value;
+        const startTime = document.getElementById("gcal-ev-start-time").value;
+        const endDate   = document.getElementById("gcal-ev-end-date").value;
+        const endTime   = document.getElementById("gcal-ev-end-time").value;
+        if (!startDate || !startTime || !endDate || !endTime) { errorEl.textContent = "Fill in all date/time fields"; errorEl.style.display = "block"; return; }
+        const startIso = `${startDate}T${startTime}:00`;
+        const endIso   = `${endDate}T${endTime}:00`;
+        if (new Date(endIso) <= new Date(startIso)) { errorEl.textContent = "End must be after start"; errorEl.style.display = "block"; return; }
+        // Google rejects a bare dateTime with no offset ("Missing time zone
+        // definition") — timeZone alongside it is the fix, using the
+        // device's own IANA zone rather than assuming BST/GMT.
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        body = { summary: title, start: { dateTime: startIso, timeZone: tz }, end: { dateTime: endIso, timeZone: tz } };
+    }
+    if (desc) body.description = desc;
+    if (location) body.location = location;
+
+    const tokens = await getValidGCalToken();
+    if (!tokens) { errorEl.textContent = "Not connected to Google Calendar"; errorEl.style.display = "block"; return; }
+
+    const btn = document.getElementById("gcal-ev-save-btn");
+    btn.disabled = true; btn.textContent = "Saving…";
+    try {
+        const url = _gcalSheetEventId
+            ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${_gcalSheetEventId}`
+            : `https://www.googleapis.com/calendar/v3/calendars/primary/events`;
+        // PUT (full replace), not PATCH, for updates — PATCH rejects with
+        // "Invalid start time" when the edit switches an event between
+        // all-day (start.date) and timed (start.dateTime), since it doesn't
+        // reliably clear the previous field. PUT replaces the whole
+        // start/end object so this never comes up.
+        const resp = await fetch(url, {
+            method: _gcalSheetEventId ? "PUT" : "POST",
+            headers: { "Authorization": "Bearer " + tokens.access_token, "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error?.message || "Save failed");
+        closeGCalEventSheet();
+        await refreshGCalForMonth();
+        renderCalDayPanel(calSelectedDate);
+    } catch(e) {
+        errorEl.textContent = e.message;
+        errorEl.style.display = "block";
+        btn.disabled = false; btn.textContent = "💾 Save";
+    }
+}
+
+async function deleteGCalEventFromSheet() {
+    if (!_gcalSheetEventId) return;
+    if (!confirm("Delete this event from Google Calendar? This can't be undone.")) return;
+    const tokens = await getValidGCalToken();
+    if (!tokens) return;
+    try {
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${_gcalSheetEventId}`, {
+            method: "DELETE",
+            headers: { "Authorization": "Bearer " + tokens.access_token }
+        });
+    } catch(e) { alert("Delete failed: " + e.message); return; }
+    closeGCalEventSheet();
+    await refreshGCalForMonth();
+    renderCalDayPanel(calSelectedDate);
+}
+/* ─── END GOOGLE CALENDAR SYNC ──────────────────────────────────── */
+
 /* ─── JOB REMINDER BANNERS ─────────────────────────────────────── */
 const REMINDER_KEY = "tileiq-reminders-shown";
 
@@ -7615,6 +9164,7 @@ let calSelectedDate = null; // "YYYY-MM-DD"
 function goCalendar() {
     show("screen-calendar");
     renderCalendar();
+    renderTipCard("calendar");
 }
 
 function calToday() {
@@ -7660,6 +9210,9 @@ function renderCalendar() {
                     "July","August","September","October","November","December"];
     document.getElementById("cal-month-label").textContent = `${MONTHS[calMonth]} ${calYear}`;
 
+    const gcalRefreshBtn = document.getElementById("cal-gcal-refresh-btn");
+    if (gcalRefreshBtn) gcalRefreshBtn.style.display = getGCalTokens() ? "block" : "none";
+
     const grid = document.getElementById("cal-grid");
     grid.innerHTML = "";
 
@@ -7679,6 +9232,7 @@ function renderCalendar() {
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
         const dayJobs = getJobsForDate(dateStr);
+        const dayGCalEvents = getGCalEventsForDate(dateStr); // also triggers a pull for this month if not cached yet
         const isToday    = dateStr === todayStr;
         const isSelected = dateStr === calSelectedDate;
         const hasJobs    = dayJobs.length > 0;
@@ -7692,14 +9246,15 @@ function renderCalendar() {
         const border  = isToday && !isSelected ? "1px solid #f59e0b" : "1px solid transparent";
         const radius  = "8px";
 
-        // Dot colours for first 3 jobs
+        // Dot colours for first 3 jobs, plus one Google-blue dot if there's
+        // anything else on the user's own Google Calendar that day
         const dots = dayJobs.slice(0,3).map(j => {
             const cfg = {
                 enquiry:"#93c5fd",surveyed:"#a5b4fc",quoted:"#7dd3fc",
                 accepted:"#6ee7b7",scheduled:"#fcd34d",in_progress:"#fde68a",complete:"#86efac"
             };
             return `<span style="width:5px;height:5px;border-radius:50%;background:${cfg[j.status]||"#64748b"};display:inline-block;"></span>`;
-        }).join("");
+        }).join("") + (dayGCalEvents.length ? `<span style="width:5px;height:5px;border-radius:50%;background:#4285F4;display:inline-block;"></span>` : "");
 
         grid.insertAdjacentHTML("beforeend", `
             <div onclick="calSelectDay('${dateStr}')" style="
@@ -7735,10 +9290,23 @@ function renderCalDayPanel(dateStr) {
     document.getElementById("cal-day-label").textContent = label;
 
     const dayJobs = getJobsForDate(dateStr);
+    const dayGCalEvents = getGCalEventsForDate(dateStr);
     const container = document.getElementById("cal-day-jobs");
 
+    const gcalHtml = getGCalTokens() ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px;">
+            <span style="font-size:12px;font-weight:700;color:#4285F4;text-transform:uppercase;letter-spacing:0.04em;">📆 From your Google Calendar</span>
+            <button onclick="openGCalEventSheet(null,'${dateStr}')" style="background:#4285F4;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">+ Add</button>
+        </div>
+        ${dayGCalEvents.map(e => `
+            <div onclick="openGCalEventSheet('${String(e.id).replace(/'/g,"\\'")}','${dateStr}')" style="background:#1e293b;border-radius:12px;padding:12px 16px;margin-bottom:8px;border-left:3px solid #4285F4;cursor:pointer;">
+                <div style="font-weight:600;font-size:14px;color:#e2e8f0;">${esc(e.summary)}</div>
+                ${e.start !== e.end ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;">${e.start} → ${e.end}</div>` : ""}
+            </div>`).join("")}
+    ` : "";
+
     if (!dayJobs.length) {
-        container.innerHTML = `<p style="color:#64748b;font-size:14px;text-align:center;margin-top:20px;">No jobs scheduled</p>`;
+        container.innerHTML = `<p style="color:#64748b;font-size:14px;text-align:center;margin-top:20px;">No jobs scheduled</p>` + gcalHtml;
         return;
     }
 
@@ -7778,7 +9346,7 @@ function renderCalDayPanel(dateStr) {
             ${notes ? `<div style="font-size:12px;color:#64748b;margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-style:italic;">${notes}</div>` : ""}
             <div style="text-align:right;margin-top:8px;font-size:11px;color:#f59e0b;font-weight:600;">Tap to open job →</div>
         </div>`;
-    }).join("");
+    }).join("") + gcalHtml;
 }
 
 function openJobFromCal(jobId) {
@@ -7790,6 +9358,7 @@ function openJobFromCal(jobId) {
 function goSettings() {
     settingsTab("profile"); // always open on profile tab
     const s = settings;
+    updateGCalButton();
     document.getElementById("set-ai-receptionist").checked = s.aiReceptionistEnabled || false;
     if (document.getElementById("set-ai-call-voice")) document.getElementById("set-ai-call-voice").value = s.aiCallVoice || "Polly.Amy-Generative";
     if (document.getElementById("set-business-website")) document.getElementById("set-business-website").value = s.businessWebsite || "";
@@ -7904,6 +9473,10 @@ function goSettings() {
     if (reviewLinkEl) reviewLinkEl.value = s.googleReviewLink || "";
     const reviewDelayEl = document.getElementById("set-review-delay-days");
     if (reviewDelayEl) reviewDelayEl.value = s.reviewRequestDelayDays ?? 3;
+    const paymentTermsEl = document.getElementById("set-payment-terms-days");
+    if (paymentTermsEl) paymentTermsEl.value = s.paymentTermsDays ?? 30;
+    const staleEnquiryEl = document.getElementById("set-stale-enquiry-days");
+    if (staleEnquiryEl) staleEnquiryEl.value = s.staleEnquiryDays ?? 5;
     document.getElementById("set-bank-name")?.setAttribute("value", s.bankName || "");
     if (document.getElementById("set-bank-name")) document.getElementById("set-bank-name").value = s.bankName || "";
     if (document.getElementById("set-bank-account-name")) document.getElementById("set-bank-account-name").value = s.bankAccountName || "";
@@ -7913,6 +9486,7 @@ function goSettings() {
     const acctEl = document.getElementById("set-accounting-software");
     if (acctEl) acctEl.value = s.accountingSoftware || "none";
     show("screen-settings");
+    renderTipCard("settings");
     setTimeout(initDomainVerifyUI, 100);
     // Re-run after RevenueCat has had time to load Pro status
     setTimeout(initDomainVerifyUI, 3000);
@@ -8048,17 +9622,25 @@ async function deleteAccount() {
 }
 
 
-const ADMIN_USER_ID = "621cf673-20e9-4cb4-bcde-140d7c80958c";
-
 function goAdmin() {
     show("screen-admin");
     loadAdminData();
 }
 
+// The worker verifies this against Supabase and checks the resulting user
+// against the admin allowlist server-side (isAuthedAdmin()) — nothing
+// admin-granting is hardcoded in this shipped file any more.
+function adminAuthHeader() {
+    try {
+        const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "null");
+        return session?.access_token ? { "Authorization": "Bearer " + session.access_token } : {};
+    } catch(e) { return {}; }
+}
+
 async function loadAdminData() {
     try {
         const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/stats", {
-            headers: { "x-admin-secret": "MadnessTheSpecials" }
+            headers: adminAuthHeader()
         });
         const s = await resp.json();
         document.getElementById("adm-total-users").textContent = (s.pro_users || 0) + (s.free_users || 0);
@@ -8071,7 +9653,7 @@ async function loadAdminData() {
 
     try {
         const resp2 = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/devices", {
-            headers: { "x-admin-secret": "MadnessTheSpecials" }
+            headers: adminAuthHeader()
         });
         const data = await resp2.json();
         const players = data.players || [];
@@ -8099,7 +9681,7 @@ async function loadAdminData() {
     // Load support messages
     try {
         const resp3 = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/support", {
-            headers: { "x-admin-secret": "MadnessTheSpecials" }
+            headers: adminAuthHeader()
         });
         const msgs = await resp3.json();
         const el = document.getElementById("adm-support");
@@ -8123,7 +9705,7 @@ async function sendAdminAnnouncement() {
     try {
         const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/announce", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-admin-secret": "MadnessTheSpecials" },
+            headers: { "Content-Type": "application/json", ...adminAuthHeader() },
             body: JSON.stringify({ title, body })
         });
         const r = await resp.json();
@@ -8142,28 +9724,48 @@ async function sendAdminUserPush() {
     try {
         // Look up user ID by email
         const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/user-by-email?email=" + encodeURIComponent(email), {
-            headers: { "x-admin-secret": "MadnessTheSpecials" }
+            headers: adminAuthHeader()
         });
         const user = await resp.json();
         if (!user.id) { alert("User not found"); return; }
-        const resp2 = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "test_push", user_id: user.id, title: "Message from TileIQ", body: msg })
-        });
-        const r = await resp2.json();
-        alert("Sent! " + JSON.stringify(r));
+
+        // Push and email are independent channels — send both and report each
+        // outcome separately so one failing (e.g. Resend not configured) doesn't
+        // hide whether the other actually went out.
+        const [pushResult, emailResult] = await Promise.allSettled([
+            fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "test_push", user_id: user.id, title: "Message from TileIQ", body: msg })
+            }).then(r => r.json()),
+            fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/send-user-email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...adminAuthHeader() },
+                body: JSON.stringify({ email: user.email, subject: "Message from TileIQ", body: msg })
+            }).then(r => r.json())
+        ]);
+        const pushOk = pushResult.status === "fulfilled";
+        const emailOk = emailResult.status === "fulfilled" && emailResult.value?.ok;
+        alert(
+            (pushOk ? "✅ Push sent" : "❌ Push failed") + "\n" +
+            (emailOk ? "✅ Email sent" : "❌ Email failed" + (emailResult.status === "fulfilled" ? ": " + JSON.stringify(emailResult.value) : ": " + emailResult.reason))
+        );
         document.getElementById("adm-user-email").value = "";
         document.getElementById("adm-user-msg").value = "";
     } catch(e) { alert("Error: " + e.message); }
 }
 
 async function sendAdminTestPush() {
+    if (!currentUser?.id) { alert("Not signed in"); return; }
     try {
+        // Target whoever is actually signed in and viewing this screen — was
+        // hardcoded to the original admin's id, so a second admin account
+        // (e.g. info@tile-iq.com) testing this sent the push to someone
+        // else's device instead of their own.
         const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "test_push", user_id: ADMIN_USER_ID })
+            body: JSON.stringify({ action: "test_push", user_id: currentUser.id })
         });
         const r = await resp.json();
         alert("Push sent: " + JSON.stringify(r));
@@ -8304,6 +9906,8 @@ function saveSettings() {
         autoRequestReview: document.getElementById("set-auto-review")?.value === "true",
         googleReviewLink:  (document.getElementById("set-google-review-link")?.value || "").trim(),
         reviewRequestDelayDays: parseInt(document.getElementById("set-review-delay-days")?.value) || 0,
+        paymentTermsDays:  parseInt(document.getElementById("set-payment-terms-days")?.value) || 30,
+        staleEnquiryDays:  parseInt(document.getElementById("set-stale-enquiry-days")?.value) || 5,
         bankName:          (document.getElementById("set-bank-name")?.value || "").trim(),
         bankAccountName:   (document.getElementById("set-bank-account-name")?.value || "").trim(),
         bankSortCode:      (document.getElementById("set-bank-sort-code")?.value || "").trim(),
@@ -8390,6 +9994,7 @@ function goQuote() {
     }
     updateAccountingSection();
     renderJobQuoteStatusBar();
+    renderInvoiceStatusBar();
     const j2 = getJob();
     if (j2?.quoteToken) setTimeout(() => fetchQuoteResponse(j2.quoteToken).then(r => { if (r && r.status !== j2.quoteStatus) { j2.quoteStatus = r.status; j2.quoteRespondedAt = r.responded_at; saveAll(); renderJobQuoteStatusBar(); renderDashboard(); } }), 500);
 }
@@ -8470,7 +10075,10 @@ function renderMaterials() {
                 const nk = s.tankingKits || Math.ceil(s.area/6);
                 prepItems.push(`Tanking: ${nk} kit${nk!==1?"s":""} £${(nk*kp).toFixed(2)} + labour £${(s.area*lr).toFixed(2)}`);
             }
-            else if (s.prepCost > 0) prepItems.push(`Prep £${s.prepCost.toFixed(2)}`);
+            else {
+                if (s.prepMatCost > 0.01) prepItems.push(`Prep Materials £${s.prepMatCost.toFixed(2)}`);
+                if (s.prepLabCost > 0.01) prepItems.push(`Prep Labour £${s.prepLabCost.toFixed(2)}`);
+            }
             if (s.primer && !s.tanking) prepItems.push(`Primer £${(parseFloat(settings?.primerPrice||3.50) * s.area).toFixed(2)}`);
 
             return `
@@ -8651,10 +10259,8 @@ function renderQuote() {
         const adhBags    = Math.ceil(adhKg / 20);
         const groutKg    = surfaces.reduce((a, s) => a + (s.groutKg || 0), 0);
         const groutBags  = Math.ceil(groutKg / (parseFloat(settings.groutBagSize) || 2.5));
-        const cbBoards   = surfaces.reduce((a, s) => a + (s.cementBoards || 0), 0);
-        const levelBags  = surfaces.reduce((a, s) => a + (s.levelBags || 0), 0);
 
-                const mult = 1 + (parseFloat(settings.markup) || 0) / 100;
+        const mult = 1 + (parseFloat(settings.markup) || 0) / 100;
 
         // Per-item sell values (kept simple: uses current unit assumptions in settings)
         const isRapidRoom = room.adhType === "rapid";
@@ -8665,28 +10271,13 @@ function renderQuote() {
         const adhSell = adhBags * adhUnitPrice * mult;
         const groutSell = groutBags * (settings.groutBagSize >= 5 ? (parseFloat(settings.groutPrice5)||7.50) : (parseFloat(settings.groutPrice25)||4.50)) * mult;
 
-        // Prep-related items use existing £/m² rates (matches current prep model)
-        const cbSell = surfaces.reduce((a, s) => {
-            if (s.type !== "floor" || !s.cementBoard) return a;
-            const rate = parseFloat(settings.cementBoard) || 18;
-            return a + (parseFloat(s.area) || 0) * rate;
-        }, 0);
-
-        const levelSell = surfaces.reduce((a, s) => {
-            if (s.type !== "floor" || !s.levelling) return a;
-            const depth = s.levelDepth || 2;
-            const rate  = depth === 3 ? (parseFloat(settings.level3) || 7)
-                        : depth === 4 ? (parseFloat(settings.level4) || 9)
-                        :               (parseFloat(settings.level2) || 5);
-            return a + (parseFloat(s.area) || 0) * rate;
-        }, 0);
-
+        // Adhesive/grout only — prep items (cement board, levelling, tanking, etc.)
+        // stay out of the customer's quote entirely, same as every other prep
+        // type here; their cost is still folded into the room/Materials total.
         const inlineParts = [];
         const adhLabel = `${room.adhColour === "white" ? "White" : "Grey"} ${room.adhType === "rapid" ? "Rapid Set" : "Standard"} Adhesive`;
         if (adhBags > 0) inlineParts.push(`${adhLabel} ${adhBags} × 20kg bag${adhBags !== 1 ? "s" : ""} (£${adhSell.toFixed(2)})`);
         if (groutBags > 0) inlineParts.push(`Grout ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""} (£${groutSell.toFixed(2)})`);
-        if (cbBoards  > 0) inlineParts.push(`Cement board ${cbBoards} board${cbBoards !== 1 ? "s" : ""} (£${cbSell.toFixed(2)})`);
-        if (levelBags > 0) inlineParts.push(`Levelling ${levelBags} bag${levelBags !== 1 ? "s" : ""} (£${levelSell.toFixed(2)})`);
 
         const extraDesc = (room.extraWorkDesc || "").trim();
         const extraCost = parseFloat(room.extraWorkCost || 0);
@@ -8918,8 +10509,12 @@ async function checkPendingPushNav() {
             if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
         } else if (type === "customer_message") {
             const j = token ? jobs.find(j => j.quoteToken === token) : null;
-            if (j) { currentJobId = j.id; goJob(j.id); }
+            // Landing on the plain job view didn't actually show the message —
+            // go straight to the conversation screen itself.
+            if (j) { currentJobId = j.id; goJob(j.id); goMessages(); }
             else goDashboard();
+        } else if (type === "announcement" || type === "support_reply") {
+            goInbox();
         } else if (jobId) {
             currentJobId = jobId; goJob(jobId);
         }
@@ -8964,9 +10559,22 @@ async function initPushNotifications() {
                 const data = n.additionalData || n.data || {};
                 const type = data?.type || "";
                 const jobId = data?.jobId || data?.job_id || "";
+                const token = data?.token || data?.quoteToken || "";
                 if (jobId) { currentJobId = jobId; goJob(jobId); }
                 else if (type === "quote_response" || type === "quote_viewed") {
                     syncAllQuoteStatuses().then(() => goDashboard());
+                } else if (type === "customer_message" && token) {
+                    // customer_message notifications only ever carry a token, no
+                    // jobId — this handler (app already running/foregrounded) was
+                    // only ever checking jobId, so tapping one just opened the
+                    // Dashboard with no way to find the actual message. Look the
+                    // job up by its quoteToken, then go straight to the actual
+                    // conversation screen (goMessages) — landing on the plain
+                    // job view still didn't show the message itself.
+                    const j = jobs.find(j => j.quoteToken === token);
+                    if (j) { currentJobId = j.id; goJob(j.id); goMessages(); } else { goDashboard(); }
+                } else if (type === "announcement" || type === "support_reply") {
+                    goInbox();
                 } else { goDashboard(); }
             });
         }
@@ -9373,18 +10981,11 @@ function buildPDFDoc() {
         doc.text(`£${roomTotal.toFixed(2)}`, W - 14, y + 4, { align:"right" });
         y += 7;
 
-        // Show prep line items (tanking, cement board, etc.) — omitted when the cost breakdown is hidden,
-        // since these lines spell out individual material/labour costs.
-        const allPrepLines = hideBreakdown ? [] : surfaces.flatMap(s => s.prepLines || []);
-        if (allPrepLines.length > 0) {
-            allPrepLines.forEach(line => {
-                doc.setFont("helvetica", "normal");
-                doc.setFontSize(7);
-                doc.setTextColor(...SLATE);
-                doc.text(`  ↳ ${line}`, 16, y + 3.5);
-                y += 5.5;
-            });
-        }
+        // Prep line items (tanking, cement board, etc.) are internal-only —
+        // s.prepLines spells out individual material/labour costs for each
+        // prep step, which is exactly what the tiler shouldn't be showing
+        // the customer. Never printed here, regardless of hideCostBreakdown
+        // (that setting only controls the materials/labour split, not this).
         if (extraCost > 0) {
             doc.setFont("helvetica", "normal");
             doc.setFontSize(7.5);
@@ -10196,6 +11797,30 @@ function renderQuoteStatusBar() {
     }
 }
 
+function renderInvoiceStatusBar() {
+    const bar = document.getElementById("invoice-status-bar");
+    if (!bar) return;
+    const j = getJob();
+    if (!j || !j.invoicedAt) { bar.style.display = "none"; return; }
+    bar.style.display = "block";
+    if (j.invoicePaidAt) {
+        bar.style.background = "#065f46"; bar.style.color = "#6ee7b7";
+        bar.style.cssText += "border-radius:10px;padding:12px 14px;text-align:center;font-weight:700;font-size:15px;";
+        bar.innerHTML = `✅ Paid · ${new Date(j.invoicePaidAt).toLocaleDateString("en-GB")}`;
+        return;
+    }
+    const due = invoiceDueDate(j);
+    const overdue = due && due.getTime() < Date.now();
+    bar.style.background = overdue ? "#7f1d1d" : "#1e293b";
+    bar.style.color = overdue ? "#fca5a5" : "#94a3b8";
+    bar.style.cssText += "border-radius:10px;padding:12px 14px;text-align:center;font-weight:700;font-size:15px;";
+    const dueText = due ? `Due ${due.toLocaleDateString("en-GB")}` : "";
+    bar.innerHTML = `
+        ${overdue ? "⚠️ Payment overdue" : "🧾 Invoiced"} · ${new Date(j.invoicedAt).toLocaleDateString("en-GB")}${dueText ? " · " + dueText : ""}
+        <button onclick="markJobPaid('${j.id}')" style="display:block;width:100%;margin-top:10px;background:#f59e0b;color:#000;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;">✓ Mark as Paid</button>
+    `;
+}
+
 async function copyQuoteLink() {
     const j = getJob();
     if (!j || !j.quoteToken) return;
@@ -10302,7 +11927,34 @@ function markJobInvoiced(jobId) {
     if (!j || j.invoicedAt) return;
     j.invoicedAt = new Date().toISOString();
     saveAll();
+    renderInvoiceStatusBar();
     renderHomeDashboard();
+}
+
+function markJobPaid(jobId) {
+    const j = jobs.find(x => x.id === jobId);
+    if (!j || !j.invoicedAt || j.invoicePaidAt) return;
+    j.invoicePaidAt = new Date().toISOString();
+    saveAll();
+    renderInvoiceStatusBar();
+    renderHomeDashboard();
+}
+
+function invoiceDueDate(job) {
+    if (!job.invoicedAt) return null;
+    const due = new Date(job.invoicedAt);
+    due.setDate(due.getDate() + (parseInt(settings.paymentTermsDays) || 30));
+    return due;
+}
+
+// Invoiced, unpaid, and past the payment-terms due date.
+function getOverdueInvoices() {
+    const now = Date.now();
+    return getRealJobs().filter(j => {
+        if (j.jobArchived || !j.invoicedAt || j.invoicePaidAt) return false;
+        const due = invoiceDueDate(j);
+        return due && due.getTime() < now;
+    });
 }
 
 async function sendInvoiceShare() {
@@ -10595,11 +12247,28 @@ async function syncAllQuoteStatuses() {
 /* ═══════════════════════════════════════════════════════════════
    REVENUECAT — REST API (no native SDK needed)
 ═══════════════════════════════════════════════════════════════ */
-const FREE_JOB_LIMIT = 3;
-
 let _proStatus     = null;
 let _proPeriodType = null; // "trial" | "intro" | "normal" | null — normal/access-code = a genuinely paying Pro
 let _rcAppUserId  = null;
+
+/* ── ACCOUNT-AGE TRIAL ────────────────────────────────────────
+   No more permanent free tier / monthly quote cap — every account is
+   fully usable for 30 days from signup, then a soft nag to subscribe
+   (nothing is actually blocked; see updateProBadge()/renderHomeScreen()).
+   AI Receptionist is the one exception — that stays gated behind a
+   genuine paid subscription throughout (see isPaidPro()), since it has
+   a real per-use running cost. */
+const TRIAL_DAYS = 30;
+const TRIAL_REMINDER_DAYS = 7; // only show the "X days left" countdown in the final week
+
+function trialDaysElapsed() {
+    if (!currentUser?.created_at) return 0;
+    const created = new Date(currentUser.created_at).getTime();
+    if (isNaN(created)) return 0;
+    return Math.floor((Date.now() - created) / (24 * 60 * 60 * 1000));
+}
+function trialDaysLeft()   { return Math.max(0, TRIAL_DAYS - trialDaysElapsed()); }
+function isTrialActive()   { return trialDaysElapsed() < TRIAL_DAYS; }
 
 async function initRevenueCat() {
     try {
@@ -10662,11 +12331,19 @@ function updateProBadge() {
     const btn = document.getElementById("pro-badge-btn");
     if (!btn) return;
     if (_proStatus === false) {
-        btn.style.display    = "inline-block";
-        btn.textContent      = "⬆ Upgrade";
-        btn.style.background = "#f59e0b";
-        btn.style.cursor     = "pointer";
-        btn.onclick = () => showPaywall("home");
+        // Nothing to "upgrade" to while the trial's still running — full
+        // access is already unlocked. Only nag once it's actually over.
+        const trialOver = !isTrialActive();
+        if (!trialOver) {
+            btn.style.display = "none";
+            btn.onclick = null;
+        } else {
+            btn.style.display    = "inline-block";
+            btn.textContent      = "⚠ Subscribe";
+            btn.style.background = "#dc2626";
+            btn.style.cursor     = "pointer";
+            btn.onclick = () => showPaywall("trial_ended");
+        }
     } else if (_proStatus === true) {
         btn.style.display    = "inline-block";
         btn.textContent      = "✓ PRO";
@@ -10678,6 +12355,19 @@ function updateProBadge() {
 
 async function showPaywall(source) {
     show("screen-paywall");
+    const subtitleEl = document.getElementById("paywall-subtitle");
+    if (subtitleEl) {
+        if (source === "trial_ended") {
+            subtitleEl.textContent = "Your 30-day free trial has ended — subscribe to keep using TileIQ";
+        } else if (source === "ai_receptionist") {
+            subtitleEl.textContent = "AI Receptionist needs a paid subscription";
+        } else if (isTrialActive()) {
+            const daysLeft = trialDaysLeft();
+            subtitleEl.textContent = `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left in your free trial — subscribe any time`;
+        } else {
+            subtitleEl.textContent = "Unlock all features";
+        }
+    }
     await loadPaywallPackages();
 }
 
@@ -10955,7 +12645,7 @@ async function loadPaywallPackages() {
                     <div style="font-size:16px;font-weight:800;">Monthly</div>
                     <div style="font-size:20px;font-weight:800;">${monthlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
-                <div style="font-size:12px;margin-top:6px;opacity:0.75;">1 month free trial, then ${monthlyPrice}/month. Cancel anytime before the trial ends to avoid being charged.</div>
+                <div style="font-size:12px;margin-top:6px;opacity:0.75;">Billed ${monthlyPrice}/month. Cancel anytime in your app store account settings.</div>
             </button>
             <button onclick="openPlayStorePurchase('yearly', this)" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -10975,7 +12665,7 @@ async function loadPaywallPackages() {
                     <div style="font-size:16px;font-weight:800;">Monthly</div>
                     <div style="font-size:20px;font-weight:800;">£9.99<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
-                <div style="font-size:12px;margin-top:6px;opacity:0.75;">1 month free trial, then £9.99/month. Cancel anytime before the trial ends to avoid being charged.</div>
+                <div style="font-size:12px;margin-top:6px;opacity:0.75;">Billed £9.99/month. Cancel anytime in your app store account settings.</div>
             </button>
             <button onclick="openPlayStorePurchase('yearly', this)" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -11061,18 +12751,6 @@ function incrementMonthlyQuoteCount() {
     settings.quotesCreatedLifetime = (settings.quotesCreatedLifetime || 0) + 1;
 }
 
-function checkJobLimit() {
-    if (isPro()) return true;
-    if (getQuotesUsedThisMonth() < FREE_JOB_LIMIT) return true;
-    showPaywall("job_limit");
-    return false;
-}
-
-function checkProFeature(featureName) {
-    if (isPro()) return true;
-    showPaywall(featureName);
-    return false;
-}
 
 
 
@@ -11300,6 +12978,7 @@ async function loadVoicemails() {
 
     list.innerHTML = unreadSectionHtml + enquiriesHtml;
     updateNotificationBadge();
+    updateInboxBadge();
 
   } catch(e) {
     list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px;">Failed to load</div>';
