@@ -607,12 +607,21 @@ function handleDeepLink(url) {
 
 }
 
-// Register deep link listeners
+// Register deep link listeners.
+// Called both immediately below and again on "deviceready" as a safety net
+// (the immediate call can lose its race with Capacitor/Plugins.App becoming
+// ready) — _deepLinksRegistered guards against that second call re-adding the
+// same listeners, which otherwise fired every deep link (e.g. the Google
+// Calendar "connected" callback) once per registration, showing its result
+// alert that many times over.
+let _deepLinksRegistered = false;
 function initDeepLinks() {
+    if (_deepLinksRegistered) return;
     if (!window.Capacitor) { setTimeout(initDeepLinks, 300); return; }
 
     // Use nativePromise directly (same pattern as biometric plugin)
     if (window.Capacitor.nativePromise) {
+        _deepLinksRegistered = true;
         // Check launch URL (cold start via App Link)
         window.Capacitor.nativePromise("App", "getLaunchUrl", {})
             .then(result => {
@@ -627,6 +636,7 @@ function initDeepLinks() {
         // Fallback: Plugins object
         const App = window.Capacitor.Plugins && window.Capacitor.Plugins.App;
         if (!App) { setTimeout(initDeepLinks, 500); return; }
+        _deepLinksRegistered = true;
         App.getLaunchUrl().then(r => { if (r && r.url) handleDeepLink(r.url); }).catch(() => {});
         App.addListener("appUrlOpen", d => { if (d && d.url) handleDeepLink(d.url); });
         App.addListener("appStateChange", ({ isActive }) => {
@@ -8820,9 +8830,9 @@ function gcalAllDayEnd(dateStr) {
 // if not connected or not scheduled, so every call site can fire this
 // unconditionally without its own connected-check.
 async function syncJobToGCal(job) {
-    if (!job?.jobStartDate) { alert("GCal PUSH DEBUG: no jobStartDate"); return; }
+    if (!job?.jobStartDate) return;
     const tokens = await getValidGCalToken();
-    if (!tokens) { alert("GCal PUSH DEBUG: no valid token (not connected)"); return; }
+    if (!tokens) return;
     const start = job.jobStartDate.split("T")[0];
     const end   = (job.jobEndDate || job.jobStartDate).split("T")[0];
     const eventBody = {
@@ -8854,12 +8864,12 @@ async function syncJobToGCal(job) {
             });
         }
         const data = await resp.json();
-        alert("GCal PUSH DEBUG: status " + resp.status + " body: " + JSON.stringify(data).slice(0,300));
-        if (resp.ok && data.id && data.id !== job.gcalEventId) {
+        if (!resp.ok) { console.error("syncJobToGCal failed:", resp.status, data); return; }
+        if (data.id && data.id !== job.gcalEventId) {
             job.gcalEventId = data.id;
             saveAll();
         }
-    } catch(e) { alert("GCal PUSH DEBUG exception: " + e.message); }
+    } catch(e) { console.error("syncJobToGCal error:", e); }
 }
 
 async function deleteGCalEvent(eventId) {
