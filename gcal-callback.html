@@ -4,8 +4,24 @@
 <body>
 <p>Connecting to Google Calendar, please wait...</p>
 <script>
-  const params = window.location.search;
-  window.location.href = "tileiq://gcal-connected" + params;
+  // googleCalendarConnect() in script.js sets state=native or state=web
+  // depending on where the OAuth flow was started, since this static page
+  // (a different origin to the app) has no other way of knowing which —
+  // native hands off to the app via the tileiq:// custom scheme, which a
+  // plain browser tab can't do anything with, so web instead redirects back
+  // to the app's own origin with the code as a query param.
+  const params = new URLSearchParams(window.location.search);
+  const state  = params.get("state");
+  if (state === "web") {
+    const dest = new URL("https://tile-iq.com/app");
+    const code  = params.get("code");
+    const error = params.get("error");
+    if (code) dest.searchParams.set("gcal_code", code);
+    if (error) dest.searchParams.set("gcal_error", error);
+    window.location.href = dest.toString();
+  } else {
+    window.location.href = "tileiq://gcal-connected" + window.location.search;
+  }
 </script>
 </body>
 </html>
