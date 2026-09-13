@@ -9268,29 +9268,51 @@ function renderCalendar() {
         const dow = (offset + d - 1) % 7;
         const isWeekend = dow >= 5;
 
-        const bg      = isSelected ? "#f59e0b" : isToday ? "#1e3a5f" : isBusy ? "rgba(66,133,244,0.16)" : "transparent";
-        const color   = isSelected ? "#0f172a" : isWeekend ? "#94a3b8" : "var(--text-primary)";
-        const border  = isToday && !isSelected ? "1px solid #f59e0b" : (isBusy && !isSelected ? "1px solid rgba(66,133,244,0.5)" : "1px solid transparent");
-        const radius  = "8px";
+        // Cell box — a selected day gets an amber outline+tint, a busy (but
+        // unselected) day gets a light Google-blue tint. Today's own filled
+        // circle (below) is independent of this, same as Google's mobile app
+        // where "today" and "the day you tapped" are two different things.
+        const cellBg     = isSelected ? "rgba(245,158,11,0.14)" : isBusy ? "rgba(66,133,244,0.14)" : "transparent";
+        const cellBorder = isSelected ? "1px solid #f59e0b" : (isBusy ? "1px solid rgba(66,133,244,0.5)" : "1px solid transparent");
+        const numColor   = isWeekend ? "#94a3b8" : "var(--text-primary)";
+        const radius     = "8px";
 
-        // Dot colours for first 3 jobs, plus one Google-blue dot if there's
-        // anything else on the user's own Google Calendar that day
-        const dots = dayJobs.slice(0,3).map(j => {
-            const cfg = {
-                enquiry:"#93c5fd",surveyed:"#a5b4fc",quoted:"#7dd3fc",
-                accepted:"#6ee7b7",scheduled:"#fcd34d",in_progress:"#fde68a",complete:"#86efac"
-            };
-            return `<span style="width:5px;height:5px;border-radius:50%;background:${cfg[j.status]||"#64748b"};display:inline-block;"></span>`;
-        }).join("") + (dayGCalEvents.length ? `<span style="width:5px;height:5px;border-radius:50%;background:#4285F4;display:inline-block;"></span>` : "");
+        // Today's date sits inside a filled circle (Google-style) regardless
+        // of selection/busy state on the cell around it.
+        const numStyle = isToday
+            ? `background:#f59e0b;color:#0f172a;border-radius:50%;`
+            : `color:${numColor};`;
+
+        // Up to two small coloured chips (job status colour, or Google blue
+        // for calendar events) showing the actual title, Google-mobile style,
+        // then a "+N more" line if there's more than that — same treatment
+        // every day a multi-day event spans, not just the day it starts on.
+        const STATUS_COLORS = {
+            enquiry:"#93c5fd",surveyed:"#a5b4fc",quoted:"#7dd3fc",
+            accepted:"#6ee7b7",scheduled:"#fcd34d",in_progress:"#fde68a",complete:"#86efac"
+        };
+        const dayItems = [
+            ...dayJobs.map(j => ({ color: STATUS_COLORS[j.status] || "#64748b", label: j.customerName || j.jobType || "Job" })),
+            ...dayGCalEvents.map(e => ({ color: "#4285F4", label: e.summary }))
+        ];
+        const chip = (item) => `<div style="font-size:8px;line-height:11px;font-weight:600;color:${item.color === "#4285F4" ? "#fff" : "#0f172a"};background:${item.color};border-radius:3px;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.label)}</div>`;
+        let itemsHtml = "";
+        if (dayItems.length === 1) {
+            itemsHtml = chip(dayItems[0]);
+        } else if (dayItems.length === 2) {
+            itemsHtml = chip(dayItems[0]) + chip(dayItems[1]);
+        } else if (dayItems.length > 2) {
+            itemsHtml = chip(dayItems[0]) + `<div style="font-size:8px;line-height:11px;color:#64748b;">+${dayItems.length - 1} more</div>`;
+        }
 
         grid.insertAdjacentHTML("beforeend", `
             <div onclick="calSelectDay('${dateStr}')" style="
-                background:${bg};border:${border};border-radius:${radius};
-                padding:4px 2px;min-height:48px;cursor:pointer;text-align:center;
+                background:${cellBg};border:${cellBorder};border-radius:${radius};
+                padding:3px 2px;min-height:64px;cursor:pointer;text-align:center;
                 display:flex;flex-direction:column;align-items:center;gap:2px;
             ">
-                <span style="font-size:13px;font-weight:${isToday||isSelected?700:500};color:${color};line-height:1.4;">${d}</span>
-                <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;">${dots}</div>
+                <span style="font-size:12px;font-weight:${isToday ? 700 : 500};width:22px;height:22px;line-height:22px;flex-shrink:0;${numStyle}">${d}</span>
+                <div style="width:100%;display:flex;flex-direction:column;gap:1px;overflow:hidden;">${itemsHtml}</div>
             </div>
         `);
     }
