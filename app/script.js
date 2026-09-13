@@ -9259,14 +9259,18 @@ function renderCalendar() {
         const isToday    = dateStr === todayStr;
         const isSelected = dateStr === calSelectedDate;
         const hasJobs    = dayJobs.length > 0;
+        // Busy = any Google Calendar event touches this day — set for every
+        // day a multi-day event spans (see getGCalEventsForDate's inclusive
+        // start/end filter), not just the day it starts on.
+        const isBusy     = dayGCalEvents.length > 0;
 
         // Day-of-week for weekend colouring (Mon=0, Sat=5, Sun=6)
         const dow = (offset + d - 1) % 7;
         const isWeekend = dow >= 5;
 
-        const bg      = isSelected ? "#f59e0b" : isToday ? "#1e3a5f" : "transparent";
+        const bg      = isSelected ? "#f59e0b" : isToday ? "#1e3a5f" : isBusy ? "rgba(66,133,244,0.16)" : "transparent";
         const color   = isSelected ? "#0f172a" : isWeekend ? "#94a3b8" : "var(--text-primary)";
-        const border  = isToday && !isSelected ? "1px solid #f59e0b" : "1px solid transparent";
+        const border  = isToday && !isSelected ? "1px solid #f59e0b" : (isBusy && !isSelected ? "1px solid rgba(66,133,244,0.5)" : "1px solid transparent");
         const radius  = "8px";
 
         // Dot colours for first 3 jobs, plus one Google-blue dot if there's
