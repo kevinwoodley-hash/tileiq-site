@@ -9292,7 +9292,7 @@ function renderCalendar() {
             accepted:"#6ee7b7",scheduled:"#fcd34d",in_progress:"#fde68a",complete:"#86efac"
         };
         const dayItems = [
-            ...dayJobs.map(j => ({ color: STATUS_COLORS[j.status] || "#64748b", label: j.customerName || j.jobType || "Job" })),
+            ...dayJobs.map(j => ({ color: STATUS_COLORS[j.status] || "#64748b", label: (j.customerName || "Job") + (j.jobType ? " – " + j.jobType : "") })),
             ...dayGCalEvents.map(e => ({ color: "#4285F4", label: e.summary }))
         ];
         const chip = (item) => `<div style="font-size:8px;line-height:11px;font-weight:600;color:${item.color === "#4285F4" ? "#fff" : "#0f172a"};background:${item.color};border-radius:3px;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.label)}</div>`;
