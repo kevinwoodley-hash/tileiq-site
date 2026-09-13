@@ -668,6 +668,24 @@ function initDeepLinks() {
     } catch(e) {}
 })();
 
+// Web equivalent of the tileiq://gcal-connected deep link — gcal-callback.html
+// can't hand off to a custom URL scheme from a plain browser tab, so on web
+// it redirects back to this same page with ?gcal_code= instead (see
+// googleCalendarConnect() / finishGCalConnection() further down, both
+// function declarations so they're already defined by the time this runs).
+(function checkGCalCodeInUrl() {
+    try {
+        const sp    = new URLSearchParams(window.location.search);
+        const code  = sp.get("gcal_code");
+        const error = sp.get("gcal_error");
+        if (code || error) {
+            window.history.replaceState({}, "", window.location.pathname);
+            if (error) alert("Google Calendar connection failed: " + error);
+            else finishGCalConnection(code);
+        }
+    } catch(e) {}
+})();
+
 if (typeof Capacitor !== "undefined") {
     initDeepLinks();
     document.addEventListener("deviceready", initDeepLinks);
@@ -8732,12 +8750,19 @@ async function googleCalendarConnect() {
         redirect_uri: GCAL_REDIRECT_URI,
         scope: GCAL_SCOPE,
         access_type: "offline",
-        prompt: "consent" // force a refresh_token every time — see the gcal-connected deep link handler
+        prompt: "consent", // force a refresh_token every time — see the gcal-connected deep link handler
+        // gcal-callback.html (a static page on a different origin to this
+        // app) echoes this straight back from Google so it knows whether to
+        // hand off to the native app via tileiq:// or, on web, redirect back
+        // to this page's own origin instead — there's no custom URL scheme a
+        // plain browser tab can do anything with.
+        state: IS_NATIVE ? "native" : "web"
     });
     const url = `${GCAL_AUTH_URL}?${params.toString()}`;
     const { Browser } = window.Capacitor?.Plugins || {};
     if (Browser?.open) await Browser.open({ url, presentationStyle: "popover" });
     else if (window.AndroidBridge?.open) window.AndroidBridge.open(url);
+    else if (!IS_NATIVE) window.location.href = url; // web: navigate this same tab so the redirect back lands here too
     else window.open(url, "_system");
 }
 
@@ -8751,6 +8776,15 @@ async function handleGCalCallback(url) {
         const error = urlObj.searchParams.get("error");
         if (error) { alert("Google Calendar connection failed: " + error); return; }
         if (!code) return;
+        await finishGCalConnection(code);
+    } catch(e) { console.error("handleGCalCallback:", e); }
+}
+
+// Web equivalent of handleGCalCallback — called on page load when
+// gcal-callback.html has redirected back here with ?gcal_code= instead of
+// via the native tileiq:// deep link (see checkGCalCodeInUrl near the top).
+async function finishGCalConnection(code) {
+    try {
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "gcal_token", code })
@@ -8770,7 +8804,7 @@ async function handleGCalCallback(url) {
         updateGCalButton();
         syncAllJobsToGCal();
         pullGCalEvents();
-    } catch(e) { console.error("handleGCalCallback:", e); }
+    } catch(e) { console.error("finishGCalConnection:", e); }
 }
 
 function getGCalTokens() {
