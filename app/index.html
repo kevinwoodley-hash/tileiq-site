@@ -1023,11 +1023,11 @@
                 <span class="rm-section-arrow" id="collapse-arrow-room-wall-opts">▸</span>
             </div>
             <div id="collapse-panel-room-wall-opts" class="hidden" style="padding-top:10px;">
-                <div class="rm-section-toggle" onclick="toggleCollapse('room-tile-type')" id="collapse-toggle-room-tile-type">
-                    <div><span class="rm-section-title">Tile Type</span></div>
-                    <span class="rm-section-arrow" id="collapse-arrow-room-tile-type">▸</span>
+                <div class="rm-section-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles">
+                    <div><span class="rm-section-title">Wall Tiles</span><span id="walltiles-badge" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;"></span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-walltiles">▸</span>
                 </div>
-                <div id="collapse-panel-room-tile-type" class="hidden">
+                <div id="collapse-panel-walltiles" class="hidden">
                 <div class="field-group" style="margin-bottom:10px;">
                     <label>Tile Type</label>
                     <select id="rm-tile-type" onchange="updateTileTypeNote();rmCalc();rmUpdateOptionsBadge()">
@@ -1056,12 +1056,6 @@
                         </select>
                     </div>
                 </div>
-                </div><!-- /collapse-panel-room-tile-type -->
-                <div class="rm-section-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles">
-                    <div><span class="rm-section-title">Wall Tiles</span><span id="walltiles-badge" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;"></span></div>
-                    <span class="rm-section-arrow" id="collapse-arrow-walltiles">▸</span>
-                </div>
-                <div id="collapse-panel-walltiles" class="hidden">
                 <div class="field-row">
                     <div class="field-group">
                         <label>Tile W (mm)</label>

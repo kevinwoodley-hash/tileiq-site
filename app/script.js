@@ -6130,7 +6130,7 @@ function rmSelectType(type, isEdit) {
     renderRoomJumpNav();
     renderRoomSummary();
     // Close all collapsible panels when switching type
-    ["room-tile-type","walltiles","sealant","extrawork","trim","room-labour","room-wall-opts","room-wall-prep","room-floor-opts","room-floor-tile","room-floor-prep",
+    ["walltiles","sealant","extrawork","trim","room-labour","room-wall-opts","room-wall-prep","room-floor-opts","room-floor-tile","room-floor-prep",
      "floor-tile","floor-prep","wall-tile","wall-prep",
      "shower-wall-tile","shower-wall-prep","shower-floor-opts","shower-floor-tile",
      "niches-sh","extrawork-sh","extrawork-f","trim-f","trim-w","wetroom-f","room-extra-floors","room-extra-walls",
@@ -7810,7 +7810,7 @@ function clearDeducts() {
 // Sections grouped by form — opening one closes others in the same group
 const COLLAPSE_GROUPS = {
     roomMain:   ["room-labour","room-wall-opts","room-floor-opts"],
-    roomWall:   ["room-tile-type","walltiles","room-wall-prep","niches-r"],
+    roomWall:   ["walltiles","room-wall-prep","niches-r"],
     roomFloor:  ["room-floor-tile","room-floor-prep","ufh-r"],
     floor:      ["floor-tile","floor-prep"],
     wallTile:   ["wall-tile","wall-prep"],
