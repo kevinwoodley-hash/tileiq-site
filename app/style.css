@@ -1004,6 +1004,12 @@ textarea { resize: vertical; }
     color: rgba(255,255,255,0.7);
     border: 1px solid rgba(255,255,255,0.10);
 }
+.auth-region-btn.auth-region-active {
+    background: rgba(230,175,46,0.15);
+    color: #E6AF2E;
+    border: 1px solid rgba(230,175,46,0.5);
+    font-weight: 700;
+}
 
 /* Biometric button */
 .btn-biometric {

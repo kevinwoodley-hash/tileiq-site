@@ -64,6 +64,9 @@ if (false && (!window.Capacitor || !window.Capacitor.isNativePlatform())) {
 let jobs     = [];
 let isLoadingJobs = false;
 let settings = {
+    region:        "uk", // "uk" | "us" — chosen at signup (auto-detected, editable in Settings).
+                          // Existing accounts predate this field and stay "uk" via the
+                          // fallback in regionOf(), never silently reinterpreted as anything else.
     tilePrice:     25.00,
     groutPrice25:  4.50,  // £ per 2.5kg bag
     groutPrice5:   7.50,  // £ per 5kg bag
@@ -76,9 +79,9 @@ let settings = {
     siliconeCoverage: 6,
     markup:        20,
     labourMarkup:  false,
-    labourM2:      32,
-    labourM2Wall:  35,
-    labourM2Floor: 28,
+    labourM2:      32, // wall/floor labour both derive from this single rate (see saveSettings)
+    labourM2Wall:  32,
+    labourM2Floor: 32,
     dayRate:       200,
     ufhM2Rate:     52,
     ufhFixedCost:  180,
@@ -116,7 +119,7 @@ let settings = {
     tanking:        15,
     clipPrice:      12,   // £ per bag of 200 clips
     wedgePrice:      8,   // £ per bag of 200 wedges
-    trimPrice:       3.50, // £ per 2.5m length of trim
+    trimPrice:       3.50, // £ per 2.4m length of trim
     primerPrice:     3.50, // £/m² primer (walls & floors)
     stoneSurcharge:  8.00, // £/m² extra labour for natural stone install
     sealerPrice:     5.00, // £/m² stone sealer
@@ -281,6 +284,7 @@ function saveAll() {
 // ── 2. Cloud sync — silently retries on failure ───────────────
 async function _syncToCloud() {
     if (!currentUser || !navigator.onLine) return;
+    if (isDemoAccount()) { localStorage.removeItem(SYNC_PENDING_KEY); return; }
     if (_syncPending) return;
     _syncPending = true;
 
@@ -409,6 +413,38 @@ function esc(s)    { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
     }
 })();
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+// ── Demo account guard ────────────────────────────────────────
+// tile-iq.com/app/demo signs every visitor into this ONE shared account, so
+// anything that reaches real people (emails, messages), costs money (phone
+// numbers, sending domains), touches someone's accounts package, or changes
+// the shared account for the next visitor is switched off here. Actions a
+// visitor tries themselves get a download prompt instead; background cloud
+// saves are skipped silently, so each visitor's edits stay in their browser.
+const DEMO_EMAIL = "demo@tile-iq.com";
+function isDemoAccount() { return !!currentUser && currentUser.email === DEMO_EMAIL; }
+function demoBlocked(what) {
+    if (!isDemoAccount()) return false;
+    showDemoDownloadSheet(what);
+    return true;
+}
+function showDemoDownloadSheet(what) {
+    document.getElementById("demo-download-sheet")?.remove();
+    const sheet = document.createElement("div");
+    sheet.id = "demo-download-sheet";
+    sheet.style.cssText = "position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;justify-content:flex-end;";
+    sheet.innerHTML = `
+        <div onclick="document.getElementById('demo-download-sheet').remove()" style="flex:1;background:rgba(0,0,0,0.55);"></div>
+        <div style="background:#1e293b;border-radius:20px 20px 0 0;padding:22px 20px;padding-bottom:calc(22px + env(safe-area-inset-bottom));">
+            <div style="width:40px;height:4px;background:#334155;border-radius:2px;margin:0 auto 16px;"></div>
+            <div style="font-size:17px;font-weight:800;color:#e2e8f0;margin-bottom:6px;">${esc(what)} is switched off in the demo</div>
+            <div style="font-size:14px;color:#94a3b8;line-height:1.5;margin-bottom:18px;">Download TileIQ Pro to do it for real. 30-day free trial, no card needed.</div>
+            <a href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener" style="display:block;text-align:center;background:#f59e0b;color:#000;text-decoration:none;border-radius:12px;padding:15px;font-size:15px;font-weight:800;margin-bottom:10px;">Get it on Google Play</a>
+            <a href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener" style="display:block;text-align:center;background:#f59e0b;color:#000;text-decoration:none;border-radius:12px;padding:15px;font-size:15px;font-weight:800;margin-bottom:10px;">Download on the App Store</a>
+            <button onclick="document.getElementById('demo-download-sheet').remove()" style="width:100%;background:transparent;color:#94a3b8;border:none;padding:12px;font-size:15px;font-weight:600;cursor:pointer;">Keep exploring the demo</button>
+        </div>`;
+    document.body.appendChild(sheet);
+}
 
 
 /* ─── SEALANT (silicone) ───────────────────────────────────────
@@ -547,16 +583,25 @@ function handleDeepLink(url) {
         return;
     }
 
-    // FreeAgent callback
+    // FreeAgent callback. tile-iq.com/fa-callback (the registered redirect URI)
+    // is a static page, NOT the worker's /fa-callback — tile-iq.com/* isn't
+    // routed to the worker — so it forwards the raw ?code= here as
+    // tileiq://freeagent-callback, same as gcal-callback. Exchange it via the
+    // fa_token worker action (needs the client secret). The ?tokens= form is
+    // kept for the worker's own /fa-callback page, should it ever be reached.
     if (url.startsWith("tileiq://fa-connected") || url.startsWith("tileiq://freeagent-callback")) {
         try {
             const urlObj = new URL(url.replace("tileiq://fa-connected", "https://tileiq.app/fa").replace("tileiq://freeagent-callback", "https://tileiq.app/fa"));
             const tokens = urlObj.searchParams.get("tokens");
+            const code   = urlObj.searchParams.get("code");
+            const error  = urlObj.searchParams.get("error");
             if (tokens) {
                 const data = JSON.parse(atob(decodeURIComponent(tokens)));
-                localStorage.setItem("fa-tokens", JSON.stringify({ access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600) }));
-                alert("✅ FreeAgent connected!");
-                updateFreeAgentButton();
+                saveFreeAgentTokens(data);
+            } else if (code) {
+                finishFreeAgentConnection(code);
+            } else if (error) {
+                alert("FreeAgent connection failed: " + error);
             }
         } catch(e) { console.error("FA deeplink error:", e); }
         return;
@@ -627,6 +672,12 @@ function initDeepLinks() {
             .then(result => {
                 if (result && result.url) handleDeepLink(result.url);
             }).catch(() => {});
+        // Cold start via a tapped notification (app was fully closed, not just
+        // backgrounded) never fires appStateChange -- the app just begins
+        // already "active", so the appStateChange-based check below never
+        // runs for this case. This is the same one-off check as getLaunchUrl
+        // above, just for OneSignal's pending-nav data instead of a URL.
+        checkPendingPushNav();
 
         // Listen for appUrlOpen (app foregrounded via App Link)
         window.Capacitor.addListener("App", "appUrlOpen", (data) => {
@@ -638,6 +689,7 @@ function initDeepLinks() {
         if (!App) { setTimeout(initDeepLinks, 500); return; }
         _deepLinksRegistered = true;
         App.getLaunchUrl().then(r => { if (r && r.url) handleDeepLink(r.url); }).catch(() => {});
+        checkPendingPushNav(); // see comment above the nativePromise branch's identical call
         App.addListener("appUrlOpen", d => { if (d && d.url) handleDeepLink(d.url); });
         App.addListener("appStateChange", ({ isActive }) => {
             if (!isActive) return;
@@ -868,6 +920,7 @@ async function authSignIn() {
         isLoadingJobs = true;
         renderHomeScreen();
         updatePrepPriceBadges();
+        applyRegionLabels(); // best-effort with whatever's cached; loadUserData() refreshes this again once the real row is fetched
         btn.disabled = false;
         btn.textContent = "Sign in";
 
@@ -1008,6 +1061,7 @@ async function completeOAuthSignIn(accessToken, refreshToken, expiresIn) {
         isLoadingJobs = true;
         renderHomeScreen();
         updatePrepPriceBadges();
+        applyRegionLabels(); // best-effort with whatever's cached; loadUserData() refreshes this again once the real row is fetched
 
         sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
             .catch(e => console.error("setSession error:", e));
@@ -1032,6 +1086,18 @@ async function completeOAuthSignIn(accessToken, refreshToken, expiresIn) {
         alert("Could not complete sign in. Check your internet connection and try again.");
     }
 }
+
+// Signup-screen region toggle: pre-selected from the device's own region,
+// confirmable or changeable with one tap before the account is created.
+let _signupRegion = "uk";
+function setSignupRegion(r) {
+    _signupRegion = (r === "us") ? "us" : "uk";
+    const uk = document.getElementById("su-region-uk");
+    const us = document.getElementById("su-region-us");
+    if (uk) uk.classList.toggle("auth-region-active", _signupRegion === "uk");
+    if (us) us.classList.toggle("auth-region-active", _signupRegion === "us");
+}
+function initSignupRegion() { setSignupRegion(detectRegion()); }
 
 let _captchaAnswer = 0;
 
@@ -1104,6 +1170,25 @@ async function authSignUp() {
         document.getElementById("si-email").value    = email;
         document.getElementById("si-password").value = password;
         await authSignIn();
+        // Bake the chosen region into this brand-new account's very first
+        // settings row. authSignIn() has just set `settings = {...DEFAULT_SETTINGS}`
+        // in memory (nothing saved to Supabase yet, since there's no existing
+        // row for a new user) — this save creates that first row. Best-effort:
+        // a failure here never affects the signup/sign-in itself.
+        try {
+            settings.region = _signupRegion;
+            saveSettingsLocal();
+            if (currentUser) {
+                await sb.from("settings").upsert(
+                    { user_id: currentUser.id, data: settings, updated_at: new Date().toISOString() },
+                    { onConflict: "user_id" }
+                );
+            }
+        } catch (eRegion) { console.warn("region save failed:", eRegion.message); }
+        // authSignIn() just navigated straight to screen-home -- override that
+        // for this brand-new account only, so they see the permissions primer
+        // first. Existing accounts signing in normally never hit this path.
+        show("screen-permissions-primer");
     } catch(e) {
         // Network error - try signing in anyway, Supabase may have created the account
         try {
@@ -1533,6 +1618,7 @@ function renderDnsRecords(records) {
 }
 
 async function startDomainVerification() {
+    if (demoBlocked("Setting up your email domain")) return;
     const domainInput = document.getElementById("set-custom-domain");
     const domain = (domainInput?.value || "").trim().toLowerCase().replace(/^https?:\/\//,"").replace(/\//g,"");
     const msgEl  = document.getElementById("domain-verify-msg");
@@ -1577,6 +1663,7 @@ async function startDomainVerification() {
 }
 
 async function checkDomainVerification() {
+    if (demoBlocked("Setting up your email domain")) return;
     const msgEl = document.getElementById("domain-verify-msg");
     if (msgEl) { msgEl.style.color = "#94a3b8"; msgEl.textContent = "Checking…"; }
     try {
@@ -1610,6 +1697,7 @@ async function checkDomainVerification() {
 }
 
 async function removeDomain() {
+    if (demoBlocked("Changing your email domain")) return;
     if (!confirm("Remove domain verification? Quotes will revert to sending from quotes@tileiq.app.")) return;
     if (settings.domainId) {
         fetch(TILEIQ_WORKER_URL, {
@@ -1741,6 +1829,7 @@ async function loadUserData() {
                     localStorage.setItem(LOCAL_SETTINGS_KEY(currentUser?.id), JSON.stringify(settings));
                 }
             } catch(e) { /* no settings row yet */ }
+            applyRegionLabels(); // settings.region is now authoritative — refresh the static £/VAT labels
             // Load customers from Supabase
             if (currentUser) {
                 try {
@@ -1987,26 +2076,121 @@ async function loadUserData() {
             if (App) { const r = await App.getLaunchUrl(); if (r?.url) handleDeepLink(r.url); }
         } catch(e) {}
     }, 300);
-    // ── Leica Disto D2 BLE ───────────────────────────────────────────
+    // ── Bluetooth laser measures (Leica Disto, Bosch GLM) ─────────────
+    // There's no generic BLE "laser measure" profile — each brand defines its
+    // own private GATT service/characteristic and byte framing. Rather than
+    // one hardwired device, this is now a small list of known profiles;
+    // connect() shows a single picker covering every profile's service UUID
+    // (BLE scan filters are OR'd, so a Disto and a GLM both show up in one
+    // dialog), then figures out which profile actually matches once
+    // connected. Adding a further brand later = adding one entry here.
+    //
+    // Kept as `window.Disto` / `data-disto` throughout the app (unchanged)
+    // rather than renamed to something generic — that's the name every
+    // existing call site (room editor, Shape Sketch, help text) already uses,
+    // and renaming it doesn't get us anything a comment here doesn't.
+    const LASER_PROFILES = [
+        {
+            id: 'disto',
+            shortLabel: 'Disto',
+            SERVICE_UUID: '3ab10100-f831-4395-b29d-570977d5bf94',
+            CHAR_UUID:    '3ab10101-f831-4395-b29d-570977d5bf94',
+            // Notification payload is a raw little-endian 32-bit float, in metres.
+            parse(dataView) {
+                if (dataView.byteLength < 4) return null;
+                const metres = dataView.getFloat32(0, true);
+                return (isFinite(metres) && metres > 0) ? metres : null;
+            }
+        },
+        {
+            id: 'bosch-glm',
+            shortLabel: 'Bosch GLM',
+            // Bosch publishes no public BLE spec for the GLM line. This service/
+            // characteristic UUID, the post-subscribe "enable measurement
+            // indications" command, and the payload framing below are reverse-
+            // engineered by two independent open-source projects, each claiming
+            // (in their own README + working code) that it works against real
+            // GLM 50C/100C hardware they own, corroborated by a third,
+            // independent source (a B4X forum thread) showing the identical
+            // command bytes and response shape:
+            // https://github.com/ketan/Bosch-GLM50C-Rangefinder
+            // https://github.com/philipptrenz/BOSCH-GLM-rangefinder
+            // That's reasonable triangulation, but nobody involved in writing
+            // this app has a real GLM 50C/100C to test against — treat this as
+            // well-sourced, not independently verified, until someone does.
+            //
+            // Confirmed NOT to work as of 2026-09-15, by an actual owner
+            // testing an actual unit: the GLM 50-27CG (a newer, separate
+            // product generation — different model numbering, green-laser
+            // variant). It connects fine (same private Bosch service UUID),
+            // and both this profile's ENABLE_WRITE_HEX and the separate
+            // on-demand "take a measurement" command from the same sources
+            // (`c04000ee`) got real replies back — but only short 4-byte
+            // status/ack frames (`c0 01 00 fa`, `c0 11 00 3a`/`31`), never a
+            // real distance-bearing frame, regardless of how many times the
+            // device's own Measure button was pressed. This firmware
+            // generation genuinely speaks a different, undocumented protocol.
+            // Getting it working would need capturing real traffic between
+            // this device and Bosch's own MeasureOn app (BLE HCI snoop log +
+            // `adb bugreport`) to reverse-engineer the actual commands — not
+            // attempted, since that's a real chunk of extra effort with
+            // uncertain payoff. This profile is left as-is (still matches and
+            // attempts to talk to any device advertising this service UUID)
+            // rather than special-cased to reject the 50-27 line, since there's
+            // no reliable way to distinguish it from a real 50C/100C before
+            // connecting — a 50-27 owner will see "connected" but get no
+            // readings, same as observed here.
+            SERVICE_UUID: '02a6c0d0-0451-4000-b000-fb3210111989',
+            CHAR_UUID:    '02a6c0d1-0451-4000-b000-fb3210111989',
+            // Silent until this exact 6-byte command is written back to the
+            // same characteristic right after subscribing — undocumented,
+            // taken as-is from both reverse-engineering projects above.
+            ENABLE_WRITE_HEX: 'c0550201001a',
+            // A measurement notification starts with this 4-byte header; the
+            // distance follows as a little-endian 32-bit float, in metres,
+            // at byte offset 7.
+            parse(dataView) {
+                if (dataView.byteLength < 11) return null;
+                if (dataView.getUint8(0) !== 0xc0 || dataView.getUint8(1) !== 0x55 ||
+                    dataView.getUint8(2) !== 0x10 || dataView.getUint8(3) !== 0x06) return null;
+                const metres = dataView.getFloat32(7, true);
+                return (isFinite(metres) && metres > 0) ? metres : null;
+            }
+        }
+    ];
     const DistoD2 = {
-        SERVICE_UUID: '3ab10100-f831-4395-b29d-570977d5bf94',
-        CHAR_UUID:    '3ab10101-f831-4395-b29d-570977d5bf94',
         _deviceId: null,
+        _profile: null,
         _activeInput: null,
         _connected: false,
         init() {},
         isConnected() { return this._connected; },
         setActive(inputEl) { this._activeInput = inputEl; },
         async connect() {
+            let deviceId = null;
             try {
                 const ble = Capacitor.Plugins.BluetoothLe;
                 await ble.initialize();
-                const result = await ble.requestDevice({ services: [this.SERVICE_UUID], optionalServices: [] });
-                this._deviceId = result.deviceId;
-                await ble.connect({ deviceId: this._deviceId });
+                const result = await ble.requestDevice({
+                    services: LASER_PROFILES.map(p => p.SERVICE_UUID),
+                    optionalServices: []
+                });
+                deviceId = result.deviceId;
+                await ble.connect({ deviceId });
+                // The picker doesn't say which of our services the chosen device
+                // actually advertised — connect() only resolves once BLE service
+                // discovery has finished, so ask now and match by service UUID.
+                const { services } = await ble.getServices({ deviceId });
+                const advertised = new Set((services || []).map(s => (s.uuid || '').toLowerCase()));
+                const profile = LASER_PROFILES.find(p => advertised.has(p.SERVICE_UUID.toLowerCase()));
+                if (!profile) {
+                    throw new Error('Unrecognised laser measure device');
+                }
+                this._deviceId = deviceId;
+                this._profile = profile;
                 this._connected = true;
                 this._updateBtn();
-                const notifyKey = `notification|${this._deviceId}|${this.SERVICE_UUID}|${this.CHAR_UUID}`;
+                const notifyKey = `notification|${deviceId}|${profile.SERVICE_UUID}|${profile.CHAR_UUID}`;
                 if (this._notifyListener) { await this._notifyListener.remove().catch(() => {}); }
                 this._notifyListener = await ble.addListener(notifyKey, (event) => {
                     const raw = event?.value;
@@ -2019,9 +2203,10 @@ async function loadUserData() {
                         const bytes = new Uint8Array(raw.match(/.{1,2}/g).map(b => parseInt(b, 16)));
                         dataView = new DataView(bytes.buffer);
                     } else { return; }
-                    const metres = dataView.getFloat32(0, true);
-                    if (isFinite(metres) && metres > 0 && this._activeInput) {
-                        this._activeInput.value = metres.toFixed(3);
+                    const metres = profile.parse(dataView);
+                    if (metres != null && this._activeInput) {
+                        this._activeInput.value = this._activeInput.dataset.ftShadow
+                            ? metersToFtIn(metres) : metres.toFixed(3);
                         this._activeInput.dispatchEvent(new Event('input', { bubbles: true }));
                         // Advance to next data-disto input
                         const all = Array.from(document.querySelectorAll('input[data-disto]'));
@@ -2031,13 +2216,29 @@ async function loadUserData() {
                             next.focus();
                             this._activeInput = next;
                         }
+                    } else if (metres == null) {
+                        // Doesn't match a known profile's framing — most likely a device
+                        // from the same family whose protocol turns out to differ (see the
+                        // Bosch GLM profile's comment above for a confirmed real-world
+                        // case: a GLM 50-27CG replies here with short status/ack frames,
+                        // never real distance data). Not user-visible; console-only, for
+                        // whoever picks this back up with a debugger attached.
+                        const hex = Array.from(new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength))
+                            .map(b => b.toString(16).padStart(2, '0')).join(' ');
+                        console.warn('[LaserMeasure] unrecognised payload from', profile.shortLabel, '-', hex);
                     }
                 });
-                await ble.startNotifications({ deviceId: this._deviceId, service: this.SERVICE_UUID, characteristic: this.CHAR_UUID });
+                await ble.startNotifications({ deviceId, service: profile.SERVICE_UUID, characteristic: profile.CHAR_UUID });
+                if (profile.ENABLE_WRITE_HEX) {
+                    await ble.write({ deviceId, service: profile.SERVICE_UUID, characteristic: profile.CHAR_UUID, value: profile.ENABLE_WRITE_HEX });
+                }
             } catch (err) {
-                console.error('Disto connect error:', err);
-                alert('Disto error: ' + (err.message || err.code || JSON.stringify(err)));
+                console.error('Laser measure connect error:', err);
+                alert('Laser measure error: ' + (err.message || err.code || JSON.stringify(err)));
+                if (deviceId) { try { await Capacitor.Plugins.BluetoothLe.disconnect({ deviceId }); } catch (_) {} }
                 this._connected = false;
+                this._deviceId = null;
+                this._profile = null;
                 this._updateBtn();
             }
         },
@@ -2048,18 +2249,20 @@ async function loadUserData() {
             } catch (_) {}
             this._connected = false;
             this._deviceId = null;
+            this._profile = null;
             this._updateBtn();
         },
-        // Every screen that can take a Disto reading gets its own connect/disconnect
+        // Every screen that can take a laser reading gets its own connect/disconnect
         // button (the room editor, and the Sketch overlay) — they all reflect the same
         // single BLE connection, so keep every one of them in sync here. The Sketch
         // header button gets a shorter label — it sits in a tight header pill next to
         // the title, not a full-width settings row like the room editor's.
         _updateBtn() {
+            const label = this._profile ? this._profile.shortLabel : 'Laser';
             const full = document.getElementById('disto-connect-btn');
-            if (full) full.textContent = this._connected ? '🔵 Disto Connected' : '⚪ Connect Disto';
+            if (full) full.textContent = this._connected ? `🔵 ${label} Connected` : '⚪ Connect Laser';
             const short = document.getElementById('sketch-disto-connect-btn');
-            if (short) short.textContent = this._connected ? '🔵 Disto' : '⚪ Disto';
+            if (short) short.textContent = this._connected ? `🔵 ${label}` : '⚪ Laser';
         }
     };
     window.Disto = DistoD2;
@@ -2085,7 +2288,8 @@ async function loadUserData() {
                 const result = await plugin.measure();
                 const metres = result?.meters;
                 if (!isFinite(metres) || metres <= 0) return;
-                this._activeInput.value = metres.toFixed(3);
+                this._activeInput.value = this._activeInput.dataset.ftShadow
+                    ? metersToFtIn(metres) : metres.toFixed(3);
                 this._activeInput.dispatchEvent(new Event('input', { bubbles: true }));
                 // Advance to next data-disto input, same as the Disto flow
                 const all = Array.from(document.querySelectorAll('input[data-disto]'));
@@ -2354,7 +2558,7 @@ async function loadUserData() {
             const area = this.computeArea(this.current);
             const complete = this._allEdgesFilled(this.current);
             const label = this.current.isCutout ? 'cutout' : 'area';
-            readout.textContent = area > 0 ? `${complete ? '' : '≈ '}${area.toFixed(2)} m² ${label}` : `0.00 m² ${label}`;
+            readout.textContent = area > 0 ? `${complete ? '' : '≈ '}${fmtArea(area)} ${areaUnit()} ${label}` : `${fmtArea(0)} ${areaUnit()} ${label}`;
         },
 
         _finalizeCurrent() {
@@ -2565,14 +2769,14 @@ async function loadUserData() {
 /* Fill in the £/m² cost hints on all prep option labels */
 function updatePrepPriceBadges() {
     const S = settings;
-    document.querySelectorAll(".pc-cb").forEach(el   => el.textContent = S.cementBoard);
-    document.querySelectorAll(".pc-mem").forEach(el  => el.textContent = S.membrane);
+    document.querySelectorAll(".pc-cb").forEach(el   => el.textContent = dispRate(S.cementBoard));
+    document.querySelectorAll(".pc-mem").forEach(el  => el.textContent = dispRate(S.membrane));
     document.querySelectorAll(".pc-tank-r, .pc-tank-w, .pc-tank-f, .pc-tank-sh").forEach(el => el.textContent = (S.tanking || 45));
     document.querySelectorAll(".pc-clips").forEach(el => el.textContent = S.clipPrice || 12);
-    document.querySelectorAll(".pc-trim").forEach(el => el.textContent = `£${(S.trimPrice || 3.50).toFixed(2)}`);
-    document.querySelectorAll(".pc-primer").forEach(el => el.textContent = S.primerPrice || 3.50);
-    document.querySelectorAll(".pc-stone").forEach(el => el.textContent = S.stoneSurcharge || 8.00);
-    document.querySelectorAll(".pc-sealer").forEach(el => el.textContent = S.sealerPrice || 5.00);
+    document.querySelectorAll(".pc-trim").forEach(el => el.textContent = `${currencySymbol()}${(S.trimPrice || 3.50).toFixed(2)}`);
+    document.querySelectorAll(".pc-primer").forEach(el => el.textContent = dispRate(S.primerPrice || 3.50));
+    document.querySelectorAll(".pc-stone").forEach(el => el.textContent = dispRate(S.stoneSurcharge || 8.00));
+    document.querySelectorAll(".pc-sealer").forEach(el => el.textContent = dispRate(S.sealerPrice || 5.00));
     const trayEl = document.getElementById("pc-wet-tray");
     if (trayEl) trayEl.textContent = S.wetRoomTrayRate || 150;
     updateLevelBadge("rm-r-leveldepth", ".pc-lev-r");
@@ -2584,7 +2788,7 @@ function updateLevelBadge(selectId, cls) {
     const el = document.getElementById(selectId);
     const depth = el ? el.value : "2";
     const cost  = depth === "2" ? settings.level2 : depth === "3" ? settings.level3 : settings.level4;
-    document.querySelectorAll(cls).forEach(el => el.textContent = cost);
+    document.querySelectorAll(cls).forEach(el => el.textContent = dispRate(cost));
 }
 
 function rmToggleLevelR() {
@@ -2860,7 +3064,7 @@ function renderYourDay() {
         action: () => goJob(j.id)
     }));
     if (overdueInv.length) lines.push({
-        icon: "💷", text: `£${overdueTotal.toLocaleString("en-GB", {maximumFractionDigits:0})} overdue`,
+        icon: "💷", text: `${currencySymbol()}${overdueTotal.toLocaleString("en-GB", {maximumFractionDigits:0})} overdue`,
         action: () => { document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
     });
     if (needInvoicing.length) lines.push({
@@ -3050,13 +3254,13 @@ function renderQuoteTotals() {
         <div onclick="document.getElementById('jobs-quote-filter').value='accepted';renderDashboard();"
              style="flex:1;background:#065f46;border-radius:10px;padding:10px 12px;cursor:pointer;">
             <div style="font-size:11px;color:#6ee7b7;font-weight:600;margin-bottom:2px;">✅ ACCEPTED</div>
-            <div style="font-size:18px;font-weight:800;color:#fff;">£${acceptedTotal.toLocaleString("en-GB", {minimumFractionDigits:0, maximumFractionDigits:0})}</div>
+            <div style="font-size:18px;font-weight:800;color:#fff;">${currencySymbol()}${acceptedTotal.toLocaleString("en-GB", {minimumFractionDigits:0, maximumFractionDigits:0})}</div>
         </div>` : ""}
         ${pendingTotal > 0 ? `
         <div onclick="document.getElementById('jobs-quote-filter').value='pending';renderDashboard();"
              style="flex:1;background:#1e3a5f;border-radius:10px;padding:10px 12px;cursor:pointer;">
             <div style="font-size:11px;color:#93c5fd;font-weight:600;margin-bottom:2px;">⏳ PENDING</div>
-            <div style="font-size:18px;font-weight:800;color:#fff;">£${pendingTotal.toLocaleString("en-GB", {minimumFractionDigits:0, maximumFractionDigits:0})}</div>
+            <div style="font-size:18px;font-weight:800;color:#fff;">${currencySymbol()}${pendingTotal.toLocaleString("en-GB", {minimumFractionDigits:0, maximumFractionDigits:0})}</div>
         </div>` : ""}`;
 }
 
@@ -3237,7 +3441,7 @@ function renderHomeDashboard() {
     scheduleWeek.sort((a, b) => new Date(a.jobStartDate) - new Date(b.jobStartDate));
 
     const overdue = getOverdueQuotes();
-    const fmt = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const fmt = n => currencySymbol() + n.toLocaleString(dateLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const STATUS_LABEL = { enquiry: "Enquiry", surveyed: "Surveyed", quoted: "Quoted", accepted: "Accepted", scheduled: "Scheduled", in_progress: "In progress", complete: "Complete" };
     const STATUS_TEXT  = { enquiry: "#2563eb", surveyed: "#7c3aed", quoted: "#0891b2", accepted: "#059669", scheduled: "#ea580c", in_progress: "#2563eb", complete: "#059669" };
 
@@ -3304,7 +3508,7 @@ function renderHomeDashboard() {
                 <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:2px;">🗓 ${dateLabel}</div>
                 ${addr ? `<div style="font-size:12px;color:var(--muted);">📍 ${esc(addr)}</div>` : ""}
                 ${j.phone ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">📞 ${esc(j.phone)}</div>` : ""}
-                ${total ? `<div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:4px;">£${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
+                ${total ? `<div style="font-size:14px;font-weight:800;color:var(--ink);margin-top:4px;">${currencySymbol()}${total.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</div>` : ""}
             </div>`;
         }).join("") : `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;font-size:13px;color:var(--muted);text-align:center;">☀️ No jobs scheduled this week</div>`}
     </div>`;
@@ -4435,6 +4639,8 @@ async function saveAndSendSchedule() {
         return;
     }
 
+    if (isDemoAccount()) { document.getElementById("schedule-sheet")?.remove(); demoBlocked("Emailing calendar invites"); return; }
+
     // Send invite
     const btn = document.getElementById("sched-send-btn");
     if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
@@ -4815,6 +5021,7 @@ async function sendSupportMessage() {
 }
 
 async function sendTilerReply(messageId, quoteToken) {
+    if (demoBlocked("Messaging customers")) return;
     const input = document.getElementById("reply-input-"+messageId);
     const reply = input?.value.trim();
     if (!reply) return;
@@ -5463,16 +5670,16 @@ function renderJobView() {
         const wallM2  = surfaces.filter(s => s.type === "wall").reduce((a, s) => a + (s.area || 0), 0);
         const floorM2 = surfaces.filter(s => s.type === "floor").reduce((a, s) => a + (s.area || 0), 0);
         const areaParts = [];
-        if (wallM2  > 0) areaParts.push(`🧱 ${wallM2.toFixed(2)} m²`);
-        if (floorM2 > 0) areaParts.push(`⬜ ${floorM2.toFixed(2)} m²`);
-        const areaStr = areaParts.join(" · ") || `${(r.area||0).toFixed(2)} m²`;
+        if (wallM2  > 0) areaParts.push(`🧱 ${fmtArea(wallM2)} ${areaUnit()}`);
+        if (floorM2 > 0) areaParts.push(`⬜ ${fmtArea(floorM2)} ${areaUnit()}`);
+        const areaStr = areaParts.join(" · ") || `${fmtArea(r.area||0)} ${areaUnit()}`;
 
         const surfLines = surfaces.map(s => {
             const icon = s.type === "floor" ? "⬜" : "🧱";
             const dim  = s.type === "floor"
                 ? `${s.length}×${s.width}m`
                 : `${s.width}×${s.height}m`;
-            return `<span class="surf-chip">${icon} ${esc(s.label)} ${dim} · £${s.total}</span>`;
+            return `<span class="surf-chip">${icon} ${esc(s.label)} ${dim} · ${currencySymbol()}${s.total}</span>`;
         }).join("");
 
         const mats       = surfaces.reduce((a, s) => a + (s.materialSell  || 0), 0);
@@ -5499,9 +5706,9 @@ function renderJobView() {
             groutBags > 0 ? `Grout: ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""}` : "",
             cbBoards  > 0 ? `Cement Board: ${cbBoards} board${cbBoards !== 1 ? "s" : ""}`       : "",
             levelBags > 0 ? `Levelling: ${levelBags} × 20kg`                                    : "",
-            hasTanking     ? `Tanking: £${tankingCost.toFixed(2)}`                               : "",
-            hasPrimer      ? `Primer: £${primerCost.toFixed(2)}`                                 : "",
-            clips     > 0 ? `Clips: ${clips}  ·  Wedges: ${wedges}${clipCost > 0 ? `  ·  £${clipCost.toFixed(2)}` : ""}` : "",
+            hasTanking     ? `Tanking: ${currencySymbol()}${tankingCost.toFixed(2)}`                               : "",
+            hasPrimer      ? `Primer: ${currencySymbol()}${primerCost.toFixed(2)}`                                 : "",
+            clips     > 0 ? `Clips: ${clips}  ·  Wedges: ${wedges}${clipCost > 0 ? `  ·  ${currencySymbol()}${clipCost.toFixed(2)}` : ""}` : "",
         ].filter(Boolean).join("  ·  ");
 
         const seal = calcSealantRoom(r);
@@ -5517,15 +5724,15 @@ function renderJobView() {
                     <div class="room-card-name">${esc(r.name)}</div>
                     <div class="room-card-meta">${areaStr}${r.tileType ? ` · <span style="color:var(--accent);font-weight:600;">${TILE_TYPE_LABELS[r.tileType] || r.tileType}</span>` : ""}</div>
                 </div>
-                <div class="room-card-total">${r.total ? "£" + r.total : ""}</div>
+                <div class="room-card-total">${r.total ? currencySymbol() + r.total : ""}</div>
             </div>
             <div class="room-cost-breakdown">
-                <span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">£${mats.toFixed(2)}</span></span>
+                <span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">${currencySymbol()}${mats.toFixed(2)}</span></span>
                 <span class="rcb-sep">|</span>
-                <span class="rcb-item"><span class="rcb-label">Labour</span><span class="rcb-value">£${lab.toFixed(2)}</span></span>
-                ${prepMat > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep Materials</span><span class="rcb-value">£${prepMat.toFixed(2)}</span></span>` : ""}
-                ${prepLab > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep Labour</span><span class="rcb-value">£${prepLab.toFixed(2)}</span></span>` : ""}
-                ${ufh  > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">UFH</span><span class="rcb-value">£${ufh.toFixed(2)}</span></span>` : ""}
+                <span class="rcb-item"><span class="rcb-label">Labour</span><span class="rcb-value">${currencySymbol()}${lab.toFixed(2)}</span></span>
+                ${prepMat > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep Materials</span><span class="rcb-value">${currencySymbol()}${prepMat.toFixed(2)}</span></span>` : ""}
+                ${prepLab > 0.01 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">Prep Labour</span><span class="rcb-value">${currencySymbol()}${prepLab.toFixed(2)}</span></span>` : ""}
+                ${ufh  > 0 ? `<span class="rcb-sep">|</span><span class="rcb-item"><span class="rcb-label">UFH</span><span class="rcb-value">${currencySymbol()}${ufh.toFixed(2)}</span></span>` : ""}
             </div>
             ${matSchedule ? `<div class="room-mat-schedule">${matSchedule}</div>` : ""}
             ${surfLines ? `<div class="surf-chips">${surfLines}</div>` : ""}
@@ -5552,14 +5759,14 @@ function renderJobView() {
     });
 
     const prepBreakdown = [
-        totalMats    > 0    ? `Materials £${totalMats.toFixed(2)}`       : "",
-        totalLabour  > 0    ? `Labour £${totalLabour.toFixed(2)}`        : "",
-        totalPrepMat > 0.01 ? `Prep Materials £${totalPrepMat.toFixed(2)}` : "",
-        totalPrepLab > 0.01 ? `Prep Labour £${totalPrepLab.toFixed(2)}`    : "",
+        totalMats    > 0    ? `Materials ${currencySymbol()}${totalMats.toFixed(2)}`       : "",
+        totalLabour  > 0    ? `Labour ${currencySymbol()}${totalLabour.toFixed(2)}`        : "",
+        totalPrepMat > 0.01 ? `Prep Materials ${currencySymbol()}${totalPrepMat.toFixed(2)}` : "",
+        totalPrepLab > 0.01 ? `Prep Labour ${currencySymbol()}${totalPrepLab.toFixed(2)}`    : "",
     ].filter(Boolean).join(" · ");
 
     totalEl.classList.remove("hidden");
-    totalEl.innerHTML = `<span>Job Total</span><strong>£${grandTotal.toFixed(2)}</strong>${prepBreakdown ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;font-weight:400;">${prepBreakdown}</div>` : ""}`;
+    totalEl.innerHTML = `<span>Job Total</span><strong>${currencySymbol()}${grandTotal.toFixed(2)}</strong>${prepBreakdown ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;font-weight:400;">${prepBreakdown}</div>` : ""}`;
 
     // Voicemail transcript below rooms
     const transcriptEl = document.getElementById("job-voicemail-transcript");
@@ -5692,6 +5899,7 @@ function checkDueReviewRequests() {
 // to run unattended in the background rather than interrupt whatever the
 // tiler is doing when checkDueReviewRequests() happens to catch a due job.
 async function sendReviewRequestEmail(job) {
+    if (isDemoAccount()) return;
     if (!settings.autoRequestReview || !settings.googleReviewLink || !job.email || job.reviewRequestSent) return;
     job.reviewRequestSent = true; // set synchronously so the imminent saveAll() persists it, and can't double-fire
     try {
@@ -5801,6 +6009,7 @@ function goEditJob() {
     document.getElementById("ej-supply").value  = j.tileSupply   || "customer";
     document.getElementById("ej-area").value    = j.areaMeta     || "";
     document.getElementById("ej-worktype").value= j.workType     || "";
+    applyRegionUnitsArea();
     show("screen-edit-job");
 }
 
@@ -5834,6 +6043,407 @@ function setLabourType(type) {
     rmCalc();
 }
 
+// Reads a number that may legitimately be 0 (e.g. "no labour", "adhesive
+// included free") without the classic `parseFloat(x) || fallback` bug, where
+// JS treats 0 as falsy and silently substitutes the fallback instead of the
+// value the user actually entered/saved.
+function numOr(v, fallback) {
+    const n = typeof v === "number" ? v : parseFloat(v);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+/* ================================================================
+   REGION (UK / USA) — groundwork only.
+   These read settings.region and nothing calls them yet: no currency
+   symbol, tax label or date format actually switches until a later pass
+   wires each display surface to use them. Adding the setting and the
+   helpers first, separately from converting ~200 hardcoded "£"/en-GB call
+   sites across three files, keeps this reviewable and keeps existing UK
+   accounts' output byte-for-byte unchanged in the meantime.
+================================================================ */
+function regionOf() { return settings.region === "us" ? "us" : "uk"; }
+function currencySymbol() { return regionOf() === "us" ? "$" : "£"; }
+function taxLabel()       { return regionOf() === "us" ? "Sales Tax" : "VAT"; }
+function dateLocale()     { return regionOf() === "us" ? "en-US" : "en-GB"; }
+
+// Best-effort guess for a new signup, from the device's own region —
+// never authoritative, always shown pre-selected and changeable before
+// the account is created, and editable again later in Settings.
+function detectRegion() {
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        if (/^America\//.test(tz) || tz === "Pacific/Honolulu") return "us";
+    } catch (e) {}
+    try {
+        if (/-US$/i.test(navigator.language || "")) return "us";
+    } catch (e) {}
+    return "uk";
+}
+
+// Every dynamically-generated string (quote screens, PDFs, CSV exports)
+// already calls currencySymbol()/taxLabel() live, so those are always
+// correct the moment they render. The handful of *static* HTML labels in
+// index.html (Settings' price-field units, the two VAT toggles) are plain
+// page markup that's never regenerated, so they need this one-off refresh
+// whenever the active region could have changed: once after settings load
+// on sign-in, and once after Settings is saved.
+function applyRegionLabels() {
+    const sym = currencySymbol();
+    const tax = taxLabel();
+    const us = regionOf() === "us";
+    document.querySelectorAll(".curr").forEach(el => { el.textContent = sym; });
+    document.querySelectorAll(".taxlabel").forEach(el => { el.textContent = tax; });
+    document.querySelectorAll(".dimunit").forEach(el => { el.textContent = us ? "ft" : "m"; });
+    document.querySelectorAll(".mmunit").forEach(el => { el.textContent = us ? "in" : "mm"; });
+    document.querySelectorAll(".arealabel").forEach(el => {
+        el.textContent = el.dataset.form === "long" ? (us ? "Total ft²" : "Total m²") : (us ? "ft²" : "m²");
+    });
+    // Preset deduction chips (Door, Bath Wall/End/Floor, etc.) -- their sizes
+    // are fixed reference dimensions, not a field, so it's a straight
+    // metersToFtIn() swap rather than a shadow input. UK keeps its original
+    // separator character exactly ("×" in some chip groups, "x" in others).
+    document.querySelectorAll(".deduct-dim").forEach(el => {
+        const w = el.dataset.w, h = el.dataset.h, sep = el.dataset.sep;
+        el.textContent = us ? `${metersToFtIn(w)}×${metersToFtIn(h)}` : `${w}${sep}${h}m`;
+    });
+    document.querySelectorAll(".postcodelabel").forEach(el => { el.textContent = us ? "Zip Code" : "Postcode"; });
+    const addrEl = document.getElementById("set-company-address");
+    if (addrEl) addrEl.placeholder = us ? "Street, Town, Zip Code" : "Street, Town, Postcode";
+    // Trim comes in a fixed 2.4m stick length -- another fixed reference
+    // dimension, not a field, same as the deduction chips above.
+    document.querySelectorAll(".trimlen").forEach(el => { el.textContent = us ? metersToFtIn(2.4) : "2.4m"; });
+    applyRegionUnits();
+    applyRegionUnitsMm();
+    applyRegionUnitsArea();
+    applyRegionUnitsRate();
+}
+
+/* ---- Units (metric <-> feet/inches), same canonical-storage principle as
+   currency: every stored/calculated room dimension stays in metres no
+   matter the region -- these only convert what's shown/typed for US
+   accounts. A room's Length/Width/Height/Depth fields (the ones a tiler
+   reads straight off a tape measure) get a real "feet and inches" text
+   field; everything that reads the underlying metric <input> (rmCalc,
+   buildSurfaces, saveRoom, restoreRoomInputs, etc.) is untouched and keeps
+   working exactly as before, for both regions, because that input's value
+   is always still a plain metres decimal -- the imperial field is a
+   second, region-only UI layer kept in sync with it. */
+const FT_IN_FIELDS = [
+    "rm-r-length", "rm-r-width", "rm-r-height",
+    "rm-f-length", "rm-f-width",
+    "rm-w-width",  "rm-w-height",
+    "rm-sh-width", "rm-sh-depth", "rm-sh-height"
+];
+
+function gcd(a, b) { return b ? gcd(b, a % b) : a; }
+
+// metres -> a display string like 12' 5 7/8" -- rounded to the nearest 1/8
+// inch (a tape measure's actual markings) rather than a decimal, since
+// that's what a tiler reading it back off site actually expects to see.
+function metersToFtIn(m) {
+    const val = numOr(m, null);
+    if (val === null || !Number.isFinite(val) || val < 0) return "";
+    const totalEighths = Math.round(val * 39.3700787 * 8);
+    let feet = Math.floor(totalEighths / 96);
+    let remEighths = totalEighths - feet * 96;
+    let inches = Math.floor(remEighths / 8);
+    let eighths = remEighths % 8;
+    if (inches >= 12) { feet += 1; inches -= 12; }
+    let fracStr = "";
+    if (eighths > 0) {
+        const g = gcd(eighths, 8);
+        fracStr = ` ${eighths / g}/${8 / g}`;
+    }
+    const inchPart = (inches > 0 || eighths > 0) ? `${inches}${fracStr}"` : "";
+    if (feet === 0 && inchPart === "") return `0"`;
+    if (feet === 0) return inchPart;
+    if (inchPart === "") return `${feet}'`;
+    return `${feet}' ${inchPart}`;
+}
+
+// A feet/inches string (12'6", 12' 6", 12ft 6in, 12' 5 7/8", 12' 5-7/8",
+// or a bare decimal treated as decimal feet) -> metres, rounded to the
+// same 2dp the metric fields already use. Returns null for blank/unparseable
+// input.
+function ftInToMeters(str) {
+    if (str === undefined || str === null) return null;
+    const s = String(str).trim();
+    if (s === "") return null;
+    const fm = s.match(/(-?\d+(?:\.\d+)?)\s*(?:'|ft)/i);
+    const im = s.match(/(-?\d+(?:\.\d+)?)\s*(?:[\s-](\d+)\/(\d+))?\s*(?:"|in)/i);
+    let feet = 0, inches = 0;
+    if (fm || im) {
+        if (fm) feet = parseFloat(fm[1]);
+        if (im) {
+            inches = parseFloat(im[1]);
+            if (im[2] && im[3]) inches += parseFloat(im[2]) / parseFloat(im[3]);
+        }
+    } else {
+        const n = parseFloat(s);
+        if (!Number.isFinite(n)) return null;
+        feet = n;
+    }
+    const meters = (feet * 12 + inches) * 0.0254;
+    return Number.isFinite(meters) ? Math.round(meters * 100) / 100 : null;
+}
+
+// Show/hide each metric field vs its feet-inches shadow field per region,
+// and (for US) refresh the shadow field's displayed text from whatever the
+// real metric value currently is -- unless the user is actively typing in
+// it, so we never stomp on an in-progress keystroke.
+function applyRegionUnits() {
+    const us = regionOf() === "us";
+    FT_IN_FIELDS.forEach(id => {
+        const metric = document.getElementById(id);
+        const shadow = document.getElementById(id + "-ft");
+        if (!metric || !shadow) return;
+        metric.classList.toggle("hidden", us);
+        shadow.classList.toggle("hidden", !us);
+        // Only the field actually shown for this region should be in the
+        // laser-measure (Disto/AR) target list -- otherwise a reading can
+        // land on the hidden twin, and for UK that means round-tripping a
+        // value through the feet-inches parser for no reason (precision
+        // loss) even though nothing about UK is meant to change.
+        if (us) { metric.removeAttribute("data-disto"); shadow.setAttribute("data-disto", ""); }
+        else    { shadow.removeAttribute("data-disto"); metric.setAttribute("data-disto", ""); }
+        if (us && document.activeElement !== shadow) shadow.value = metersToFtIn(metric.value);
+    });
+}
+
+// Wired to each shadow field's oninput. Parses what the user typed, writes
+// the metres equivalent into the real (hidden) metric field, then runs the
+// same recalculation the metric field's own oninput would have triggered.
+function rmFtInSync(baseId) {
+    const shadow = document.getElementById(baseId + "-ft");
+    const metric = document.getElementById(baseId);
+    if (!shadow || !metric) return;
+    const m = ftInToMeters(shadow.value);
+    metric.value = (m === null) ? "" : m;
+    rmCalc();
+    if (baseId === "rm-sh-width" || baseId === "rm-sh-depth") rmShSyncTrayDims();
+}
+
+/* ---- Phase 2: tile size / thickness / grout joint / tray dimensions
+   (mm) -> inches. Same canonical-storage rule as everything else region-
+   related: the metric <input> is always what's actually stored/read by
+   the pricing calc, badges, saveRoom, etc.; the imperial field is a second
+   region-only display/input layer kept in sync with it.
+
+   Unlike room dimensions these are always shown as inches only (never
+   "feet"), because that's how tile sizes and grout joints are actually
+   specified in the US trade even for large-format tiles (e.g. "24x48
+   inch", not "2ft x 4ft"), and rounded to the nearest 1/16" -- the finer
+   trade tolerance that applies at this smaller scale (a grout joint
+   measured to the nearest 1/8" would round straight to zero). */
+const MM_FIELDS = [
+    "rm-r-wtilew", "rm-r-wtileh", "rm-r-wtilethick", "rm-r-wgrout",
+    "rm-r-ftilew", "rm-r-ftileh", "rm-r-ftilethick", "rm-r-fgrout",
+    "rm-f-tilew",  "rm-f-tileh",  "rm-f-tilethick",  "rm-f-grout",
+    "rm-w-tilew",  "rm-w-tileh",  "rm-w-tilethick",  "rm-w-grout",
+    "rm-sh-wtilew","rm-sh-wtileh","rm-sh-wtilethick","rm-sh-wgrout",
+    "rm-sh-ftilew","rm-sh-ftileh","rm-sh-ftilethick","rm-sh-fgrout",
+    "rm-r-tray-w", "rm-r-tray-d", "rm-f-tray-w", "rm-f-tray-d", "rm-sh-tray-w", "rm-sh-tray-d"
+];
+
+// mm -> a display string like 11 13/16" (blank/invalid in -> blank out)
+function mmToInFrac(mm) {
+    const val = numOr(mm, null);
+    if (val === null || !Number.isFinite(val) || val < 0) return "";
+    const totalSixteenths = Math.round(val / 25.4 * 16);
+    const whole = Math.floor(totalSixteenths / 16);
+    const sixteenths = totalSixteenths % 16;
+    let fracStr = "";
+    if (sixteenths > 0) {
+        const g = gcd(sixteenths, 16);
+        fracStr = `${sixteenths / g}/${16 / g}`;
+    }
+    if (whole === 0 && fracStr === "") return `0"`;
+    if (whole === 0) return `${fracStr}"`;
+    if (fracStr === "") return `${whole}"`;
+    return `${whole} ${fracStr}"`;
+}
+
+// An inches string ("11 13/16"", "11-13/16", "11.8125", "13/16", or a
+// plain whole number) -> mm, rounded to the nearest whole mm (matching
+// the existing metric fields' integer step). Null for blank/unparseable.
+function inFracToMm(str) {
+    if (str === undefined || str === null) return null;
+    let s = String(str).trim().replace(/["]|in\b/gi, "").trim();
+    if (s === "") return null;
+    const fracM = s.match(/(\d+)\s*\/\s*(\d+)\s*$/);
+    let whole = 0, fracVal = 0;
+    if (fracM) {
+        fracVal = parseFloat(fracM[1]) / parseFloat(fracM[2]);
+        const before = s.slice(0, fracM.index).trim().replace(/[-\s]+$/, "");
+        whole = before === "" ? 0 : parseFloat(before);
+        if (!Number.isFinite(whole)) whole = 0;
+    } else {
+        whole = parseFloat(s);
+        if (!Number.isFinite(whole)) return null;
+    }
+    const mm = (whole + fracVal) * 25.4;
+    return Number.isFinite(mm) ? Math.round(mm) : null;
+}
+
+function applyRegionUnitsMm() {
+    const us = regionOf() === "us";
+    MM_FIELDS.forEach(id => {
+        const metric = document.getElementById(id);
+        const shadow = document.getElementById(id + "-in");
+        if (!metric || !shadow) return;
+        metric.classList.toggle("hidden", us);
+        shadow.classList.toggle("hidden", !us);
+        if (us && document.activeElement !== shadow) shadow.value = mmToInFrac(metric.value);
+    });
+}
+
+function rmMmInSync(baseId) {
+    const shadow = document.getElementById(baseId + "-in");
+    const metric = document.getElementById(baseId);
+    if (!shadow || !metric) return;
+    const mm = inFracToMm(shadow.value);
+    metric.value = (mm === null) ? "" : mm;
+    // The metric field's own oninput may do more than just rmCalc() (badge
+    // refreshes, etc.) -- dispatch a real input event on it so every one of
+    // those existing listeners still fires, instead of re-guessing which
+    // ones apply per field.
+    metric.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/* ---- Phase 2b: the "Total m²"/"Total Area (m²)" direct-area shortcuts
+   (Floor-only, Wall-only, and the enquiry form) -> sq ft. These are a third,
+   easy-to-miss way a size gets entered besides typing Length/Width -- same
+   canonical-storage rule again: the metric field is what buildSurfaces() /
+   the saved enquiry actually read, the sq ft field is a region-only layer
+   on top of it. */
+const AREA_FIELDS = ["rm-f-area-direct", "rm-w-area-direct", "ej-area"];
+
+// m² -> a plain decimal sq ft string (blank/invalid in -> blank out)
+function m2ToSqFt(m2) {
+    const val = numOr(m2, null);
+    if (val === null || !Number.isFinite(val) || val < 0) return "";
+    return (Math.round(val * 10.7639 * 10) / 10).toString();
+}
+
+// A sq ft decimal string -> m², rounded to 2dp. Null for blank/unparseable.
+function sqFtToM2(str) {
+    if (str === undefined || str === null) return null;
+    const s = String(str).trim();
+    if (s === "") return null;
+    const n = parseFloat(s);
+    if (!Number.isFinite(n)) return null;
+    return Math.round((n / 10.7639) * 100) / 100;
+}
+
+function applyRegionUnitsArea() {
+    const us = regionOf() === "us";
+    AREA_FIELDS.forEach(id => {
+        const metric = document.getElementById(id);
+        const shadow = document.getElementById(id + "-ft2");
+        if (!metric || !shadow) return;
+        metric.classList.toggle("hidden", us);
+        shadow.classList.toggle("hidden", !us);
+        if (us && document.activeElement !== shadow) shadow.value = m2ToSqFt(metric.value);
+    });
+}
+
+function rmAreaInSync(baseId) {
+    const shadow = document.getElementById(baseId + "-ft2");
+    const metric = document.getElementById(baseId);
+    if (!shadow || !metric) return;
+    const m2 = sqFtToM2(shadow.value);
+    metric.value = (m2 === null) ? "" : m2;
+    metric.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/* ---- Phase 2c: read-only area displays (room card badges, deduction
+   totals, wastage notes, tile summaries, CSV/PDF exports) that render a
+   calculated m² number as literal text. Nothing here is a stored value or
+   an input -- it's the last mile of the same rule: every one of these
+   already recomputes from the real (always-metric) numbers on every
+   render, so converting them live, in place, is enough; there's no
+   separate "field" to keep in sync. */
+function areaUnit() { return regionOf() === "us" ? "ft²" : "m²"; }
+function fmtArea(m2, decimals) {
+    if (decimals === undefined) decimals = 2;
+    const val = numOr(m2, 0);
+    return (regionOf() === "us" ? val * 10.7639 : val).toFixed(decimals);
+}
+
+/* ---- Phase 3: price-per-area RATES (Tile Price, Labour Rate, Cement
+   Board, Membrane, Levelling, Tanking Labour, Primer, Stone Install/
+   Sealer, UFH Labour) -- £/m² -> $/ft². This is the one place in the
+   whole region project where the conversion changes what the underlying
+   NUMBER means, not just how it's written: a rate is a price divided by
+   an area, so converting the area unit means dividing the number, not
+   just relabelling it. Getting this backwards (or skipping it and just
+   swapping the label) would silently change what a US tiler is actually
+   charging by ~10.76x, so this gets the same "prove the real code, not
+   an approximation" verification as everything before it, just with more
+   riding on it than any other phase.
+
+   Same canonical-storage rule regardless: every one of these fields still
+   stores/reads a plain £/m² number, exactly as saveSettings(), buildSurfaces()
+   etc. already expect -- only the US-facing input/display is scaled. */
+const RATE_FIELDS = [
+    "set-tile-price", "set-cementboard", "set-cb-labour", "set-membrane",
+    "set-mem-labour", "set-level2", "set-level3", "set-level4",
+    "set-tanking-labour", "set-primer-price", "set-stone-surcharge", "set-sealer-price",
+    "set-labour-m2",
+    "rm-r-wtilecost", "rm-r-ftilecost", "rm-f-tilecost", "rm-w-tilecost",
+    "rm-sh-wtilecost", "rm-sh-ftilecost", "rm-r-ufh-labour", "rm-f-ufh-labour"
+];
+
+// A £/m² rate -> the equivalent $/ft² number, as a display string
+// (blank/invalid in -> blank out). Dividing, not multiplying: a square
+// foot is smaller than a square metre, so the same total price is a
+// smaller number per square foot.
+function rateM2ToFt2(ratePerM2) {
+    const val = numOr(ratePerM2, null);
+    if (val === null || !Number.isFinite(val) || val < 0) return "";
+    return (Math.round((val / 10.7639) * 100) / 100).toString();
+}
+
+// A $/ft² rate the user typed -> the equivalent £/m² rate for storage.
+// Null for blank/unparseable input.
+function rateFt2ToM2(str) {
+    if (str === undefined || str === null) return null;
+    const s = String(str).trim();
+    if (s === "") return null;
+    const n = parseFloat(s);
+    if (!Number.isFinite(n)) return null;
+    return Math.round((n * 10.7639) * 100) / 100;
+}
+
+// For read-only badges/notes that mirror a rate value directly (not a
+// field) -- returns a NUMBER in the current region's unit, unformatted,
+// matching how those call sites already just drop the raw value in.
+function dispRate(ratePerM2) {
+    const val = numOr(ratePerM2, null);
+    if (val === null || !Number.isFinite(val)) return ratePerM2;
+    return regionOf() === "us" ? Math.round((val / 10.7639) * 100) / 100 : val;
+}
+
+function applyRegionUnitsRate() {
+    const us = regionOf() === "us";
+    RATE_FIELDS.forEach(id => {
+        const metric = document.getElementById(id);
+        const shadow = document.getElementById(id + "-ft2rate");
+        if (!metric || !shadow) return;
+        metric.classList.toggle("hidden", us);
+        shadow.classList.toggle("hidden", !us);
+        if (us && document.activeElement !== shadow) shadow.value = rateM2ToFt2(metric.value);
+    });
+}
+
+function rmRateInSync(baseId) {
+    const shadow = document.getElementById(baseId + "-ft2rate");
+    const metric = document.getElementById(baseId);
+    if (!shadow || !metric) return;
+    const rate = rateFt2ToM2(shadow.value);
+    metric.value = (rate === null) ? "" : rate;
+    metric.dispatchEvent(new Event("input", { bubbles: true }));
+}
 const TILE_TYPE_LABELS = {
     ceramic:      "Ceramic",
     porcelain:    "Porcelain",
@@ -5856,8 +6466,8 @@ function updateTileTypeNote() {
         if (mirror && mirror.value !== type) mirror.value = type;
     });
     const mult = (settings.tileRates || {})[type] || 1.0;
-    const baseFloor = settings.labourM2Floor || 28;
-    const baseWall  = settings.labourM2Wall  || 35;
+    const baseFloor = numOr(settings.labourM2Floor, 28);
+    const baseWall  = numOr(settings.labourM2Wall, 35);
     const isStone = type === "natural_stone";
 
     // Auto-apply stone install + sealer for all relevant surfaces. Room-type
@@ -5896,14 +6506,14 @@ function updateTileTypeNote() {
             el.innerHTML =
                 `<span style="color:var(--accent);font-weight:600;">🪨 Natural Stone selected</span><br>` +
                 `<span style="color:#059669;font-size:12px;font-weight:600;">` +
-                `✓ Natural Stone Install labour added — £${stoneRate.toFixed(2)}/m²<br>` +
-                `✓ Stone Sealer added — £${sealerRate.toFixed(2)}/m²` +
+                `✓ Natural Stone Install labour added — ${currencySymbol()}${dispRate(stoneRate).toFixed(2)}/${areaUnit()}<br>` +
+                `✓ Stone Sealer added — ${currencySymbol()}${dispRate(sealerRate).toFixed(2)}/${areaUnit()}` +
                 `</span><br>` +
-                `<span style="font-size:11px;color:var(--text-muted);">${mult}× labour multiplier · floor: £${(baseFloor * mult).toFixed(2)}/m² · wall: £${(baseWall * mult).toFixed(2)}/m²</span>`;
+                `<span style="font-size:11px;color:var(--text-muted);">${mult}× labour multiplier · floor: ${currencySymbol()}${dispRate(baseFloor * mult).toFixed(2)}/${areaUnit()} · wall: ${currencySymbol()}${dispRate(baseWall * mult).toFixed(2)}/${areaUnit()}</span>`;
         } else {
             el.textContent = mult === 1.0
                 ? `${TILE_TYPE_LABELS[type]} — standard rate`
-                : `${TILE_TYPE_LABELS[type]} — ${mult}× multiplier (floor: £${(baseFloor * mult).toFixed(2)}/m², wall: £${(baseWall * mult).toFixed(2)}/m²)`;
+                : `${TILE_TYPE_LABELS[type]} — ${mult}× multiplier (floor: ${currencySymbol()}${dispRate(baseFloor * mult).toFixed(2)}/${areaUnit()}, wall: ${currencySymbol()}${dispRate(baseWall * mult).toFixed(2)}/${areaUnit()})`;
         }
     }
     rmCalc();
@@ -5927,19 +6537,19 @@ function updateRoomFloorTileType() {
     const el = document.getElementById("rm-r-ftile-type-rate-note");
     if (el) {
         const mult = (settings.tileRates || {})[type] || 1.0;
-        const baseFloor = settings.labourM2Floor || 28;
+        const baseFloor = numOr(settings.labourM2Floor, 28);
         if (isStone) {
             const stoneRate  = parseFloat(settings.stoneSurcharge) || 8.00;
             const sealerRate = parseFloat(settings.sealerPrice)    || 5.00;
             el.innerHTML =
                 `<span style="color:var(--accent);font-weight:600;">🪨 Natural Stone selected</span><br>` +
                 `<span style="color:#059669;font-size:12px;font-weight:600;">` +
-                `✓ Natural Stone Install labour added — £${stoneRate.toFixed(2)}/m²<br>` +
-                `✓ Stone Sealer added — £${sealerRate.toFixed(2)}/m²</span>`;
+                `✓ Natural Stone Install labour added — ${currencySymbol()}${dispRate(stoneRate).toFixed(2)}/${areaUnit()}<br>` +
+                `✓ Stone Sealer added — ${currencySymbol()}${dispRate(sealerRate).toFixed(2)}/${areaUnit()}</span>`;
         } else {
             el.textContent = mult === 1.0
                 ? `${TILE_TYPE_LABELS[type]} — standard rate`
-                : `${TILE_TYPE_LABELS[type]} — ${mult}× multiplier (£${(baseFloor * mult).toFixed(2)}/m²)`;
+                : `${TILE_TYPE_LABELS[type]} — ${mult}× multiplier (${currencySymbol()}${dispRate(baseFloor * mult).toFixed(2)}/${areaUnit()})`;
         }
     }
     rmCalc();
@@ -6765,6 +7375,66 @@ function updateExtraCb(i, field, checked) {
     rmCalc();
 }
 
+// Extra surfaces (additional floors/walls) are regenerated from scratch on
+// every render, so region-awareness here doesn't need a shadow-field pair
+// like the fixed room fields did -- these three wrappers just parse
+// whatever the US-facing text field holds back into the same metric number
+// updateExtra() already expects, so the stored data is identical either way.
+function updateExtraFtIn(i, field, value) {
+    const m = ftInToMeters(value);
+    updateExtra(i, field, m === null ? "" : m);
+}
+function updateExtraMmIn(i, field, value) {
+    const mm = inFracToMm(value);
+    updateExtra(i, field, mm === null ? "" : mm);
+}
+function updateExtraAreaIn(i, field, value) {
+    const m2 = sqFtToM2(value);
+    updateExtra(i, field, m2 === null ? "" : m2);
+}
+
+// One Length/Width/Height field (metres) for an extra-surface card --
+// unchanged plain metres number for UK, feet-inches text for US.
+function extraDimField(i, field, label, placeholderM, val, extra) {
+    extra = extra || "";
+    if (regionOf() === "us") {
+        return `<div class="field-group"><label>${label}</label>
+      <input type="text" value="${metersToFtIn(val)}" placeholder="e.g. 7&#39; 10&quot;" ${extra}
+        oninput="updateExtraFtIn(${i},'${field}',this.value);rmCalc()"></div>`;
+    }
+    return `<div class="field-group"><label>${label} (m)</label>
+      <input type="number" step="0.01" value="${val||""}" placeholder="${placeholderM}" ${extra}
+        oninput="updateExtra(${i},'${field}',this.value);rmCalc()"></div>`;
+}
+
+// One tile-size/thickness/grout field (mm) -- unchanged plain mm number
+// for UK, nearest-1/16" inches text for US.
+function extraMmField(i, field, label, val, extra) {
+    extra = extra || "";
+    if (regionOf() === "us") {
+        return `<div class="field-group"><label>${label}</label>
+      <input type="text" value="${mmToInFrac(val)}" ${extra}
+        oninput="updateExtraMmIn(${i},'${field}',this.value);rmCalc()"></div>`;
+    }
+    return `<div class="field-group"><label>${label} (mm)</label>
+      <input type="number" value="${val}" ${extra}
+        oninput="updateExtra(${i},'${field}',this.value);rmCalc()"></div>`;
+}
+
+// The Deduction (m²) field -- unchanged plain m² number for UK, sq ft text
+// for US.
+function extraAreaField(i, field, label, val, extra) {
+    extra = extra || "";
+    if (regionOf() === "us") {
+        return `<div class="field-group"><label>${label}</label>
+      <input type="text" value="${m2ToSqFt(val)}" placeholder="0" ${extra}
+        oninput="updateExtraAreaIn(${i},'${field}',this.value);rmCalc()"></div>`;
+    }
+    return `<div class="field-group"><label>${label} (m²)</label>
+      <input type="number" step="0.01" value="${val||""}" placeholder="0" ${extra}
+        oninput="updateExtra(${i},'${field}',this.value);rmCalc()"></div>`;
+}
+
 function renderExtraSurfaces() {
     const floorContainer = document.getElementById("extra-floors-list");
     const wallContainer  = document.getElementById("extra-walls-list");
@@ -6794,36 +7464,23 @@ function renderExtraSurfaces() {
     </select>
   </div>
   <div class="field-row">
-    <div class="field-group"><label>Length (m)</label>
-      <input type="number" step="0.01" value="${s.length||""}" placeholder="e.g. 2.4" data-disto
-        oninput="updateExtra(${i},'length',this.value);rmCalc()"></div>
-    <div class="field-group"><label>Width (m)</label>
-      <input type="number" step="0.01" value="${s.width||""}" placeholder="e.g. 1.8" data-disto
-        oninput="updateExtra(${i},'width',this.value);rmCalc()"></div>
+    ${extraDimField(i, 'length', 'Length', 'e.g. 2.4', s.length, 'data-disto')}
+    ${extraDimField(i, 'width', 'Width', 'e.g. 1.8', s.width, 'data-disto')}
   </div>
   <div class="field-row">
-    <div class="field-group"><label>Tile W (mm)</label>
-      <input type="number" value="${s.tileW}" id="extra-tilew-${i}"
-        oninput="updateExtra(${i},'tileW',this.value);rmCalc()"></div>
-    <div class="field-group"><label>Tile H (mm)</label>
-      <input type="number" value="${s.tileH}" id="extra-tileh-${i}"
-        oninput="updateExtra(${i},'tileH',this.value);rmCalc()"></div>
-    <div class="field-group"><label>Thick (mm)</label>
-      <input type="number" value="${s.tileThick}"
-        oninput="updateExtra(${i},'tileThick',this.value);rmCalc()"></div>
+    ${extraMmField(i, 'tileW', 'Tile W', s.tileW, `id="extra-tilew-${i}"`)}
+    ${extraMmField(i, 'tileH', 'Tile H', s.tileH, `id="extra-tileh-${i}"`)}
+    ${extraMmField(i, 'tileThick', 'Thick', s.tileThick)}
   </div>
   <div class="field-row">
-    <div class="field-group"><label>Grout Joint (mm)</label>
-      <input type="number" value="${s.grout}" oninput="updateExtra(${i},'grout',this.value);rmCalc()"></div>
+    ${extraMmField(i, 'grout', 'Grout Joint', s.grout)}
   </div>
   <div class="extra-deduct-toggle" onclick="toggleExtraDeduct(${i})" id="extra-deduct-toggle-${i}"
     style="font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;padding:4px 0;user-select:none;">
-    Deductions <span id="extra-deduct-arrow-${i}">▸</span>${s.deduct > 0 ? ` <span style="color:var(--red);margin-left:4px;">−${s.deduct}m²</span>` : ""}
+    Deductions <span id="extra-deduct-arrow-${i}">▸</span>${s.deduct > 0 ? ` <span style="color:var(--red);margin-left:4px;">−${fmtArea(s.deduct)}${areaUnit()}</span>` : ""}
   </div>
   <div id="extra-deduct-panel-${i}" style="display:${s.deduct>0?"":"none"};padding:4px 0 6px 0;">
-    <div class="field-group"><label>Deduction (m²)</label>
-      <input type="number" step="0.01" value="${s.deduct||""}" placeholder="0"
-        oninput="updateExtra(${i},'deduct',this.value);rmCalc()"></div>
+    ${extraAreaField(i, 'deduct', 'Deduction', s.deduct)}
   </div>
   <label class="checkbox-label" style="margin-bottom:6px;">
     <input type="checkbox" ${s.ufh?"checked":""} onchange="updateExtraCb(${i},'ufh',this.checked)"> UFH
@@ -6868,33 +7525,23 @@ function renderExtraSurfaces() {
     </select>
   </div>
   <div class="field-row">
-    <div class="field-group"><label>Width (m)</label>
-      <input type="number" step="0.01" value="${s.width||""}" placeholder="e.g. 3.5" data-disto
-        oninput="updateExtra(${i},'width',this.value);rmCalc()"></div>
-    <div class="field-group"><label>Height (m)</label>
-      <input type="number" step="0.01" value="${s.height||""}" placeholder="e.g. 2.4" data-disto
-        oninput="updateExtra(${i},'height',this.value);rmCalc()"></div>
+    ${extraDimField(i, 'width', 'Width', 'e.g. 3.5', s.width, 'data-disto')}
+    ${extraDimField(i, 'height', 'Height', 'e.g. 2.4', s.height, 'data-disto')}
   </div>
   <div class="field-row">
-    <div class="field-group"><label>Tile W (mm)</label>
-      <input type="number" value="${s.tileW}" oninput="updateExtra(${i},'tileW',this.value);rmCalc()"></div>
-    <div class="field-group"><label>Tile H (mm)</label>
-      <input type="number" value="${s.tileH}" oninput="updateExtra(${i},'tileH',this.value);rmCalc()"></div>
-    <div class="field-group"><label>Thick (mm)</label>
-      <input type="number" value="${s.tileThick}" oninput="updateExtra(${i},'tileThick',this.value);rmCalc()"></div>
+    ${extraMmField(i, 'tileW', 'Tile W', s.tileW)}
+    ${extraMmField(i, 'tileH', 'Tile H', s.tileH)}
+    ${extraMmField(i, 'tileThick', 'Thick', s.tileThick)}
   </div>
   <div class="field-row">
-    <div class="field-group"><label>Grout Joint (mm)</label>
-      <input type="number" value="${s.grout}" oninput="updateExtra(${i},'grout',this.value);rmCalc()"></div>
+    ${extraMmField(i, 'grout', 'Grout Joint', s.grout)}
   </div>
   <div class="extra-deduct-toggle" onclick="toggleExtraDeduct(${i})" id="extra-deduct-toggle-${i}"
     style="font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;padding:4px 0;user-select:none;">
-    Deductions <span id="extra-deduct-arrow-${i}">▸</span>${s.deduct > 0 ? ` <span style="color:var(--red);margin-left:4px;">−${s.deduct}m²</span>` : ""}
+    Deductions <span id="extra-deduct-arrow-${i}">▸</span>${s.deduct > 0 ? ` <span style="color:var(--red);margin-left:4px;">−${fmtArea(s.deduct)}${areaUnit()}</span>` : ""}
   </div>
   <div id="extra-deduct-panel-${i}" style="display:${s.deduct>0?"":"none"};padding:4px 0 6px 0;">
-    <div class="field-group"><label>Deduction (m²)</label>
-      <input type="number" step="0.01" value="${s.deduct||""}" placeholder="0"
-        oninput="updateExtra(${i},'deduct',this.value);rmCalc()"></div>
+    ${extraAreaField(i, 'deduct', 'Deduction', s.deduct)}
   </div>
   <div class="prep-options">
     <label class="prep-option">
@@ -7093,7 +7740,7 @@ function renderNiches(zone) {
                 </div>
             </div>
             <div class="field-group" style="max-width:160px;">
-                <label>Labour Cost (£)</label>
+                <label>Labour Cost (${currencySymbol()})</label>
                 <input type="number" step="1" value="${n.labourCost}"
                     oninput="updateNiche('${zone}',${n.id},'labourCost',this.value)">
             </div>
@@ -7168,7 +7815,7 @@ function renderExtraWork(zone) {
                     oninput="updateExtraWorkItem('${zone}',${i},'desc',this.value)">
             </div>
             <div class="field-group" style="flex:1;">
-                <label>Cost (£)</label>
+                <label>Cost (${currencySymbol()})</label>
                 <input type="number" step="0.01" placeholder="0" value="${item.cost || ""}"
                     oninput="updateExtraWorkItem('${zone}',${i},'cost',this.value)">
             </div>
@@ -7195,7 +7842,10 @@ function rmUpdateTileBadge(key, wId, hId, gId) {
     const h = document.getElementById(hId)?.value;
     const g = document.getElementById(gId)?.value;
     const badge = document.getElementById(key + '-badge');
-    if (badge && w && h) badge.textContent = `${w}×${h}mm · ${g||2}mm joint`;
+    if (!badge || !w || !h) return;
+    badge.textContent = (regionOf() === "us")
+        ? `${mmToInFrac(w)}×${mmToInFrac(h)} · ${mmToInFrac(g||2)} joint`
+        : `${w}×${h}mm · ${g||2}mm joint`;
 }
 
 function rmUpdateOptionsBadge() {
@@ -7482,7 +8132,7 @@ function calcSurface(s, customerTiles, labourOpts) {
 
     // Grout bags — size configurable in settings (2.5kg or 5kg)
     const bagSize   = parseFloat(S.groutBagSize) || 2.5;
-    const bagPrice  = bagSize >= 5 ? (parseFloat(S.groutPrice5) || 7.50) : (parseFloat(S.groutPrice25) || 4.50);
+    const bagPrice  = bagSize >= 5 ? (numOr(S.groutPrice5, 7.50)) : (numOr(S.groutPrice25, 4.50));
     s.groutBags = Math.ceil(totalGroutKg / bagSize);
 
     // Levelling clips & wedges quantities (always computed; cost only if s.clips is ticked)
@@ -7494,7 +8144,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     const tileCost = customerTiles ? 0 : s.area * tileUnitPrice;
     // Price adhesive/grout pro-rata by kg
     const groutCost = (totalGroutKg / bagSize) * bagPrice;
-    const adhCost   = (s.adhKg / 20) * (S._adhUnitPrice || S.adhesivePrice);
+    const adhCost   = (s.adhKg / 20) * numOr(S._adhUnitPrice, S.adhesivePrice);
     const matRaw    = tileCost + groutCost + adhCost;
     const mult     = 1 + S.markup / 100;
     s.materialSell = matRaw * mult;
@@ -7502,8 +8152,8 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     // Labour: separate wall/floor rates + tile type multiplier
     const tileTypeMult = S.tileRates ? (S.tileRates[s.tileType || "ceramic"] || 1.0) : 1.0;
     const labourRate = (s.type === "wall"
-        ? (S.labourM2Wall || S.labourM2 || 35)
-        : (S.labourM2Floor || S.labourM2 || 28)) * tileTypeMult;
+        ? (numOr(S.labourM2Wall, numOr(S.labourM2, 35)))
+        : (numOr(S.labourM2Floor, numOr(S.labourM2, 28)))) * tileTypeMult;
 
     if (labourOpts && labourOpts.type === "day") {
         const totalArea  = labourOpts.totalArea || 1;
@@ -7546,13 +8196,13 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             s.prepCost     += matCost + labCost;
             s.prepMatCost  += matCost;
             s.prepLabCost  += labCost;
-            s.prepLines.push(`Cement Board: ${boards} board${boards !== 1 ? "s" : ""} · material £${matCost.toFixed(2)} · fitting labour £${labCost.toFixed(2)} · +${adhKg.toFixed(1)}kg adhesive`);
+            s.prepLines.push(`Cement Board: ${boards} board${boards !== 1 ? "s" : ""} · material ${currencySymbol()}${matCost.toFixed(2)} · fitting labour ${currencySymbol()}${labCost.toFixed(2)} · +${adhKg.toFixed(1)}kg adhesive`);
         }
         if (s.membrane) {
             const matRate     = parseFloat(S.membrane)      || 8;
             const labRate     = parseFloat(S.memLabour)     || 3;
             const adhRate     = parseFloat(S.memAdhKgM2)    || 3;
-            const rapidPrice  = parseFloat(S.rapidAdhPrice) || 28;
+            const rapidPrice  = numOr(S.rapidAdhPrice, 28);
             const matCost     = s.area * matRate;
             const labCost     = s.area * labRate;
             const adhKg       = s.area * adhRate;
@@ -7562,7 +8212,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             s.prepCost       += matCost + labCost + rapidCost;
             s.prepMatCost    += matCost + rapidCost; // rapid set adhesive is a material cost
             s.prepLabCost    += labCost;
-            s.prepLines.push(`Anti-Crack Membrane: material £${matCost.toFixed(2)} · fitting labour £${labCost.toFixed(2)} · rapid set adhesive ${rapidBags} bag${rapidBags!==1?"s":""} (${adhKg.toFixed(1)}kg) £${rapidCost.toFixed(2)}`);
+            s.prepLines.push(`Anti-Crack Membrane: material ${currencySymbol()}${matCost.toFixed(2)} · fitting labour ${currencySymbol()}${labCost.toFixed(2)} · rapid set adhesive ${rapidBags} bag${rapidBags!==1?"s":""} (${adhKg.toFixed(1)}kg) ${currencySymbol()}${rapidCost.toFixed(2)}`);
         }
         if (s.levelling) {
             const depth    = s.levelDepth || 2;
@@ -7581,7 +8231,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             s.prepCost += totalCost;
             s.prepMatCost += matCost;
             s.prepLabCost += labCost;
-            s.prepLines.push(`Levelling Compound ${depth}mm: ${bags} bag${bags !== 1 ? "s" : ""} (£${bagPrice.toFixed(2)}/bag) + labour = £${totalCost.toFixed(2)}`);
+            s.prepLines.push(`Levelling Compound ${depth}mm: ${bags} bag${bags !== 1 ? "s" : ""} (${currencySymbol()}${bagPrice.toFixed(2)}/bag) + labour = ${currencySymbol()}${totalCost.toFixed(2)}`);
         }
     }
     if (s.tanking) {
@@ -7596,15 +8246,15 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         s.prepMatCost += kitCost;
         s.prepLabCost += labCost;
         s.tankingKits = kits;
-        s.prepLines.push(`Tanking Kit: ${kits} kit${kits!==1?"s":""} × £${kitPrice} (covers ${kitCoverM2}m² each) = £${kitCost.toFixed(2)}`);
-        s.prepLines.push(`Tanking Labour: ${s.area.toFixed(2)}m² × £${labRate}/m² = £${labCost.toFixed(2)}`);
+        s.prepLines.push(`Tanking Kit: ${kits} kit${kits!==1?"s":""} × ${currencySymbol()}${kitPrice} (covers ${fmtArea(kitCoverM2)}${areaUnit()} each) = ${currencySymbol()}${kitCost.toFixed(2)}`);
+        s.prepLines.push(`Tanking Labour: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(labRate).toFixed(2)}/${areaUnit()} = ${currencySymbol()}${labCost.toFixed(2)}`);
     }
     // Primer (floors and walls)
     if (s.primer) {
         const rate = parseFloat(S.primerPrice) || 3.50;
         const c    = s.area * rate;
         s.prepCost += c; s.prepMatCost += c;
-        s.prepLines.push(`Primer: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
+        s.prepLines.push(`Primer: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(rate).toFixed(2)}/${areaUnit()} = ${currencySymbol()}${c.toFixed(2)}`);
     }
     // Natural stone install surcharge — extra labour for cutting/handling stone
     if (s.stone) {
@@ -7612,7 +8262,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         const c    = s.area * rate;
         s.stoneInstallCost = c;
         s.prepCost += c; s.prepLabCost += c;
-        s.prepLines.push(`Natural Stone Install: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
+        s.prepLines.push(`Natural Stone Install: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(rate).toFixed(2)}/${areaUnit()} = ${currencySymbol()}${c.toFixed(2)}`);
     }
     // Stone sealer (only available when stone is selected)
     if (s.stone && s.sealer) {
@@ -7620,7 +8270,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         const c    = s.area * rate;
         s.stoneSealerCost = c;
         s.prepCost += c; s.prepMatCost += c;
-        s.prepLines.push(`Stone Sealer: ${s.area.toFixed(2)}m² × £${rate}/m² = £${c.toFixed(2)}`);
+        s.prepLines.push(`Stone Sealer: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(rate).toFixed(2)}/${areaUnit()} = ${currencySymbol()}${c.toFixed(2)}`);
     }
 
     // Clip/wedge cost — only when opted in via s.clips flag
@@ -7633,7 +8283,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         s.clipCost = (clipBags * clipRate + wedgeBags * wedgeRate) * (1 + S.markup / 100);
         s.prepCost += s.clipCost;
         s.prepMatCost += s.clipCost;
-        s.prepLines.push(`Levelling Clips: ${s.levelClips} (${clipBags} × 200 bag${clipBags!==1?"s":""}) + Wedges: ${s.levelWedges} (${wedgeBags} × 200 bag${wedgeBags!==1?"s":""}) = £${s.clipCost.toFixed(2)}`);
+        s.prepLines.push(`Levelling Clips: ${s.levelClips} (${clipBags} × 200 bag${clipBags!==1?"s":""}) + Wedges: ${s.levelWedges} (${wedgeBags} × 200 bag${wedgeBags!==1?"s":""}) = ${currencySymbol()}${s.clipCost.toFixed(2)}`);
     }
 
     s.total = (s.materialSell + s.labour + s.ufhCost + s.prepCost + (s.trayCost || 0)).toFixed(2);
@@ -7756,7 +8406,14 @@ function renderDeducts() {
 
     // AR-traced cutouts carry only an area (no meaningful single width×height for an
     // irregular shape), so fall back to showing just the m² for those.
-    const deductLabel = d => (d.w && d.h) ? `${d.label} (${d.w}×${d.h}m = ${d.m2}m²)` : `${d.label} (${d.m2}m²)`;
+    const deductLabel = d => {
+        if (regionOf() === "us") {
+            return (d.w && d.h)
+                ? `${d.label} (${metersToFtIn(d.w)}×${metersToFtIn(d.h)} = ${fmtArea(d.m2)} ${areaUnit()})`
+                : `${d.label} (${fmtArea(d.m2)} ${areaUnit()})`;
+        }
+        return (d.w && d.h) ? `${d.label} (${d.w}×${d.h}m = ${d.m2}m²)` : `${d.label} (${d.m2}m²)`;
+    };
     const wallTag  = (d, i) => `<div class="deduct-tag"><span>${deductLabel(d)}</span><button onclick="removeDeduct(${i}, false)" class="deduct-remove">×</button></div>`;
     const floorTag = (d, i) => `<div class="deduct-tag"><span>${deductLabel(d)}</span><button onclick="removeDeduct(${i}, true)" class="deduct-remove">×</button></div>`;
 
@@ -7769,11 +8426,11 @@ function renderDeducts() {
     const totalLine  = document.getElementById("deduct-total-line");
     if (totalBadge) {
         totalBadge.style.display = wallTotal > 0 ? "" : "none";
-        totalBadge.textContent = `-${wallTotal.toFixed(2)}m²`;
+        totalBadge.textContent = `-${fmtArea(wallTotal)}${areaUnit()}`;
     }
     if (totalLine) {
         totalLine.style.display = wallTotal > 0 ? "" : "none";
-        totalLine.textContent = `Wall deductions total: ${wallTotal.toFixed(2)} m²`;
+        totalLine.textContent = `Wall deductions total: ${fmtArea(wallTotal)} ${areaUnit()}`;
     }
 
     // Floor-only: manual floor deducts list + total
@@ -7782,7 +8439,7 @@ function renderDeducts() {
     const fTotalEl = document.getElementById("deduct-f-total");
     if (fTotalEl) {
         fTotalEl.style.display = floorTotal > 0 ? "" : "none";
-        fTotalEl.textContent = `Floor deductions total: ${floorTotal.toFixed(2)} m²`;
+        fTotalEl.textContent = `Floor deductions total: ${fmtArea(floorTotal)} ${areaUnit()}`;
     }
 
     // Wall-only: manual wall deducts list
@@ -7993,7 +8650,7 @@ function updateTrimBadge(key) {
     if (!badge) return;
     const lenId   = key === "r" ? "rm-trim-lengths" : key === "f" ? "rm-f-trim-lengths" : "rm-w-trim-lengths";
     const lengths = parseInt(document.getElementById(lenId)?.value) || 0;
-    badge.textContent = lengths > 0 ? `${lengths} × 2.5m` : "";
+    badge.textContent = lengths > 0 ? `${lengths} × ${regionOf() === "us" ? metersToFtIn(2.4) : "2.4m"}` : "";
 }
 
 function readTrimCost(key) {
@@ -8010,7 +8667,9 @@ function updateWallTilesBadge() {
     if (!badge) return;
     const w = document.getElementById("rm-r-wtilew")?.value;
     const h = document.getElementById("rm-r-wtileh")?.value;
-    badge.textContent = (w && h) ? `${w}×${h}mm` : "";
+    badge.textContent = (w && h)
+        ? (regionOf() === "us" ? `${mmToInFrac(w)}×${mmToInFrac(h)}` : `${w}×${h}mm`)
+        : "";
 }
 
 
@@ -8124,6 +8783,10 @@ function toggleUfhPanel(mode) {
 }
 
 function rmCalc() {
+    applyRegionUnits();
+    applyRegionUnitsMm();
+    applyRegionUnitsArea();
+    applyRegionUnitsRate();
     updatePrepPriceBadges();
     const surfaces = buildSurfaces();
     const ct = document.getElementById("rm-customer-tiles")?.checked || false;
@@ -8137,7 +8800,7 @@ function rmCalc() {
             : (parseFloat(document.getElementById("rm-w-width")?.value)||0) * (parseFloat(document.getElementById("rm-w-height")?.value)||0);
         const wastePct = parseFloat(document.getElementById(`rm-${p}-wastage`)?.value) || 0;
         const extra = areaEl * (wastePct / 100);
-        note.textContent = areaEl > 0 ? `+${extra.toFixed(2)} m² extra tiles ordered` : "";
+        note.textContent = areaEl > 0 ? `+${fmtArea(extra)} ${areaUnit()} extra tiles ordered` : "";
     });
 
     if (!surfaces) {
@@ -8177,8 +8840,8 @@ function rmCalc() {
     const isRapid = adhTypeVal === "rapid";
     const isWhite = adhColourVal === "white";
     settings._adhUnitPrice = isRapid
-        ? (isWhite ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
-        : (isWhite ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
+        ? (isWhite ? (numOr(settings.rapidAdhPriceWhite, 30)) : (numOr(settings.rapidAdhPrice, 28)))
+        : (isWhite ? (numOr(settings.adhesivePriceWhite, 24)) : (numOr(settings.adhesivePrice, 22)));
     // Extra floors/walls carry their own tileType (set from their own Tile Type
     // dropdown) so a feature wall or a second floor area can be a different tile
     // from the rest of the room — only fall back to the shared room-level value
@@ -8207,8 +8870,8 @@ function rmCalc() {
     const wallM2  = surfaces.filter(s => s.type === "wall").reduce((a, s) => a + (s.area || 0), 0);
     const floorM2 = surfaces.filter(s => s.type === "floor").reduce((a, s) => a + (s.area || 0), 0);
     const areaParts = [];
-    if (wallM2  > 0) areaParts.push(`🧱 ${wallM2.toFixed(2)} m²`);
-    if (floorM2 > 0) areaParts.push(`⬜ ${floorM2.toFixed(2)} m²`);
+    if (wallM2  > 0) areaParts.push(`🧱 ${fmtArea(wallM2)} ${areaUnit()}`);
+    if (floorM2 > 0) areaParts.push(`⬜ ${fmtArea(floorM2)} ${areaUnit()}`);
     const areaEl = document.getElementById("rm-area");
     if (areaEl) areaEl.textContent = areaParts.join("  ");
     // Aggregate bag/board quantities across all surfaces
@@ -8238,23 +8901,23 @@ function rmCalc() {
         const totalArea2   = +(baseArea * (1 + wastePct / 100)).toFixed(2);
         const extraArea    = +(baseArea * (wastePct / 100)).toFixed(2);
         const icon         = s.type === "wall" ? "🧱" : "⬜";
-        if (baseArea > 0) parts.push(`${icon} ${totalArea2}m² tiles (${baseArea.toFixed(2)}m² + ${extraArea}m² ${wastePct}% wastage)`);
+        if (baseArea > 0) parts.push(`${icon} ${fmtArea(totalArea2)}${areaUnit()} tiles (${fmtArea(baseArea)}${areaUnit()} + ${fmtArea(extraArea)}${areaUnit()} ${wastePct}% wastage)`);
     });
-    if (mats > 0) parts.push(`Materials £${mats.toFixed(2)}`);
+    if (mats > 0) parts.push(`Materials ${currencySymbol()}${mats.toFixed(2)}`);
     if (lab  > 0) {
         const labLabel = currentLabourType === "day"
-            ? `Labour £${lab.toFixed(2)} (${document.getElementById("rm-days").value||0} days)`
-            : `Labour £${lab.toFixed(2)}`;
+            ? `Labour ${currencySymbol()}${lab.toFixed(2)} (${document.getElementById("rm-days").value||0} days)`
+            : `Labour ${currencySymbol()}${lab.toFixed(2)}`;
         parts.push(labLabel);
     }
-    if (ufh  > 0) parts.push(`UFH £${ufh.toFixed(2)}`);
-    if (nicheCost > 0) parts.push(`Niches £${nicheCost.toFixed(2)} (${niches[nicheZone]?.length || 0} niche${(niches[nicheZone]?.length || 0) !== 1 ? "s" : ""})`);
+    if (ufh  > 0) parts.push(`UFH ${currencySymbol()}${ufh.toFixed(2)}`);
+    if (nicheCost > 0) parts.push(`Niches ${currencySymbol()}${nicheCost.toFixed(2)} (${niches[nicheZone]?.length || 0} niche${(niches[nicheZone]?.length || 0) !== 1 ? "s" : ""})`);
     if (totalAdhBags   > 0) parts.push(`Adhesive: ${totalAdhBags} × 20kg bag${totalAdhBags !== 1 ? "s" : ""}`);
     if (totalRapidBags > 0) parts.push(`Rapid Set: ${totalRapidBags} × 20kg bag${totalRapidBags !== 1 ? "s" : ""}`);
     if (totalGroutBags > 0) parts.push(`Grout: ${totalGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg bag${totalGroutBags !== 1 ? "s" : ""}`);
     if (totalCBBoards  > 0) parts.push(`Cement Board: ${totalCBBoards} board${totalCBBoards !== 1 ? "s" : ""}`);
     if (totalLevelBags > 0) parts.push(`Levelling: ${totalLevelBags} × 20kg bag${totalLevelBags !== 1 ? "s" : ""}`);
-    if (totalClips > 0) parts.push(`Clips: ${totalClips} / Wedges: ${totalWedges}${totalClipCost > 0 ? ` £${totalClipCost.toFixed(2)}` : ""}`);
+    if (totalClips > 0) parts.push(`Clips: ${totalClips} / Wedges: ${totalWedges}${totalClipCost > 0 ? ` ${currencySymbol()}${totalClipCost.toFixed(2)}` : ""}`);
 
     // Quantities only here (£ figures now live in the two Prep Materials/Labour
     // totals below) — avoids showing the same cost twice under different labels.
@@ -8269,11 +8932,11 @@ function rmCalc() {
     // the one Materials line, unaffected by this.
     const totalPrepMat = surfaces.reduce((a, s) => a + (s.prepMatCost || 0), 0);
     const totalPrepLab = surfaces.reduce((a, s) => a + (s.prepLabCost || 0), 0);
-    if (totalPrepMat > 0.01) parts.push(`Prep Materials £${totalPrepMat.toFixed(2)}`);
-    if (totalPrepLab > 0.01) parts.push(`Prep Labour £${totalPrepLab.toFixed(2)}`);
-    if (sealTubes  > 0) parts.push(`Sealant: ${sealTubes} tube${sealTubes !== 1 ? "s" : ""} £${sealCost.toFixed(2)}`);
-    if (trimCost   > 0) parts.push(`Trim: ${trimLengthsLive} length${trimLengthsLive !== 1 ? "s" : ""} £${trimCost.toFixed(2)}`);
-    if (extraCost  > 0) parts.push(`Extra work £${extraCost.toFixed(2)}`);
+    if (totalPrepMat > 0.01) parts.push(`Prep Materials ${currencySymbol()}${totalPrepMat.toFixed(2)}`);
+    if (totalPrepLab > 0.01) parts.push(`Prep Labour ${currencySymbol()}${totalPrepLab.toFixed(2)}`);
+    if (sealTubes  > 0) parts.push(`Sealant: ${sealTubes} tube${sealTubes !== 1 ? "s" : ""} ${currencySymbol()}${sealCost.toFixed(2)}`);
+    if (trimCost   > 0) parts.push(`Trim: ${trimLengthsLive} length${trimLengthsLive !== 1 ? "s" : ""} ${currencySymbol()}${trimCost.toFixed(2)}`);
+    if (extraCost  > 0) parts.push(`Extra work ${currencySymbol()}${extraCost.toFixed(2)}`);
     document.getElementById("rm-breakdown").innerHTML =
         parts.map(p => `<span class="breakdown-item">${p}</span>`).join(" · ");
 }
@@ -8303,8 +8966,8 @@ function saveRoom() {
     const isRapidSR = adhTypeSR === "rapid";
     const isWhiteSR = adhColourSR === "white";
     settings._adhUnitPrice = isRapidSR
-        ? (isWhiteSR ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
-        : (isWhiteSR ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
+        ? (isWhiteSR ? (numOr(settings.rapidAdhPriceWhite, 30)) : (numOr(settings.rapidAdhPrice, 28)))
+        : (isWhiteSR ? (numOr(settings.adhesivePriceWhite, 24)) : (numOr(settings.adhesivePrice, 22)));
     // Extra floors/walls and Full Room's floor carry their own independent
     // tileType (set from their own Tile Type dropdown) — only fall back to
     // the shared room-level value for surfaces that never set their own,
@@ -8439,12 +9102,12 @@ async function exportAllData() {
         // Header row
         csvRows.push([
             "Customer Name", "Phone", "Email",
-            "Address", "City", "Postcode",
+            "Address", "City", regionOf() === "us" ? "Zip Code" : "Postcode",
             "Job Status", "Job Description",
             "Quote Ref", "Quote Status", "Quote Sent", "Quote Responded",
-            "Rooms", "Total Area (m²)",
-            "Materials (£)", "Labour (£)", "Prep (£)",
-            "Subtotal (£)", "VAT (£)", "Grand Total (£)",
+            "Rooms", `Total Area (${areaUnit()})`,
+            `Materials (${currencySymbol()})`, `Labour (${currencySymbol()})`, `Prep (${currencySymbol()})`,
+            `Subtotal (${currencySymbol()})`, `${taxLabel()} (${currencySymbol()})`, `Grand Total (${currencySymbol()})`,
             "Start Date", "End Date", "Notes"
         ]);
 
@@ -8485,7 +9148,7 @@ async function exportAllData() {
                 fmtDate(j.quoteSentAt),
                 fmtDate(j.quoteRespondedAt),
                 rooms.length,
-                area.toFixed(2),
+                fmtArea(area),
                 totalMats.toFixed(2),
                 totalLab.toFixed(2),
                 totalPrep.toFixed(2),
@@ -8551,7 +9214,7 @@ CALCULATIONS:
 - Grout: By m², tile size and joint width.
 - Prep: Cement board, membrane, levelling compound, tanking, primer, stone sealer, UFH, clips & wedges.
 - Labour: m² rate or day rate, configurable per room.
-- Tile trim: Lengths of trim (2.5m) with custom price.
+- Tile trim: Lengths of trim (2.4m) with custom price.
 - Sealant: By perimeter or corner count.
 - Extra work: Custom line items with cost.
 - Deductions: Bath, WC, vanity or custom m² areas.
@@ -8573,9 +9236,9 @@ CALENDAR & SCHEDULING:
 - Schedule jobs with start/end dates. Calendar view with status colour dots.
 - Send .ics calendar invites to customers. Auto-add to device calendar.
 
-LEICA DISTO:
-- Connect Leica Disto D2 laser measure via Bluetooth.
-- Tap Disto button in room screen. Measurements auto-fill length/width/height fields.
+BLUETOOTH LASER MEASURE:
+- Connect a Leica Disto D2 or Bosch GLM (50C/100C) laser measure via Bluetooth.
+- Tap Laser button in room screen. Measurements auto-fill length/width/height fields.
 
 SETTINGS:
 - Profile: Company name, address, phone, email, logo, VAT number, payment terms, guarantee.
@@ -9448,13 +10111,13 @@ function goSettings() {
     const websiteMsgEl = document.getElementById("website-sync-msg");
     if (websiteMsgEl) websiteMsgEl.textContent = s.businessProfileSummary ? "Website synced" : "";
     document.getElementById("set-tile-price").value     = s.tilePrice;
-    document.getElementById("set-grout-price-25").value  = s.groutPrice25 || 4.50;
-    document.getElementById("set-grout-price-5").value   = s.groutPrice5  || 7.50;
+    document.getElementById("set-grout-price-25").value  = numOr(s.groutPrice25, 4.50);
+    document.getElementById("set-grout-price-5").value   = numOr(s.groutPrice5, 7.50);
     document.getElementById("set-grout-bag-size").value  = s.groutBagSize || 2.5;
-    document.getElementById("set-adhesive-price").value        = s.adhesivePrice      || 22;
-    document.getElementById("set-rapid-adh-price").value       = s.rapidAdhPrice      || 28;
-    document.getElementById("set-adhesive-price-white").value  = s.adhesivePriceWhite || 24;
-    document.getElementById("set-rapid-adh-price-white").value = s.rapidAdhPriceWhite || 30;
+    document.getElementById("set-adhesive-price").value        = numOr(s.adhesivePrice, 22);
+    document.getElementById("set-rapid-adh-price").value       = numOr(s.rapidAdhPrice, 28);
+    document.getElementById("set-adhesive-price-white").value  = numOr(s.adhesivePriceWhite, 24);
+    document.getElementById("set-rapid-adh-price-white").value = numOr(s.rapidAdhPriceWhite, 30);
     document.getElementById("set-silicone-price").value = s.siliconePrice || 6.50;
     document.getElementById("set-silicone-coverage").value = s.siliconeCoverage || 6;
     document.getElementById("set-markup").value         = s.markup;
@@ -9494,6 +10157,7 @@ function goSettings() {
     document.getElementById("set-sealer-bottle").value   = s.sealerBottleLitres  || 1;
     document.getElementById("set-sealer-coats").value    = s.sealerCoats         || 2;
     document.getElementById("set-vat").value            = s.applyVat !== false ? "true" : "false";
+    if (document.getElementById("set-region")) document.getElementById("set-region").value = s.region === "us" ? "us" : "uk";
     document.getElementById("set-company-name").value   = s.companyName    || "";
     if (document.getElementById("set-enquiry-slug")) {
         document.getElementById("set-enquiry-slug").value = s.slug || "";
@@ -9568,6 +10232,7 @@ function goSettings() {
     if (document.getElementById("set-bank-reference")) document.getElementById("set-bank-reference").value = s.bankReference || "";
     const acctEl = document.getElementById("set-accounting-software");
     if (acctEl) acctEl.value = s.accountingSoftware || "none";
+    applyRegionUnitsRate();
     show("screen-settings");
     renderTipCard("settings");
     setTimeout(initDomainVerifyUI, 100);
@@ -9680,6 +10345,7 @@ async function uploadLogo() {
 }
 
 async function deleteAccount() {
+    if (demoBlocked("Deleting the account")) return;
     if (!currentUser) { alert("Please log in first."); return; }
     const confirmed = confirm("Are you sure you want to delete your account?\n\nThis will permanently delete all your jobs, quotes, customers and settings. This cannot be undone.");
     if (!confirmed) return;
@@ -9728,7 +10394,7 @@ async function loadAdminData() {
         const s = await resp.json();
         document.getElementById("adm-total-users").textContent = (s.pro_users || 0) + (s.free_users || 0);
         document.getElementById("adm-pro-users").textContent = s.pro_users || 0;
-        document.getElementById("adm-mrr").textContent = "£" + (s.estimated_mrr || "0.00");
+        document.getElementById("adm-mrr").textContent = "£" + (s.estimated_mrr || "0.00"); // admin dashboard, Kevin's own revenue in GBP -- not region-dependent
         document.getElementById("adm-active-7").textContent = s.active_7d || 0;
         document.getElementById("adm-total-jobs").textContent = s.total_jobs || 0;
         document.getElementById("adm-quotes").textContent = s.quotes_sent || 0;
@@ -9915,25 +10581,26 @@ function copyEnquiryLink() {
 }
 function saveSettings() {
     settings = {
+        region: document.getElementById("set-region")?.value === "us" ? "us" : "uk",
         aiReceptionistEnabled: document.getElementById("set-ai-receptionist").checked,
         aiCallVoice: document.getElementById("set-ai-call-voice")?.value || "Polly.Amy-Generative",
         businessWebsite: (document.getElementById("set-business-website")?.value || "").trim(),
         businessProfileSummary: settings.businessProfileSummary || "",
         tilePrice:     parseFloat(document.getElementById("set-tile-price").value)     || 25.00,
-        groutPrice25:  parseFloat(document.getElementById("set-grout-price-25").value)  || 4.50,
-        groutPrice5:   parseFloat(document.getElementById("set-grout-price-5").value)   || 7.50,
+        groutPrice25:  numOr(document.getElementById("set-grout-price-25").value, 4.50),
+        groutPrice5:   numOr(document.getElementById("set-grout-price-5").value, 7.50),
         groutBagSize:  parseFloat(document.getElementById("set-grout-bag-size").value)  || 2.5,
-        adhesivePrice:      parseFloat(document.getElementById("set-adhesive-price").value)        || 22,
-        rapidAdhPrice:      parseFloat(document.getElementById("set-rapid-adh-price").value)       || 28,
-        adhesivePriceWhite: parseFloat(document.getElementById("set-adhesive-price-white").value)  || 24,
-        rapidAdhPriceWhite: parseFloat(document.getElementById("set-rapid-adh-price-white").value) || 30,
+        adhesivePrice:      numOr(document.getElementById("set-adhesive-price").value, 22),
+        rapidAdhPrice:      numOr(document.getElementById("set-rapid-adh-price").value, 28),
+        adhesivePriceWhite: numOr(document.getElementById("set-adhesive-price-white").value, 24),
+        rapidAdhPriceWhite: numOr(document.getElementById("set-rapid-adh-price-white").value, 30),
         siliconePrice: parseFloat(document.getElementById("set-silicone-price").value) || 6.50,
         siliconeCoverage: parseFloat(document.getElementById("set-silicone-coverage").value) || 6,
         markup:        parseFloat(document.getElementById("set-markup").value)         || 20,
         labourMarkup:  document.getElementById("set-labour-markup").value === "true",
-        labourM2:      parseFloat(document.getElementById("set-labour-m2").value)      || 32,
-        labourM2Wall:  35,
-        labourM2Floor: 28,
+        labourM2:      numOr(document.getElementById("set-labour-m2").value, 32),
+        labourM2Wall:  numOr(document.getElementById("set-labour-m2").value, 35),
+        labourM2Floor: numOr(document.getElementById("set-labour-m2").value, 28),
         dayRate:       parseFloat(document.getElementById("set-day-rate").value)       || 200,
         tileRates: {
             ceramic:       parseFloat(document.getElementById("set-rate-ceramic").value)       || 1.0,
@@ -10005,8 +10672,8 @@ function saveSettings() {
     if (currentUser) {
         // Save locally immediately
         saveSettingsLocal();
-        // Save to Supabase using authenticated client
-        sb.from("settings").upsert(
+        // Save to Supabase using authenticated client (never for the shared demo account)
+        if (!isDemoAccount()) sb.from("settings").upsert(
             { user_id: currentUser.id, data: settings, updated_at: new Date().toISOString() },
             { onConflict: "user_id" }
         ).then(({ error }) => {
@@ -10040,6 +10707,7 @@ function saveSettings() {
             }).catch(e => console.error("voicemail settings save error:", e));
         }
     }
+    applyRegionLabels();
     goDashboard();
 }
 
@@ -10156,19 +10824,19 @@ function renderMaterials() {
                 const kp = parseFloat(settings?.tanking||45);
                 const lr = parseFloat(settings?.tankingLabour||8);
                 const nk = s.tankingKits || Math.ceil(s.area/6);
-                prepItems.push(`Tanking: ${nk} kit${nk!==1?"s":""} £${(nk*kp).toFixed(2)} + labour £${(s.area*lr).toFixed(2)}`);
+                prepItems.push(`Tanking: ${nk} kit${nk!==1?"s":""} ${currencySymbol()}${(nk*kp).toFixed(2)} + labour ${currencySymbol()}${(s.area*lr).toFixed(2)}`);
             }
             else {
-                if (s.prepMatCost > 0.01) prepItems.push(`Prep Materials £${s.prepMatCost.toFixed(2)}`);
-                if (s.prepLabCost > 0.01) prepItems.push(`Prep Labour £${s.prepLabCost.toFixed(2)}`);
+                if (s.prepMatCost > 0.01) prepItems.push(`Prep Materials ${currencySymbol()}${s.prepMatCost.toFixed(2)}`);
+                if (s.prepLabCost > 0.01) prepItems.push(`Prep Labour ${currencySymbol()}${s.prepLabCost.toFixed(2)}`);
             }
-            if (s.primer && !s.tanking) prepItems.push(`Primer £${(parseFloat(settings?.primerPrice||3.50) * s.area).toFixed(2)}`);
+            if (s.primer && !s.tanking) prepItems.push(`Primer ${currencySymbol()}${(parseFloat(settings?.primerPrice||3.50) * s.area).toFixed(2)}`);
 
             return `
             <tr class="mat-surf-row">
                 <td>${icon} ${esc(s.label)}</td>
-                <td style="text-align:right">${s.area.toFixed(2)} m²</td>
-                <td style="text-align:right">${tilesM2} m²<br><span class="mat-sub">${tileDesc}</span></td>
+                <td style="text-align:right">${fmtArea(s.area)} ${areaUnit()}</td>
+                <td style="text-align:right">${fmtArea(tilesM2)} ${areaUnit()}<br><span class="mat-sub">${tileDesc}</span></td>
                 <td style="text-align:right">${s.adhBags} bag${s.adhBags!==1?"s":""}<br><span class="mat-sub">${adhKg}kg · ${s.adhCat.split(" ")[0]+' '+s.adhCat.split(" ")[1]||""}</span></td>
                 <td style="text-align:right">${s.groutBags} bag${s.groutBags!==1?"s":""}</td>
                 ${prepItems.length ? `<td style="text-align:right;font-size:11px;color:#666;">${prepItems.join("<br>")}</td>` : "<td></td>"}
@@ -10176,8 +10844,8 @@ function renderMaterials() {
         }).join("");
 
         const areaSummary = [
-            wallM2  > 0 ? `🧱 ${wallM2.toFixed(2)} m²` : "",
-            floorM2 > 0 ? `⬜ ${floorM2.toFixed(2)} m²` : "",
+            wallM2  > 0 ? `🧱 ${fmtArea(wallM2)} ${areaUnit()}` : "",
+            floorM2 > 0 ? `⬜ ${fmtArea(floorM2)} ${areaUnit()}` : "",
         ].filter(Boolean).join("  ·  ");
 
         const seal = calcSealantRoom(room);
@@ -10189,7 +10857,7 @@ function renderMaterials() {
         const trimLengths = room.trimLengths || 0;
         grandTrimLengths += trimLengths;
         const trimLine = trimLengths > 0
-            ? `<div style="margin-top:4px;font-size:12px;color:#555;">Tile Trim: <strong>${trimLengths}</strong> length${trimLengths!==1?"s":""} <span style="color:#6b7280">· ${(trimLengths * 2.5).toFixed(1)}m (@ 2.5m each)</span></div>`
+            ? `<div style="margin-top:4px;font-size:12px;color:#555;">Tile Trim: <strong>${trimLengths}</strong> length${trimLengths!==1?"s":""} <span style="color:#6b7280">· ${regionOf() === "us" ? `${metersToFtIn(trimLengths * 2.4)} (@ ${metersToFtIn(2.4)} each)` : `${(trimLengths * 2.4).toFixed(1)}m (@ 2.4m each)`}</span></div>`
             : "";
 
         const roomSealerM2 = surfaces.reduce((a, s) => a + ((s.stone || s.tileType === "natural_stone") && (s.sealer || s.tileType === "natural_stone") ? (s.area || 0) : 0), 0);
@@ -10200,7 +10868,7 @@ function renderMaterials() {
             const bottleSz = settings.sealerBottleLitres || 1;
             const litres   = (roomSealerM2 * coats) / coverage;
             const bottles  = Math.ceil(litres / bottleSz);
-            return `<div style="margin-top:4px;font-size:12px;color:#555;">🪨 Stone Sealer: <strong>${bottles}</strong> bottle${bottles!==1?"s":""} × ${bottleSz}L <span style="color:#6b7280">· ${litres.toFixed(1)}L · ${coats} coats · ${roomSealerM2.toFixed(2)}m²</span></div>`;
+            return `<div style="margin-top:4px;font-size:12px;color:#555;">🪨 Stone Sealer: <strong>${bottles}</strong> bottle${bottles!==1?"s":""} × ${bottleSz}L <span style="color:#6b7280">· ${litres.toFixed(1)}L · ${coats} coats · ${fmtArea(roomSealerM2)}${areaUnit()}</span></div>`;
         })();
 
         return `
@@ -10237,26 +10905,26 @@ function renderMaterials() {
     <div class="mat-totals-card">
         <div class="mat-totals-title">Job Totals</div>
         <div class="mat-totals-grid">
-            <div class="mat-total-item"><span class="mat-total-label">Tiles</span><span class="mat-total-value">${grandTiles.toFixed(2)} m²</span></div>
+            <div class="mat-total-item"><span class="mat-total-label">Tiles</span><span class="mat-total-value">${fmtArea(grandTiles)} ${areaUnit()}</span></div>
             <div class="mat-total-item"><span class="mat-total-label">Adhesive</span><span class="mat-total-value">${grandAdhBags} × 20kg<br><span style="font-size:11px;font-weight:400;">${grandAdhKg.toFixed(0)}kg total</span></span></div>
             ${grandRapidAdhBags > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Rapid Set Adhesive</span><span class="mat-total-value">${grandRapidAdhBags} × 20kg<br><span style="font-size:11px;font-weight:400;">${grandRapidAdhKg.toFixed(0)}kg total</span></span></div>` : ""}
             <div class="mat-total-item"><span class="mat-total-label">Grout</span><span class="mat-total-value">Wall: ${grandWallGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br>Floor: ${grandFloorGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br><span style="font-size:11px;font-weight:600;">Total: ${grandWallGroutBags + grandFloorGroutBags} bag${(grandWallGroutBags + grandFloorGroutBags)!==1?"s":""}</span></span></div>
             ${grandSiliconeTubes > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Sealant</span><span class="mat-total-value">${grandSiliconeTubes} tube${grandSiliconeTubes!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${grandSiliconeMetres.toFixed(1)}m total</span><br><span style="font-size:11px;font-weight:400;">Floor perimeter bead: ${grandSiliconeFloor.toFixed(1)}m</span></span></div>` : ""}
             ${grandCBBoards  > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Cement Board</span><span class="mat-total-value">${grandCBBoards} board${grandCBBoards!==1?"s":""}</span></div>` : ""}
-            ${grandTankingM2 > 0 ? (() => { const kits = Math.ceil(grandTankingM2/6); const kitCost = kits*(parseFloat(settings?.tanking)||45); const labCost = grandTankingM2*(parseFloat(settings?.tankingLabour)||8); return `<div class="mat-total-item"><span class="mat-total-label">Tanking Kit</span><span class="mat-total-value">${kits} kit${kits!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${grandTankingM2.toFixed(2)}m² · Kit £${kitCost.toFixed(2)} + Labour £${labCost.toFixed(2)}</span></span></div>`; })() : ""}
+            ${grandTankingM2 > 0 ? (() => { const kits = Math.ceil(grandTankingM2/6); const kitCost = kits*(parseFloat(settings?.tanking)||45); const labCost = grandTankingM2*(parseFloat(settings?.tankingLabour)||8); return `<div class="mat-total-item"><span class="mat-total-label">Tanking Kit</span><span class="mat-total-value">${kits} kit${kits!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${fmtArea(grandTankingM2)}${areaUnit()} · Kit ${currencySymbol()}${kitCost.toFixed(2)} + Labour ${currencySymbol()}${labCost.toFixed(2)}</span></span></div>`; })() : ""}
             ${grandLevelBags > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling</span><span class="mat-total-value">${grandLevelBags} × 20kg bag${grandLevelBags!==1?"s":""}</span></div>` : ""}
             ${grandClips     > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling Clips</span><span class="mat-total-value">${grandClips}</span></div>` : ""}
             ${grandWedges    > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Wedges</span><span class="mat-total-value">${grandWedges}</span></div>` : ""}
-            ${grandPrimerM2  > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Primer</span><span class="mat-total-value">${grandPrimerM2.toFixed(2)} m²</span></div>` : ""}
+            ${grandPrimerM2  > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Primer</span><span class="mat-total-value">${fmtArea(grandPrimerM2)} ${areaUnit()}</span></div>` : ""}
             ${grandSealerM2  > 0 ? (() => {
                 const coats      = settings.sealerCoats        || 2;
                 const coverage   = settings.sealerCoverageM2   || 4;
                 const bottleSz   = settings.sealerBottleLitres || 1;
                 const litres     = (grandSealerM2 * coats) / coverage;
                 const bottles    = Math.ceil(litres / bottleSz);
-                return `<div class="mat-total-item"><span class="mat-total-label">Stone Sealer</span><span class="mat-total-value">${bottles} bottle${bottles!==1?"s":""} × ${bottleSz}L<br><span style="font-size:11px;font-weight:400;">${litres.toFixed(1)}L needed · ${coats} coat${coats!==1?"s":""} · ${grandSealerM2.toFixed(2)}m²</span></span></div>`;
+                return `<div class="mat-total-item"><span class="mat-total-label">Stone Sealer</span><span class="mat-total-value">${bottles} bottle${bottles!==1?"s":""} × ${bottleSz}L<br><span style="font-size:11px;font-weight:400;">${litres.toFixed(1)}L needed · ${coats} coat${coats!==1?"s":""} · ${fmtArea(grandSealerM2)}${areaUnit()}</span></span></div>`;
             })() : ""}
-            ${grandTrimLengths > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Tile Trim</span><span class="mat-total-value">${grandTrimLengths} length${grandTrimLengths!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${(grandTrimLengths * 2.5).toFixed(1)}m total</span></span></div>` : ""}
+            ${grandTrimLengths > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Tile Trim</span><span class="mat-total-value">${grandTrimLengths} length${grandTrimLengths!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${regionOf() === "us" ? metersToFtIn(grandTrimLengths * 2.4) : `${(grandTrimLengths * 2.4).toFixed(1)}m`} total</span></span></div>` : ""}
         </div>
     </div>`;
 
@@ -10349,18 +11017,18 @@ function renderQuote() {
         const isRapidRoom = room.adhType === "rapid";
         const isWhiteRoom = room.adhColour === "white";
         const adhUnitPrice = isRapidRoom
-            ? (isWhiteRoom ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
-            : (isWhiteRoom ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
+            ? (isWhiteRoom ? (numOr(settings.rapidAdhPriceWhite, 30)) : (numOr(settings.rapidAdhPrice, 28)))
+            : (isWhiteRoom ? (numOr(settings.adhesivePriceWhite, 24)) : (numOr(settings.adhesivePrice, 22)));
         const adhSell = adhBags * adhUnitPrice * mult;
-        const groutSell = groutBags * (settings.groutBagSize >= 5 ? (parseFloat(settings.groutPrice5)||7.50) : (parseFloat(settings.groutPrice25)||4.50)) * mult;
+        const groutSell = groutBags * (settings.groutBagSize >= 5 ? (numOr(settings.groutPrice5, 7.50)) : (numOr(settings.groutPrice25, 4.50))) * mult;
 
         // Adhesive/grout only — prep items (cement board, levelling, tanking, etc.)
         // stay out of the customer's quote entirely, same as every other prep
         // type here; their cost is still folded into the room/Materials total.
         const inlineParts = [];
         const adhLabel = `${room.adhColour === "white" ? "White" : "Grey"} ${room.adhType === "rapid" ? "Rapid Set" : "Standard"} Adhesive`;
-        if (adhBags > 0) inlineParts.push(`${adhLabel} ${adhBags} × 20kg bag${adhBags !== 1 ? "s" : ""} (£${adhSell.toFixed(2)})`);
-        if (groutBags > 0) inlineParts.push(`Grout ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""} (£${groutSell.toFixed(2)})`);
+        if (adhBags > 0) inlineParts.push(`${adhLabel} ${adhBags} × 20kg bag${adhBags !== 1 ? "s" : ""} (${currencySymbol()}${adhSell.toFixed(2)})`);
+        if (groutBags > 0) inlineParts.push(`Grout ${groutBags} × ${parseFloat(settings.groutBagSize)||2.5}kg bag${groutBags !== 1 ? "s" : ""} (${currencySymbol()}${groutSell.toFixed(2)})`);
 
         const extraDesc = (room.extraWorkDesc || "").trim();
         const extraCost = parseFloat(room.extraWorkCost || 0);
@@ -10368,8 +11036,8 @@ function renderQuote() {
 const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + parseFloat(room.extraWorkCost||0);
         return `
             <tr class="qt-room-header">
-                <td>${esc(room.name)}<span class="qt-area-note">${totalArea.toFixed(2)}m²</span>${room.tileType ? ` <span style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;margin-left:4px;">${TILE_TYPE_LABELS[room.tileType] || room.tileType}</span>` : ""}</td>
-                <td style="text-align:right">£${roomTotal.toFixed(2)}</td>
+                <td>${esc(room.name)}<span class="qt-area-note">${fmtArea(totalArea)}${areaUnit()}</span>${room.tileType ? ` <span style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;margin-left:4px;">${TILE_TYPE_LABELS[room.tileType] || room.tileType}</span>` : ""}</td>
+                <td style="text-align:right">${currencySymbol()}${roomTotal.toFixed(2)}</td>
             </tr>
             <tr class="qt-mat-row">
                 <td class="qt-indent">Materials<span class="qt-detail">${esc(inline)}</span></td>
@@ -10378,7 +11046,7 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
             ${extraCost > 0 ? `
             <tr class="qt-mat-row">
                 <td class="qt-indent">Extra work<span class="qt-detail">${esc(extraDesc || "Extra work")}</span></td>
-                <td style="text-align:right">£${extraCost.toFixed(2)}</td>
+                <td style="text-align:right">${currencySymbol()}${extraCost.toFixed(2)}</td>
             </tr>
             ` : ""}
         `;
@@ -10419,8 +11087,8 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
         }, 0);
 
         const lines = [];
-        if (cbBoards  > 0) lines.push(`<div class="qms-row"><span>Cement Board</span><span>${cbBoards} board${cbBoards !== 1 ? "s" : ""} (0.96m² each) <span style="color:#6b7280">· £${cbSell.toFixed(2)}</span></span></div>`);
-        if (levelBags > 0) lines.push(`<div class="qms-row"><span>Levelling Compound</span><span>${levelBags} × 20kg bag${levelBags !== 1 ? "s" : ""} <span style="color:#6b7280">· £${levelSell.toFixed(2)}</span></span></div>`);
+        if (cbBoards  > 0) lines.push(`<div class="qms-row"><span>Cement Board</span><span>${cbBoards} board${cbBoards !== 1 ? "s" : ""} (${fmtArea(0.96)}${areaUnit()} each) <span style="color:#6b7280">· ${currencySymbol()}${cbSell.toFixed(2)}</span></span></div>`);
+        if (levelBags > 0) lines.push(`<div class="qms-row"><span>Levelling Compound</span><span>${levelBags} × 20kg bag${levelBags !== 1 ? "s" : ""} <span style="color:#6b7280">· ${currencySymbol()}${levelSell.toFixed(2)}</span></span></div>`);
 
         if (!lines.length) return "";
 
@@ -10451,28 +11119,28 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
         const rapid  = room.adhType === "rapid";
         const white  = room.adhColour === "white";
         const price  = rapid
-            ? (white ? (parseFloat(settings.rapidAdhPriceWhite)||30) : (parseFloat(settings.rapidAdhPrice)||28))
-            : (white ? (parseFloat(settings.adhesivePriceWhite)||24) : (parseFloat(settings.adhesivePrice)||22));
+            ? (white ? (numOr(settings.rapidAdhPriceWhite, 30)) : (numOr(settings.rapidAdhPrice, 28)))
+            : (white ? (numOr(settings.adhesivePriceWhite, 24)) : (numOr(settings.adhesivePrice, 22)));
         jobAdhSell += rBags * price * multJob;
     });
-    const jobWallGroutSell  = totalWallGroutBags * (settings.groutBagSize >= 5 ? (parseFloat(settings.groutPrice5)||7.50) : (parseFloat(settings.groutPrice25)||4.50)) * multJob;
-    const jobFloorGroutSell = totalFloorGroutBags * (settings.groutBagSize >= 5 ? (parseFloat(settings.groutPrice5)||7.50) : (parseFloat(settings.groutPrice25)||4.50)) * multJob;
+    const jobWallGroutSell  = totalWallGroutBags * (settings.groutBagSize >= 5 ? (numOr(settings.groutPrice5, 7.50)) : (numOr(settings.groutPrice25, 4.50))) * multJob;
+    const jobFloorGroutSell = totalFloorGroutBags * (settings.groutBagSize >= 5 ? (numOr(settings.groutPrice5, 7.50)) : (numOr(settings.groutPrice25, 4.50))) * multJob;
 
     const totalGroutBags = totalWallGroutBags + totalFloorGroutBags;
     const totalGroutKg   = totalWallGroutKg   + totalFloorGroutKg;
 
     const jobScheduleLines = [];
-    if (totalAdhBags   > 0) jobScheduleLines.push(`<div class="qms-row"><span>Tile Adhesive (whole job)</span><span>${totalAdhBags} × 20kg bag${totalAdhBags !== 1 ? "s" : ""} <span style="color:#6b7280">· £${jobAdhSell.toFixed(2)}</span></span></div>`);
+    if (totalAdhBags   > 0) jobScheduleLines.push(`<div class="qms-row"><span>Tile Adhesive (whole job)</span><span>${totalAdhBags} × 20kg bag${totalAdhBags !== 1 ? "s" : ""} <span style="color:#6b7280">· ${currencySymbol()}${jobAdhSell.toFixed(2)}</span></span></div>`);
     if (totalRapidAdhBags > 0) {
-        const jobRapidSell = totalRapidAdhBags * (parseFloat(settings.rapidAdhPrice) || 28) * multJob;
-        jobScheduleLines.push(`<div class="qms-row"><span>Rapid Set Adhesive (whole job)</span><span>${totalRapidAdhBags} × 20kg bag${totalRapidAdhBags !== 1 ? "s" : ""} <span style="color:#6b7280">· £${jobRapidSell.toFixed(2)}</span></span></div>`);
+        const jobRapidSell = totalRapidAdhBags * (numOr(settings.rapidAdhPrice, 28)) * multJob;
+        jobScheduleLines.push(`<div class="qms-row"><span>Rapid Set Adhesive (whole job)</span><span>${totalRapidAdhBags} × 20kg bag${totalRapidAdhBags !== 1 ? "s" : ""} <span style="color:#6b7280">· ${currencySymbol()}${jobRapidSell.toFixed(2)}</span></span></div>`);
     }
-        if (totalWallGroutBags > 0) jobScheduleLines.push(`<div class="qms-row"><span>Wall Grout (whole job)</span><span>${totalWallGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg bag${totalWallGroutBags !== 1 ? "s" : ""} <span style="color:#6b7280">· £${jobWallGroutSell.toFixed(2)}</span></span></div>`);
-    if (totalFloorGroutBags > 0) jobScheduleLines.push(`<div class="qms-row"><span>Floor Grout (whole job)</span><span>${totalFloorGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg bag${totalFloorGroutBags !== 1 ? "s" : ""} <span style="color:#6b7280">· £${jobFloorGroutSell.toFixed(2)}</span></span></div>`);
+        if (totalWallGroutBags > 0) jobScheduleLines.push(`<div class="qms-row"><span>Wall Grout (whole job)</span><span>${totalWallGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg bag${totalWallGroutBags !== 1 ? "s" : ""} <span style="color:#6b7280">· ${currencySymbol()}${jobWallGroutSell.toFixed(2)}</span></span></div>`);
+    if (totalFloorGroutBags > 0) jobScheduleLines.push(`<div class="qms-row"><span>Floor Grout (whole job)</span><span>${totalFloorGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg bag${totalFloorGroutBags !== 1 ? "s" : ""} <span style="color:#6b7280">· ${currencySymbol()}${jobFloorGroutSell.toFixed(2)}</span></span></div>`);
     
     const jobSilBase = totalSiliconeTubes * (parseFloat(settings.siliconePrice) || 0);
     const jobSilSell = jobSilBase * (1 + (parseFloat(settings.markup) || 0) / 100);
-    if (totalSiliconeTubes > 0) jobScheduleLines.push(`<div class="qms-row"><span>Sealant (whole job)</span><span>${totalSiliconeTubes} tube${totalSiliconeTubes !== 1 ? "s" : ""} <span style="color:#6b7280">· Floor perimeter bead ${totalSiliconeFloor.toFixed(1)}m</span> <span style="color:#6b7280">· £${jobSilSell.toFixed(2)}</span></span></div>`);
+    if (totalSiliconeTubes > 0) jobScheduleLines.push(`<div class="qms-row"><span>Sealant (whole job)</span><span>${totalSiliconeTubes} tube${totalSiliconeTubes !== 1 ? "s" : ""} <span style="color:#6b7280">· Floor perimeter bead ${totalSiliconeFloor.toFixed(1)}m</span> <span style="color:#6b7280">· ${currencySymbol()}${jobSilSell.toFixed(2)}</span></span></div>`);
     if (totalClips  > 0) jobScheduleLines.push(`<div class="qms-row"><span>Levelling Clips (whole job)</span><span>${totalClips}</span></div>`);
     if (totalWedges > 0) jobScheduleLines.push(`<div class="qms-row"><span>Levelling Wedges (whole job)</span><span>${totalWedges} <span style="color:#6b7280">· 25% of clips</span></span></div>`);
     const jobScheduleHtml = jobScheduleLines.length ? `
@@ -10512,18 +11180,18 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
         ${hideBreakdown ? "" : `
         <table class="quote-table">
             <tbody>
-                ${totalWallTilesQ > 0 ? `<tr><td>🧱 Wall Tiles</td><td style="text-align:right">£${totalWallTilesQ.toFixed(2)}</td></tr>` : ""}
-                ${totalFloorTilesQ > 0 ? `<tr><td>⬜ Floor Tiles</td><td style="text-align:right">£${totalFloorTilesQ.toFixed(2)}</td></tr>` : ""}
-                <tr><td>Materials</td><td style="text-align:right">£${(totalMats + totalPrep + jobSilSell).toFixed(2)}</td></tr>
-                <tr><td>Labour</td><td style="text-align:right">£${(totalLabour + totalExtras).toFixed(2)}</td></tr>
+                ${totalWallTilesQ > 0 ? `<tr><td>🧱 Wall Tiles</td><td style="text-align:right">${currencySymbol()}${totalWallTilesQ.toFixed(2)}</td></tr>` : ""}
+                ${totalFloorTilesQ > 0 ? `<tr><td>⬜ Floor Tiles</td><td style="text-align:right">${currencySymbol()}${totalFloorTilesQ.toFixed(2)}</td></tr>` : ""}
+                <tr><td>Materials</td><td style="text-align:right">${currencySymbol()}${(totalMats + totalPrep + jobSilSell).toFixed(2)}</td></tr>
+                <tr><td>Labour</td><td style="text-align:right">${currencySymbol()}${(totalLabour + totalExtras).toFixed(2)}</td></tr>
             </tbody>
         </table>
         `}
 
         <div class="quote-totals">
-            <div class="quote-total-row"><span>Subtotal</span><span>£${subtotal.toFixed(2)}</span></div>
-            ${applyVat ? `<div class="quote-total-row"><span>VAT (20%)</span><span>£${vatAmt.toFixed(2)}</span></div>` : ""}
-            <div class="quote-total-row quote-grand"><span>Total</span><span>£${grand.toFixed(2)}</span></div>
+            <div class="quote-total-row"><span>Subtotal</span><span>${currencySymbol()}${subtotal.toFixed(2)}</span></div>
+            ${applyVat ? `<div class="quote-total-row"><span>${taxLabel()} (20%)</span><span>${currencySymbol()}${vatAmt.toFixed(2)}</span></div>` : ""}
+            <div class="quote-total-row quote-grand"><span>Total</span><span>${currencySymbol()}${grand.toFixed(2)}</span></div>
         </div>
 
         ${settings.terms ? `<div class="quote-terms">${esc(settings.terms)}</div>` : ""}
@@ -10579,29 +11247,39 @@ async function checkPendingPushNav() {
         localStorage.removeItem("tileiq-pending-nav");
         localStorage.removeItem("tileiq-last-sync");
         try { await loadUserData(); } catch(e) {}
-        const type  = nav.type || "";
-        const token = nav.token || "";
-        const jobId = nav.jobId || "";
-        if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
-            type === "voicemail_job" || type === "call_job" || type === "missed_call") {
-            if (jobId) { currentJobId = jobId; goJob(jobId); }
-            else { goDashboard(); renderDashboard(); }
-        } else if (type === "quote_response" || type === "quote_viewed" ||
-                   type === "schedule_confirmed" || type === "schedule_suggest") {
-            const j = token ? jobs.find(j => j.quoteToken === token) : null;
-            if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
-        } else if (type === "customer_message") {
-            const j = token ? jobs.find(j => j.quoteToken === token) : null;
-            // Landing on the plain job view didn't actually show the message —
-            // go straight to the conversation screen itself.
-            if (j) { currentJobId = j.id; goJob(j.id); goMessages(); }
-            else goDashboard();
-        } else if (type === "announcement" || type === "support_reply") {
-            goInbox();
-        } else if (jobId) {
-            currentJobId = jobId; goJob(jobId);
-        }
+        routePushTap(nav.type || "", nav.token || "", nav.jobId || "");
     } catch(e) { console.warn("checkPendingPushNav:", e.message); }
+}
+
+// Shared by both notification-tap paths: the cold-start/background one above
+// (via native storage) and showPushBanner()'s in-app click handler below (for
+// when a push arrives while the app is already open). These used to have two
+// separate, drifted-apart copies of this routing — showPushBanner()'s only
+// ever understood jobId-based types, so anything token-based (quote_response,
+// quote_viewed, customer_message, announcement...) silently fell through to
+// a bare "go to Dashboard" instead of the actual quote/job/conversation.
+function routePushTap(type, token, jobId) {
+    if (type === "web_enquiry" || type === "ai_enquiry" || type === "voicemail" ||
+        type === "voicemail_job" || type === "call_job" || type === "missed_call") {
+        if (jobId) { currentJobId = jobId; goJob(jobId); }
+        else { goDashboard(); renderDashboard(); }
+    } else if (type === "quote_response" || type === "quote_viewed" ||
+               type === "schedule_confirmed" || type === "schedule_suggest") {
+        const j = token ? jobs.find(j => j.quoteToken === token) : null;
+        if (j) { currentJobId = j.id; goJob(j.id); } else { goDashboard(); syncAllQuoteStatuses(); }
+    } else if (type === "customer_message") {
+        const j = token ? jobs.find(j => j.quoteToken === token) : null;
+        // Landing on the plain job view didn't actually show the message —
+        // go straight to the conversation screen itself.
+        if (j) { currentJobId = j.id; goJob(j.id); goMessages(); }
+        else goDashboard();
+    } else if (type === "announcement" || type === "support_reply") {
+        goInbox();
+    } else if (jobId) {
+        currentJobId = jobId; goJob(jobId);
+    } else {
+        goDashboard();
+    }
 }
 
 async function initPushNotifications() {
@@ -10622,10 +11300,24 @@ async function initPushNotifications() {
                 console.warn("OneSignal Capacitor plugin not found on iOS");
             }
         } else {
-            // Android handled natively via OneSignalPlugin
+            // Android handled natively via OneSignalPlugin -- OneSignalManager.initialize()
+            // already ran in MainActivity.onCreate(), but that only starts the SDK and
+            // creates a push subscription; it never tells OneSignal which TileIQ account
+            // owns this device. Every server-side push (sendPushToTiler, sendPushToTokenOwner)
+            // targets by external_id == the Supabase user id, so without this call no
+            // Android device has ever been reachable by a push, regardless of what
+            // triggered it -- this was missing entirely, not conditionally broken.
             const { OneSignalPlugin } = window.Capacitor?.Plugins || {};
             if (!OneSignalPlugin) { console.warn("OneSignalPlugin not found"); return; }
             console.log("OneSignal Android push notifications ready");
+            if (currentUser?.id) {
+                try {
+                    await OneSignalPlugin.login({ userId: currentUser.id });
+                    console.log("OneSignal Android login:", currentUser.id);
+                } catch (e) {
+                    console.warn("OneSignal Android login error:", e.message);
+                }
+            }
         }
         // Listen for foreground notifications on both platforms
         const OSPlugin = window.Capacitor?.Plugins?.OneSignalPlugin || window.Capacitor?.Plugins?.OneSignalCapacitor;
@@ -10637,32 +11329,55 @@ async function initPushNotifications() {
                 const data = n.additionalData || n.data || {};
                 showPushBanner(title, body, data);
             });
-            OSPlugin.addListener("notificationOpened", (event) => {
+            OSPlugin.addListener("notificationOpened", async (event) => {
                 const n = event.notification || event;
                 const data = n.additionalData || n.data || {};
-                const type = data?.type || "";
-                const jobId = data?.jobId || data?.job_id || "";
-                const token = data?.token || data?.quoteToken || "";
-                if (jobId) { currentJobId = jobId; goJob(jobId); }
-                else if (type === "quote_response" || type === "quote_viewed") {
-                    syncAllQuoteStatuses().then(() => goDashboard());
-                } else if (type === "customer_message" && token) {
-                    // customer_message notifications only ever carry a token, no
-                    // jobId — this handler (app already running/foregrounded) was
-                    // only ever checking jobId, so tapping one just opened the
-                    // Dashboard with no way to find the actual message. Look the
-                    // job up by its quoteToken, then go straight to the actual
-                    // conversation screen (goMessages) — landing on the plain
-                    // job view still didn't show the message itself.
-                    const j = jobs.find(j => j.quoteToken === token);
-                    if (j) { currentJobId = j.id; goJob(j.id); goMessages(); } else { goDashboard(); }
-                } else if (type === "announcement" || type === "support_reply") {
-                    goInbox();
-                } else { goDashboard(); }
+                // This is the third copy of this same routing that had drifted out
+                // of sync with the other two (checkPendingPushNav, showPushBanner) —
+                // this one fires when the app process is already alive (foregrounded
+                // or just backgrounded) and a system-tray notification gets tapped,
+                // which is the single most common real way someone actually taps a
+                // notification. It used to send every token-based type (quote
+                // accepted/declined chief among them) straight to a bare Dashboard
+                // instead of the actual job — see routePushTap().
+                try { await loadUserData(); } catch(e) {}
+                routePushTap(data?.type || "", data?.token || data?.quoteToken || "", data?.jobId || data?.job_id || "");
             });
         }
     } catch(e) { console.warn("initPushNotifications error:", e.message); }
 }
+
+/* ---- Onboarding permissions primer (shown once, right after a brand-new
+   signup — see authSignUp()). initPushNotifications() already requests the
+   iOS notification prompt during sign-in, so calling it again here is a
+   harmless no-op there; Android has never had an explicit permission
+   request at all until now (OneSignalPlugin.requestPermission() used to be
+   a no-op — see OneSignalManager.java), so this is the one that actually
+   matters. Location was previously only ever requested reactively, the
+   first time someone tapped "Use GPS" deep in New Job. */
+async function completeOnboardingPermissions() {
+    const btn = document.getElementById("perms-primer-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Enabling…"; }
+    try {
+        const platform = window.Capacitor?.getPlatform();
+        if (platform === "ios") {
+            const { OneSignalCapacitor: OneSignal } = window.Capacitor?.Plugins || {};
+            if (OneSignal) { try { await OneSignal.Notifications.requestPermission(true); } catch(e) {} }
+        } else {
+            const { OneSignalPlugin } = window.Capacitor?.Plugins || {};
+            if (OneSignalPlugin) { try { await OneSignalPlugin.requestPermission(); } catch(e) {} }
+        }
+    } catch(e) { console.warn("onboarding notification permission error:", e.message); }
+    try {
+        await new Promise((resolve) => {
+            if (!navigator.geolocation) { resolve(); return; }
+            navigator.geolocation.getCurrentPosition(() => resolve(), () => resolve(), { timeout: 8000 });
+        });
+    } catch(e) {}
+    finishOnboardingPermissions();
+}
+function skipOnboardingPermissions() { finishOnboardingPermissions(); }
+function finishOnboardingPermissions() { show("screen-home"); }
 
 function showPushBanner(title, body, data) {
     const existing = document.getElementById("push-banner");
@@ -10679,14 +11394,15 @@ function showPushBanner(title, body, data) {
             </div>
             <button onclick="document.getElementById('push-banner').remove()" style="background:none;border:none;color:#64748b;font-size:18px;padding:0;margin-left:12px;cursor:pointer;">✕</button>
         </div>`;
-    banner.addEventListener("click", (e) => {
+    banner.addEventListener("click", async (e) => {
         if (e.target.tagName === "BUTTON") return;
         banner.remove();
-        if (data?.jobId) { currentJobId = data.jobId; goJob(data.jobId); }
-        else if (data?.type === "ai_enquiry" || data?.type === "voicemail") {
-            loadUserData().then(() => { goDashboard(); renderDashboard(); });
-        }
-        else { goDashboard(); syncAllQuoteStatuses(); }
+        // A quote accept/decline (or any other token-based event) that just
+        // happened on the customer's side won't be reflected in this device's
+        // local jobs array yet — refresh first, same as the cold-start path,
+        // so routePushTap's jobs.find(...) lookup actually has something to find.
+        try { await loadUserData(); } catch(e2) {}
+        routePushTap(data?.type || "", data?.token || data?.quoteToken || "", data?.jobId || data?.job_id || "");
     });
     document.body.appendChild(banner);
 
@@ -10746,7 +11462,7 @@ async function generateAI() {
     const roomSummary = (j.rooms || []).map(r => {
         const tileType = TILE_TYPE_LABELS[r.tileType] || r.tileType || "Ceramic";
         const surfaces = (r.surfaces || []).map(s =>
-            `${s.label} (${s.area.toFixed(2)}m², ${s.tileW}×${s.tileH}mm ${tileType.toLowerCase()} tile)`
+            `${s.label} (${fmtArea(s.area)}${areaUnit()}, ${s.tileW}×${s.tileH}mm ${tileType.toLowerCase()} tile)`
         ).join(", ");
         return `${r.name}: ${surfaces}`;
     }).join("\n");
@@ -10848,11 +11564,11 @@ Reply with only the sentence, no extra text.`;
 /* ─── CSV Export ─── */
 function exportCSV() {
     const j = getJob();
-    const rows = [["Quote ID","Customer","Room","Surface","Type","Area (m²)","Total (ex VAT)"]];
+    const rows = [["Quote ID","Customer","Room","Surface","Type",`Area (${areaUnit()})`,`Total (ex ${taxLabel()})`]];
     const qid  = "Q" + Date.now().toString().slice(-6);
     (j.rooms || []).forEach(room => {
         (room.surfaces || []).forEach(s => {
-            rows.push([qid, j.customerName, room.name, s.label, s.type, s.area.toFixed(2), s.total]);
+            rows.push([qid, j.customerName, room.name, s.label, s.type, fmtArea(s.area), s.total]);
         });
     });
     const csv  = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
@@ -10977,12 +11693,12 @@ function buildPDFDoc() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.setTextColor(...DARK);
-    doc.text(`£${grandPreview.toFixed(2)}`, W - 12, y + 17, { align:"right" });
+    doc.text(`${currencySymbol()}${grandPreview.toFixed(2)}`, W - 12, y + 17, { align:"right" });
     if (applyVat) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
         doc.setTextColor(...SLATE);
-        doc.text("inc. VAT (20%)", W - 12, y + 23, { align:"right" });
+        doc.text(`inc. ${taxLabel()} (20%)`, W - 12, y + 23, { align:"right" });
     }
 
     y += 32;
@@ -11013,7 +11729,7 @@ function buildPDFDoc() {
     doc.setFontSize(8);
     doc.setTextColor(...AMBER);
     doc.text("ROOM / AREA", 16, y + 5.5);
-    doc.text("M²", 130, y + 5.5, { align:"right" });
+    doc.text(areaUnit().toUpperCase(), 130, y + 5.5, { align:"right" });
     if (!hideBreakdown) {
         doc.text("MATERIALS", 158, y + 5.5, { align:"right" });
         doc.text("LABOUR", 178, y + 5.5, { align:"right" });
@@ -11054,14 +11770,14 @@ function buildPDFDoc() {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
         doc.setTextColor(...SLATE);
-        doc.text(`${totalArea.toFixed(2)}`, 130, y + 4, { align:"right" });
+        doc.text(`${fmtArea(totalArea)}`, 130, y + 4, { align:"right" });
         if (!hideBreakdown) {
-            doc.text(`£${(roomMats + roomPrep + sealCost).toFixed(2)}`, 158, y + 4, { align:"right" });
-            doc.text(`£${roomLabour.toFixed(2)}`, 178, y + 4, { align:"right" });
+            doc.text(`${currencySymbol()}${(roomMats + roomPrep + sealCost).toFixed(2)}`, 158, y + 4, { align:"right" });
+            doc.text(`${currencySymbol()}${roomLabour.toFixed(2)}`, 178, y + 4, { align:"right" });
         }
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...DARK);
-        doc.text(`£${roomTotal.toFixed(2)}`, W - 14, y + 4, { align:"right" });
+        doc.text(`${currencySymbol()}${roomTotal.toFixed(2)}`, W - 14, y + 4, { align:"right" });
         y += 7;
 
         // Prep line items (tanking, cement board, etc.) are internal-only —
@@ -11074,7 +11790,7 @@ function buildPDFDoc() {
             doc.setFontSize(7.5);
             doc.setTextColor(...SLATE);
             doc.text(`  + ${room.extraWorkDesc || "Extra work"}`, 16, y + 4);
-            doc.text(`£${extraCost.toFixed(2)}`, W - 14, y + 4, { align:"right" });
+            doc.text(`${currencySymbol()}${extraCost.toFixed(2)}`, W - 14, y + 4, { align:"right" });
             y += 6;
         }
     });
@@ -11104,8 +11820,8 @@ function buildPDFDoc() {
     };
 
     if (!hideBreakdown) {
-        totRow("Materials & Prep", `£${grandMaterials.toFixed(2)}`);
-        totRow("Labour", `£${grandLabour.toFixed(2)}`);
+        totRow("Materials & Prep", `${currencySymbol()}${grandMaterials.toFixed(2)}`);
+        totRow("Labour", `${currencySymbol()}${grandLabour.toFixed(2)}`);
 
         y += 1;
         doc.setDrawColor(...BORDER);
@@ -11113,8 +11829,8 @@ function buildPDFDoc() {
         y += 5;
     }
 
-    totRow("Subtotal", `£${subtotal.toFixed(2)}`);
-    if (applyVat) totRow("VAT (20%)", `£${(subtotal * 0.2).toFixed(2)}`);
+    totRow("Subtotal", `${currencySymbol()}${subtotal.toFixed(2)}`);
+    if (applyVat) totRow(`${taxLabel()} (20%)`, `${currencySymbol()}${(subtotal * 0.2).toFixed(2)}`);
 
     y += 2;
     // Grand total highlight box
@@ -11125,7 +11841,7 @@ function buildPDFDoc() {
     doc.setFontSize(11);
     doc.setTextColor(...AMBER);
     doc.text("TOTAL DUE", totalsX, y + 3);
-    doc.text(`£${grand.toFixed(2)}`, valX, y + 3, { align:"right" });
+    doc.text(`${currencySymbol()}${grand.toFixed(2)}`, valX, y + 3, { align:"right" });
     y += 14;
 
     // ── Terms ────────────────────────────────────────────────────
@@ -11436,6 +12152,24 @@ function getFreeAgentTokens() {
     try { return JSON.parse(localStorage.getItem("fa-tokens") || "null"); } catch(e) { return null; }
 }
 
+function saveFreeAgentTokens(data) {
+    localStorage.setItem("fa-tokens", JSON.stringify({ access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600) }));
+    alert("✅ FreeAgent connected!");
+    updateFreeAgentButton();
+}
+
+async function finishFreeAgentConnection(code) {
+    try {
+        const resp = await fetch(AI_PROXY_URL, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "fa_token", code })
+        });
+        const data = await resp.json();
+        if (!data.access_token) { alert("FreeAgent connection failed: " + (data.error || "unknown error")); return; }
+        saveFreeAgentTokens(data);
+    } catch(e) { alert("FreeAgent connection error: " + e.message); }
+}
+
 async function getValidFreeAgentToken() {
     const tokens = getFreeAgentTokens();
     if (!tokens) return null;
@@ -11505,6 +12239,7 @@ function updateFreeAgentButton() {
 }
 
 async function exportFreeAgent() {
+    if (demoBlocked("Exporting to FreeAgent")) return;
     const tokens = await getValidFreeAgentToken();
     if (!tokens) { freeAgentConnect(); return; }
     const j      = getJob();
@@ -11618,6 +12353,7 @@ function updateQBOButton() {
 }
 
 async function exportQBO() {
+    if (demoBlocked("Exporting to QuickBooks")) return;
     const tokens = await getValidQBOToken();
     if (!tokens) { qboConnect(); return; }
     const j      = getJob();
@@ -11795,6 +12531,7 @@ function updateXeroButton() {
 }
 
 async function exportXero() {
+    if (demoBlocked("Exporting to Xero")) return;
     const tokens = await getValidXeroToken();
     if (!tokens) { xeroConnect(); return; }
     const j        = getJob();
@@ -11968,6 +12705,7 @@ function showSendInvoiceSheet(j, pdf) {
 }
 
 async function sendInvoiceByEmail(jobId) {
+    if (isDemoAccount()) { document.getElementById("send-invoice-sheet")?.remove(); demoBlocked("Emailing invoices"); return; }
     const sheet = document.getElementById("send-invoice-sheet");
     const pdf   = sheet?._pdf;
     sheet?.remove();
@@ -12133,6 +12871,7 @@ function showSendQuoteSheet(j, url) {
 
 
 async function sendQuoteByEmail() {
+    if (isDemoAccount()) { document.getElementById("send-quote-sheet")?.remove(); demoBlocked("Emailing quotes"); return; }
     const sheet = document.getElementById("send-quote-sheet");
     const url   = sheet?._quoteUrl || "";
     sheet?.remove();
@@ -12255,6 +12994,10 @@ async function buildQuoteUrl(j) {
         address:      (j.address || "") + (j.city ? ", " + j.city : ""),
         description:  j.description || "",
         grand:        grandTotal.toFixed(2),
+        // The hosted quote page (tileiq-worker.js) is a separate, standalone
+        // HTML/JS page with no access to the app's settings -- it needs this
+        // to know whether to show £/m² or $/ft² and "VAT"/"Sales Tax".
+        region:       settings.region === "us" ? "us" : "uk",
         // When the cost breakdown is hidden, don't send the per-category figures at all — the
         // hosted quote page should have no materials/labour numbers to render, not just a hidden one.
         totalMats:    hideBreakdown ? null : totalMats.toFixed(2),
@@ -12844,8 +13587,8 @@ function calcBallpark(job) {
     const workType = (job.workType || job.jobType || "").toLowerCase();
     const isWall = workType.includes("wall");
     const labourRate = isWall
-        ? (parseFloat(settings.labourM2Wall) || 35)
-        : (parseFloat(settings.labourM2Floor) || 28);
+        ? (numOr(settings.labourM2Wall, 35))
+        : (numOr(settings.labourM2Floor, 28));
     const markup = 1 + (parseFloat(settings.markup) || 20) / 100;
 
     // Tile cost range: budget £15/m², premium £50/m²
@@ -12862,12 +13605,12 @@ function ballparkHtml(job, compact) {
     const est = calcBallpark(job);
     if (!est) return "";
     if (compact) {
-        return `<div style="font-size:12px;color:#f59e0b;font-weight:700;margin-top:5px;">💰 Est. £${est.low.toLocaleString()} – £${est.high.toLocaleString()}</div>`;
+        return `<div style="font-size:12px;color:#f59e0b;font-weight:700;margin-top:5px;">💰 Est. ${currencySymbol()}${est.low.toLocaleString()} – ${currencySymbol()}${est.high.toLocaleString()}</div>`;
     }
     return `<div style="background:#1e293b;border:1px solid #f59e0b33;border-radius:10px;padding:12px 14px;margin:12px 16px 0;">
         <div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">💰 Ballpark Estimate</div>
-        <div style="font-size:20px;font-weight:800;color:#f59e0b;">£${est.low.toLocaleString()} – £${est.high.toLocaleString()}</div>
-        <div style="font-size:11px;color:#64748b;margin-top:3px;">Based on ${est.area}m² · your labour rate · budget to premium tiles</div>
+        <div style="font-size:20px;font-weight:800;color:#f59e0b;">${currencySymbol()}${est.low.toLocaleString()} – ${currencySymbol()}${est.high.toLocaleString()}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px;">Based on ${fmtArea(est.area)}${areaUnit()} · your labour rate · budget to premium tiles</div>
         <div style="font-size:11px;color:#475569;margin-top:2px;">Add rooms for a full quote</div>
     </div>`;
 }
@@ -13298,6 +14041,7 @@ function initPullToRefresh() {
 }
 
 async function provisionTwilioNumber() {
+    if (demoBlocked("Getting a business number")) return;
     if (!currentUser) { alert("Please sign in first."); return; }
     const btn = document.querySelector("[onclick='provisionTwilioNumber()']");
     if (btn) { btn.disabled = true; btn.textContent = "Getting..."; }

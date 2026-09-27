@@ -166,7 +166,7 @@
             <div class="auth-links">
                 <a href="#" onclick="showForgot();return false;">Forgot password?</a>
                 <span class="auth-sep">·</span>
-                <a href="#" onclick="show('screen-signup');generateCaptcha();return false;">Create account</a>
+                <a href="#" onclick="show('screen-signup');generateCaptcha();initSignupRegion();return false;">Create account</a>
             </div>
         </div>
     </div>
@@ -190,6 +190,13 @@
         <div class="auth-card">
             <h2 class="auth-title">Create account</h2>
             <div id="signup-error" class="auth-error hidden"></div>
+            <div class="field-group">
+                <label>Country</label>
+                <div style="display:flex;gap:8px;">
+                    <button type="button" id="su-region-uk" onclick="setSignupRegion('uk')" class="btn-secondary auth-region-btn" style="flex:1;">🇬🇧 UK</button>
+                    <button type="button" id="su-region-us" onclick="setSignupRegion('us')" class="btn-secondary auth-region-btn" style="flex:1;">🇺🇸 USA</button>
+                </div>
+            </div>
             <button type="button" onclick="authSocialSignIn('google','su')" class="btn-social btn-google auth-btn"><span class="g-logo-chip"><svg width="14" height="14" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M17.64 9.2045c0-.6381-.0573-1.2518-.1636-1.8409H9v3.4814h4.8436c-.2086 1.125-.8427 2.0782-1.7959 2.7164v2.2581h2.9087c1.7018-1.5668 2.6836-3.8741 2.6836-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.4673-.8059 5.9564-2.1805l-2.9087-2.2581c-.8059.54-1.8368.8591-3.0477.8591-2.3436 0-4.3282-1.5831-5.036-3.7104H.9573v2.3319C2.4382 15.9832 5.4818 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.2827-1.1168-.2827-1.71s.1027-1.17.2827-1.71V4.9582H.9573C.3477 6.1732 0 7.5477 0 9s.3477 2.8268.9573 4.0418L3.964 10.71z"/><path fill="#EA4335" d="M9 3.5795c1.3214 0 2.5077.4541 3.4405 1.346l2.5813-2.5814C13.4632.8918 11.4259 0 9 0 5.4818 0 2.4382 2.0168.9573 4.9582L3.964 7.29C4.6718 5.1627 6.6564 3.5795 9 3.5795z"/></svg></span> Continue with Google</button>
             <button type="button" onclick="authSocialSignIn('apple','su')" class="btn-social btn-apple auth-btn"><svg width="16" height="16" viewBox="0 0 814 1000" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127.3C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg> Sign in with Apple</button>
             <div class="auth-divider">or sign up with email</div>
@@ -392,7 +399,6 @@
             <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:12px;letter-spacing:0.05em;">PRO INCLUDES</div>
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Unlimited quotes, jobs and customers</div>
-                <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> AI Receptionist for missed calls</div>
                 <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Professional PDF quotes &amp; invoices</div>
                 <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);"><span style="color:#10b981;">✓</span> Push notifications</div>
             </div>
@@ -423,6 +429,35 @@
         <button onclick="devProOverride()" style="margin-top:16px;background:#1e293b;color:#475569;border:1px solid var(--border);border-radius:8px;padding:6px 14px;font-size:11px;cursor:pointer;">
             Dev: Toggle Pro
         </button>
+    </div>
+</div>
+
+<!-- Shown once, right after a brand-new signup, before the new account ever
+     reaches the dashboard -- explains the two permissions we're about to ask
+     for, then triggers both native prompts in sequence. Never shown again
+     after this (existing accounts skip straight to screen-home as before). -->
+<div id="screen-permissions-primer" class="screen hidden">
+    <div class="page-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;min-height:100vh;text-align:center;">
+        <div style="font-size:48px;margin-bottom:20px;">🔔</div>
+        <h1 style="font-size:22px;font-weight:800;margin-bottom:16px;">Stay on top of your jobs</h1>
+        <div style="width:100%;max-width:340px;background:var(--card);border-radius:16px;padding:20px;margin-bottom:24px;border:1px solid var(--border);text-align:left;">
+            <div style="display:flex;gap:12px;margin-bottom:16px;">
+                <span style="font-size:20px;">🔔</span>
+                <div>
+                    <div style="font-weight:700;font-size:14px;margin-bottom:2px;">Notifications</div>
+                    <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Know the moment a customer views, accepts or declines a quote.</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;">
+                <span style="font-size:20px;">📍</span>
+                <div>
+                    <div style="font-weight:700;font-size:14px;margin-bottom:2px;">Location</div>
+                    <div style="font-size:13px;color:var(--text-muted);line-height:1.5;">Auto-fill customer addresses with GPS when you're stood on site.</div>
+                </div>
+            </div>
+        </div>
+        <button id="perms-primer-btn" onclick="completeOnboardingPermissions()" class="btn-primary" style="width:100%;max-width:340px;margin-bottom:14px;">Enable &amp; Continue</button>
+        <button onclick="skipOnboardingPermissions()" style="background:none;border:none;color:var(--text-muted);font-size:13px;text-decoration:underline;cursor:pointer;">Not now</button>
     </div>
 </div>
 
@@ -548,7 +583,7 @@
             </div>
             <div class="field-row">
                 <div class="field-group"><label>Town / City</label><input id="ac-city"></div>
-                <div class="field-group"><label>Postcode</label><input id="ac-postcode"></div>
+                <div class="field-group"><label><span class="postcodelabel">Postcode</span></label><input id="ac-postcode"></div>
             </div>
             <div class="field-group"><label>Notes</label><textarea id="ac-notes" rows="3" placeholder="Any notes about this customer…" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:14px;resize:vertical;"></textarea></div>
             <div class="form-actions">
@@ -658,7 +693,7 @@
                     <input id="nj-city">
                 </div>
                 <div class="field-group">
-                    <label>Postcode</label>
+                    <label><span class="postcodelabel">Postcode</span></label>
                     <div style="display:flex;gap:6px;">
                         <input id="nj-postcode" style="flex:1;">
                         <button onclick="gpsAddress('nj')" class="btn-secondary" style="padding:0 12px;white-space:nowrap;" title="Use GPS">📍</button>
@@ -871,7 +906,7 @@
                     <input id="ej-city">
                 </div>
                 <div class="field-group">
-                    <label>Postcode</label>
+                    <label><span class="postcodelabel">Postcode</span></label>
                     <div style="display:flex;gap:6px;">
                         <input id="ej-postcode" style="flex:1;">
                         <button onclick="gpsAddress('ej')" class="btn-secondary" style="padding:0 12px;white-space:nowrap;" title="Use GPS">📍</button>
@@ -889,8 +924,9 @@
             </div>
             <div class="field-row">
                 <div class="field-group">
-                    <label>Total Area (m²)</label>
+                    <label>Total Area (<span class="arealabel" data-form="short">m²</span>)</label>
                     <input id="ej-area" type="number" min="0" step="0.5" placeholder="e.g. 12.5">
+                    <input id="ej-area-ft2" type="text" class="hidden" placeholder="e.g. 134.5" oninput="rmAreaInSync('ej-area')">
                 </div>
                 <div class="field-group">
                     <label>Work Type</label>
@@ -937,7 +973,7 @@
         <button onclick="goJob()" class="btn-back">← Rooms</button>
         <h2 id="room-screen-title" class="header-title">Add Room</h2>
         <button id="ar-measure-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📷 AR</button>
-        <button id="disto-connect-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📏 Disto</button>
+        <button id="disto-connect-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📏 Laser</button>
     </div></header>
     <div class="page-body">
 
@@ -964,17 +1000,20 @@
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-row">
                 <div class="field-group">
-                    <label>Length (m)</label>
+                    <label>Length (<span class="dimunit">m</span>)</label>
                     <input id="rm-r-length" type="number" step="0.01" placeholder="e.g. 3.5" oninput="rmCalc()" data-disto>
+                    <input id="rm-r-length-ft" type="text" class="hidden" placeholder="e.g. 11' 6&quot;" oninput="rmFtInSync('rm-r-length')" data-ft-shadow="1">
                 </div>
                 <div class="field-group">
-                    <label>Width (m)</label>
+                    <label>Width (<span class="dimunit">m</span>)</label>
                     <input id="rm-r-width" type="number" step="0.01" placeholder="e.g. 2.2" oninput="rmCalc()" data-disto>
+                    <input id="rm-r-width-ft" type="text" class="hidden" placeholder="e.g. 7' 3&quot;" oninput="rmFtInSync('rm-r-width')" data-ft-shadow="1">
                 </div>
             </div>
             <div class="field-group">
-                <label>Wall Height (m)</label>
+                <label>Wall Height (<span class="dimunit">m</span>)</label>
                 <input id="rm-r-height" type="number" step="0.01" placeholder="e.g. 2.4" oninput="rmCalc()" data-disto>
+                <input id="rm-r-height-ft" type="text" class="hidden" placeholder="e.g. 8' 0&quot;" oninput="rmFtInSync('rm-r-height')" data-ft-shadow="1">
             </div>
             <div class="field-row" style="margin-bottom:6px;">
                 <div class="field-group">
@@ -1003,11 +1042,11 @@
             </div>
             <div id="deduct-panel-r" class="hidden">
             <div id="deduct-wall-chips" class="deduct-chips">
-                <label class="deduct-chip"><input type="checkbox" value="door"     onchange="toggleDeductChip(this)">🚪 Door<br><small>1.9×0.7m</small></label>
-                <label class="deduct-chip"><input type="checkbox" value="bathwall" onchange="toggleDeductChip(this)">🛁 Bath Wall<br><small>1.7×0.6m</small></label>
-                <label class="deduct-chip"><input type="checkbox" value="bathend1" onchange="toggleDeductChip(this)">🛁 Bath End<br><small>0.7×0.7m</small></label>
-                <label class="deduct-chip"><input type="checkbox" value="bathend2" onchange="toggleDeductChip(this)">🛁 Bath End 2<br><small>0.7×0.7m</small></label>
-                <label class="deduct-chip"><input type="checkbox" value="bathfloor" onchange="toggleDeductChip(this)">🛁 Bath Floor<br><small>1.7×0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="door"     onchange="toggleDeductChip(this)">🚪 Door<br><small class="deduct-dim" data-w="1.9" data-h="0.7" data-sep="×">1.9×0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathwall" onchange="toggleDeductChip(this)">🛁 Bath Wall<br><small class="deduct-dim" data-w="1.7" data-h="0.6" data-sep="×">1.7×0.6m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend1" onchange="toggleDeductChip(this)">🛁 Bath End<br><small class="deduct-dim" data-w="0.7" data-h="0.7" data-sep="×">0.7×0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend2" onchange="toggleDeductChip(this)">🛁 Bath End 2<br><small class="deduct-dim" data-w="0.7" data-h="0.7" data-sep="×">0.7×0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathfloor" onchange="toggleDeductChip(this)">🛁 Bath Floor<br><small class="deduct-dim" data-w="1.7" data-h="0.7" data-sep="×">1.7×0.7m</small></label>
                 <label class="deduct-chip deduct-chip-manual" onclick="addManualDeduct(event)">✏ Custom<br><small>enter size</small></label>
             </div>
             <div id="deduct-manual-items" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
@@ -1058,25 +1097,30 @@
                 </div>
                 <div class="field-row">
                     <div class="field-group">
-                        <label>Tile W (mm)</label>
+                        <label>Tile W (<span class="mmunit">mm</span>)</label>
                         <input id="rm-r-wtilew" type="number" value="300" oninput="rmCalc();updateWallTilesBadge()">
+                        <input id="rm-r-wtilew-in" type="text" class="hidden" placeholder="e.g. 11 13/16&quot;" oninput="rmMmInSync('rm-r-wtilew')">
                     </div>
                     <div class="field-group">
-                        <label>Tile H (mm)</label>
+                        <label>Tile H (<span class="mmunit">mm</span>)</label>
                         <input id="rm-r-wtileh" type="number" value="600" oninput="rmCalc();updateWallTilesBadge()">
+                        <input id="rm-r-wtileh-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-r-wtileh')">
                     </div>
                     <div class="field-group">
-                        <label>Tile Thickness (mm)</label>
+                        <label>Tile Thickness (<span class="mmunit">mm</span>)</label>
                         <input id="rm-r-wtilethick" type="number" value="8" oninput="rmCalc()">
+                        <input id="rm-r-wtilethick-in" type="text" class="hidden" placeholder="e.g. 5/16&quot;" oninput="rmMmInSync('rm-r-wtilethick')">
                     </div>
                 </div>
                 <div class="field-group">
-                    <label>Wall Grout Joint (mm)</label>
+                    <label>Wall Grout Joint (<span class="mmunit">mm</span>)</label>
                     <input id="rm-r-wgrout" type="number" value="2" oninput="rmCalc()">
+                    <input id="rm-r-wgrout-in" type="text" class="hidden" placeholder="e.g. 1/16&quot;" oninput="rmMmInSync('rm-r-wgrout')">
                 </div>
                 <div class="field-group">
-                    <label>Wall Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                    <label>Wall Tile Price (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
                     <input id="rm-r-wtilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+                    <input id="rm-r-wtilecost-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-r-wtilecost')">
                 </div>
                 </div>
                 <div class="rm-section-toggle" onclick="toggleCollapse('room-wall-prep')" id="collapse-toggle-room-wall-prep">
@@ -1085,7 +1129,7 @@
                 </div>
                 <div id="collapse-panel-room-wall-prep" class="hidden">
                     <div class="prep-options">
-                        <div class="prep-text" style="margin-bottom:6px;"><span style="font-weight:600;">Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-r"></span>/kit</span></div>
+                        <div class="prep-text" style="margin-bottom:6px;"><span style="font-weight:600;">Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-tank-r"></span>/kit</span></div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;" id="rm-r-wall-tanking-grid">
                             <label class="prep-option" style="margin:0;">
                                 <input type="checkbox" id="rm-r-wtanking-a" onchange="rmCalc()">
@@ -1106,16 +1150,16 @@
                         </div>
                         <label class="prep-option">
                             <input type="checkbox" id="rm-r-wprimer" onchange="rmCalc()">
-                            <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                            <div class="prep-text"><span>Primer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-primer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                         </label>
                         <label class="prep-option">
                             <input type="checkbox" id="rm-r-wstone" onchange="rmToggleWStoneR()">
-                            <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                            <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-stone"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                         </label>
                         <div id="rm-r-wsealer-row" class="hidden">
                         <label class="prep-option">
                             <input type="checkbox" id="rm-r-wsealer" onchange="rmCalc()">
-                            <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                            <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-sealer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                         </label>
                         </div>
                     </div>
@@ -1150,27 +1194,29 @@
                     <div class="prep-options" style="margin-bottom:8px;">
                         <label class="prep-option">
                             <input type="checkbox" id="rm-r-tray" onchange="rmRTrayToggle()">
-                            <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray-r"></span> flat rate</span></div>
+                            <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost"><span class="curr">£</span><span id="pc-wet-tray-r"></span> flat rate</span></div>
                         </label>
                         <div id="rm-r-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
                             <div class="field-row" style="gap:8px;">
                                 <div class="field-group">
-                                    <label>Tray Price (£)</label>
+                                    <label>Tray Price (<span class="curr">£</span>)</label>
                                     <input id="rm-r-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
                                 </div>
                                 <div class="field-group">
-                                    <label>Width (mm)</label>
+                                    <label>Width (<span class="mmunit">mm</span>)</label>
                                     <input id="rm-r-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                    <input id="rm-r-tray-w-in" type="text" class="hidden" placeholder="e.g. 35 7/16&quot;" oninput="rmMmInSync('rm-r-tray-w')">
                                 </div>
                                 <div class="field-group">
-                                    <label>Depth (mm)</label>
+                                    <label>Depth (<span class="mmunit">mm</span>)</label>
                                     <input id="rm-r-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                    <input id="rm-r-tray-d-in" type="text" class="hidden" placeholder="e.g. 35 7/16&quot;" oninput="rmMmInSync('rm-r-tray-d')">
                                 </div>
                             </div>
                         </div>
                         <label class="prep-option">
                             <input type="checkbox" id="rm-r-ftanking" onchange="rmCalc()" checked>
-                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span id="pc-tank-r"></span>/kit</span></div>
+                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span id="pc-tank-r"></span>/kit</span></div>
                         </label>
                     </div>
                 </div>
@@ -1193,25 +1239,30 @@
                 <div id="rm-r-ftile-type-rate-note" class="field-group" style="margin-bottom:10px;font-size:12px;color:var(--text-muted);"></div>
                 <div class="field-row">
                     <div class="field-group">
-                        <label>Floor Tile W (mm)</label>
+                        <label>Floor Tile W (<span class="mmunit">mm</span>)</label>
                         <input id="rm-r-ftilew" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
+                        <input id="rm-r-ftilew-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-r-ftilew')">
                     </div>
                     <div class="field-group">
-                        <label>Floor Tile H (mm)</label>
+                        <label>Floor Tile H (<span class="mmunit">mm</span>)</label>
                         <input id="rm-r-ftileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
+                        <input id="rm-r-ftileh-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-r-ftileh')">
                     </div>
                     <div class="field-group">
-                        <label>Tile Thickness (mm)</label>
+                        <label>Tile Thickness (<span class="mmunit">mm</span>)</label>
                         <input id="rm-r-ftilethick" type="number" value="10" oninput="rmCalc()">
+                        <input id="rm-r-ftilethick-in" type="text" class="hidden" placeholder="e.g. 3/8&quot;" oninput="rmMmInSync('rm-r-ftilethick')">
                     </div>
                 </div>
                 <div class="field-group">
-                    <label>Floor Grout Joint (mm)</label>
+                    <label>Floor Grout Joint (<span class="mmunit">mm</span>)</label>
                     <input id="rm-r-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('room-floor-tile','rm-r-ftilew','rm-r-ftileh','rm-r-fgrout')">
+                    <input id="rm-r-fgrout-in" type="text" class="hidden" placeholder="e.g. 1/16&quot;" oninput="rmMmInSync('rm-r-fgrout')">
                 </div>
                 <div class="field-group">
-                    <label>Floor Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                    <label>Floor Tile Price (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
                     <input id="rm-r-ftilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+                    <input id="rm-r-ftilecost-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-r-ftilecost')">
                 </div>
                 </div>
                 <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-prep')" id="collapse-toggle-room-floor-prep">
@@ -1222,15 +1273,15 @@
                 <div class="prep-options">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-cementboard" onchange="rmCalc()">
-                        <div class="prep-text"><span>Cement Board</span><span class="prep-cost">+£<span class="pc-cb"></span>/m²</span></div>
+                        <div class="prep-text"><span>Cement Board</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-cb"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-membrane" onchange="rmCalc()">
-                        <div class="prep-text"><span>Anti-Crack Membrane</span><span class="prep-cost">+£<span class="pc-mem"></span>/m²</span></div>
+                        <div class="prep-text"><span>Anti-Crack Membrane</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-mem"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-levelling" onchange="rmToggleLevelR()">
-                        <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+£<span class="pc-lev-r"></span>/m²</span></div>
+                        <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-lev-r"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                     <div id="rm-r-level-depth" class="prep-depth hidden">
                         <label>Depth</label>
@@ -1243,25 +1294,25 @@
                     <div id="rm-r-clips-row" class="hidden">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-clips" onchange="rmCalc()">
-                        <div class="prep-text"><span>Levelling Clips &amp; Wedges</span><span class="prep-cost">+£<span class="pc-clips"></span>/200 clips</span></div>
+                        <div class="prep-text"><span>Levelling Clips &amp; Wedges</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-clips"></span>/200 clips</span></div>
                     </label>
                     </div>
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-tanking" onchange="rmCalc()">
-                        <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-r"></span>/kit</span></div>
+                        <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-tank-r"></span>/kit</span></div>
                     </label>
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-primer" onchange="rmCalc()">
-                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-primer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-stone" onchange="rmToggleStoneR()">
-                        <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                        <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-stone"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                     <div id="rm-r-sealer-row" class="hidden">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-r-sealer" onchange="rmCalc()">
-                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-sealer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                     </div>
                 </div>
@@ -1277,12 +1328,12 @@
                     Include UFH in this room
                 </label>
                 <div class="field-row" style="margin-bottom:8px;">
-                    <div class="field-group"><label>Mat/Cable (£)</label><input id="rm-r-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
-                    <div class="field-group"><label>Thermostat (£)</label><input id="rm-r-ufh-stat" type="number" step="1" placeholder="e.g. 120" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Mat/Cable (<span class="curr">£</span>)</label><input id="rm-r-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Thermostat (<span class="curr">£</span>)</label><input id="rm-r-ufh-stat" type="number" step="1" placeholder="e.g. 120" oninput="rmCalc()"></div>
                 </div>
                 <div class="field-row" style="margin-bottom:8px;">
-                    <div class="field-group"><label>Other (£)</label><input id="rm-r-ufh-other" type="number" step="1" placeholder="e.g. 50" oninput="rmCalc()"></div>
-                    <div class="field-group"><label>Labour (£/m²)</label><input id="rm-r-ufh-labour" type="number" step="0.5" placeholder="e.g. 15" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Other (<span class="curr">£</span>)</label><input id="rm-r-ufh-other" type="number" step="1" placeholder="e.g. 50" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Labour (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="rm-r-ufh-labour" type="number" step="0.5" placeholder="e.g. 15" oninput="rmCalc()"><input id="rm-r-ufh-labour-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-r-ufh-labour')"></div>
                 </div>
                 <div class="field-group" style="margin-bottom:0;">
                     <label>Other description</label>
@@ -1336,11 +1387,11 @@
             <div id="collapse-panel-trim" class="hidden">
             <div class="field-row">
                 <div class="field-group">
-                    <label>Lengths (× 2.5m)</label>
+                    <label>Lengths (× <span class="trimlen">2.4m</span>)</label>
                     <input id="rm-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('r')">
                 </div>
                 <div class="field-group">
-                    <label>Price per length (£)</label>
+                    <label>Price per length (<span class="curr">£</span>)</label>
                     <input id="rm-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('r')">
                 </div>
             </div>
@@ -1376,21 +1427,24 @@
             <div class="form-section-label">Floor Measurements</div>
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:8px;">
-                <label style="color:var(--amber,#E07A2F);">Total m² <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
+                <label style="color:var(--amber,#E07A2F);"><span class="arealabel" data-form="long">Total m²</span> <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <input id="rm-f-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-f-area-direct','rm-f-length','rm-f-width')" style="flex:1;min-width:0;">
+                    <input id="rm-f-area-direct-ft2" type="text" class="hidden" placeholder="e.g. 134.5" oninput="rmAreaInSync('rm-f-area-direct')" style="flex:1;min-width:0;">
                     <button type="button" class="disto-btn ar-area-btn" data-ar-area-target="rm-f-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Trace the floor's outline in AR — handles irregular shapes and cutouts">📐 AR</button>
-                    <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-f-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the Disto (or type) each wall's length — handles irregular shapes and cutouts, no camera/AR needed">✏️ Sketch</button>
+                    <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-f-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the laser (or type) each wall's length — handles irregular shapes and cutouts, no camera/AR needed">✏️ Sketch</button>
                 </div>
             </div>
             <div class="field-row">
                 <div class="field-group">
-                    <label>Length (m)</label>
+                    <label>Length (<span class="dimunit">m</span>)</label>
                     <input id="rm-f-length" type="number" step="0.01" placeholder="e.g. 3.5" oninput="rmCalc()" data-disto>
+                    <input id="rm-f-length-ft" type="text" class="hidden" placeholder="e.g. 11' 6&quot;" oninput="rmFtInSync('rm-f-length')" data-ft-shadow="1">
                 </div>
                 <div class="field-group">
-                    <label>Width (m)</label>
+                    <label>Width (<span class="dimunit">m</span>)</label>
                     <input id="rm-f-width" type="number" step="0.01" placeholder="e.g. 2.2" oninput="rmCalc()" data-disto>
+                    <input id="rm-f-width-ft" type="text" class="hidden" placeholder="e.g. 7' 3&quot;" oninput="rmFtInSync('rm-f-width')" data-ft-shadow="1">
                 </div>
             </div>
             <div class="field-group" style="margin-bottom:0;">
@@ -1406,8 +1460,9 @@
         <div class="rm-jump-nav" id="rm-jump-nav-floor"></div>
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:6px;">
-                <label>Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                <label>Tile Price (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
                 <input id="rm-f-tilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+                <input id="rm-f-tilecost-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-f-tilecost')">
             </div>
             <div class="rm-section-toggle" onclick="toggleDeductPanel('f')" id="deduct-toggle-f">
                 <div><span class="rm-section-title">Deductions</span></div>
@@ -1415,7 +1470,7 @@
             </div>
             <div id="deduct-panel-f" class="hidden">
             <div class="deduct-chips">
-                <label class="deduct-chip"><input type="checkbox" value="bathfloor" onchange="updateDeductTotals()">🛁 Bath Floor<br><small>1.7x0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathfloor" onchange="updateDeductTotals()">🛁 Bath Floor<br><small class="deduct-dim" data-w="1.7" data-h="0.7" data-sep="x">1.7x0.7m</small></label>
                 <label class="deduct-chip deduct-chip-manual" onclick="addManualDeduct(event)">✏ Custom<br><small>enter size</small></label>
             </div>
             <div id="deduct-f-manual" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
@@ -1439,27 +1494,29 @@
                     <div class="prep-options">
                         <label class="prep-option">
                             <input type="checkbox" id="rm-f-tray" onchange="rmFTrayToggle()">
-                            <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray-f"></span> flat rate</span></div>
+                            <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost"><span class="curr">£</span><span id="pc-wet-tray-f"></span> flat rate</span></div>
                         </label>
                         <div id="rm-f-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
                             <div class="field-row" style="gap:8px;">
                                 <div class="field-group">
-                                    <label>Tray Price (£)</label>
+                                    <label>Tray Price (<span class="curr">£</span>)</label>
                                     <input id="rm-f-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
                                 </div>
                                 <div class="field-group">
-                                    <label>Width (mm)</label>
+                                    <label>Width (<span class="mmunit">mm</span>)</label>
                                     <input id="rm-f-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                    <input id="rm-f-tray-w-in" type="text" class="hidden" placeholder="e.g. 35 7/16&quot;" oninput="rmMmInSync('rm-f-tray-w')">
                                 </div>
                                 <div class="field-group">
-                                    <label>Depth (mm)</label>
+                                    <label>Depth (<span class="mmunit">mm</span>)</label>
                                     <input id="rm-f-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                    <input id="rm-f-tray-d-in" type="text" class="hidden" placeholder="e.g. 35 7/16&quot;" oninput="rmMmInSync('rm-f-tray-d')">
                                 </div>
                             </div>
                         </div>
                         <label class="prep-option">
                             <input type="checkbox" id="rm-f-wetroom-tanking" onchange="rmCalc()">
-                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-f"></span>/kit</span></div>
+                            <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-tank-f"></span>/kit</span></div>
                         </label>
                     </div>
                 </div>
@@ -1501,11 +1558,11 @@
             <div id="collapse-panel-trim-f" class="hidden">
             <div class="field-row">
                 <div class="field-group">
-                    <label>Lengths (× 2.5m)</label>
+                    <label>Lengths (× <span class="trimlen">2.4m</span>)</label>
                     <input id="rm-f-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('f')">
                 </div>
                 <div class="field-group">
-                    <label>Price per length (£)</label>
+                    <label>Price per length (<span class="curr">£</span>)</label>
                     <input id="rm-f-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('f')">
                 </div>
             </div>
@@ -1528,21 +1585,25 @@
             </div>
             <div class="field-row">
                 <div class="field-group">
-                    <label>Tile W (mm)</label>
+                    <label>Tile W (<span class="mmunit">mm</span>)</label>
                     <input id="rm-f-tilew" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
+                    <input id="rm-f-tilew-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-f-tilew')">
                 </div>
                 <div class="field-group">
-                    <label>Tile H (mm)</label>
+                    <label>Tile H (<span class="mmunit">mm</span>)</label>
                     <input id="rm-f-tileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
+                    <input id="rm-f-tileh-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-f-tileh')">
                 </div>
                 <div class="field-group">
-                    <label>Tile Thickness (mm)</label>
+                    <label>Tile Thickness (<span class="mmunit">mm</span>)</label>
                     <input id="rm-f-tilethick" type="number" value="10" oninput="rmCalc()">
+                    <input id="rm-f-tilethick-in" type="text" class="hidden" placeholder="e.g. 3/8&quot;" oninput="rmMmInSync('rm-f-tilethick')">
                 </div>
             </div>
             <div class="field-group">
-                <label>Grout Joint (mm)</label>
+                <label>Grout Joint (<span class="mmunit">mm</span>)</label>
                 <input id="rm-f-grout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('floor-tile','rm-f-tilew','rm-f-tileh','rm-f-grout')">
+                <input id="rm-f-grout-in" type="text" class="hidden" placeholder="e.g. 1/16&quot;" oninput="rmMmInSync('rm-f-grout')">
             </div>
             </div>
             <div class="rm-section-toggle" onclick="toggleCollapse('ufh-f')" id="collapse-toggle-ufh-f">
@@ -1555,12 +1616,12 @@
                     Include UFH in this room
                 </label>
                 <div class="field-row" style="margin-bottom:8px;">
-                    <div class="field-group"><label>Mat/Cable (£)</label><input id="rm-f-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
-                    <div class="field-group"><label>Thermostat (£)</label><input id="rm-f-ufh-stat" type="number" step="1" placeholder="e.g. 120" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Mat/Cable (<span class="curr">£</span>)</label><input id="rm-f-ufh-mat" type="number" step="1" placeholder="e.g. 250" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Thermostat (<span class="curr">£</span>)</label><input id="rm-f-ufh-stat" type="number" step="1" placeholder="e.g. 120" oninput="rmCalc()"></div>
                 </div>
                 <div class="field-row" style="margin-bottom:8px;">
-                    <div class="field-group"><label>Other (£)</label><input id="rm-f-ufh-other" type="number" step="1" placeholder="e.g. 50" oninput="rmCalc()"></div>
-                    <div class="field-group"><label>Labour (£/m²)</label><input id="rm-f-ufh-labour" type="number" step="0.5" placeholder="e.g. 15" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Other (<span class="curr">£</span>)</label><input id="rm-f-ufh-other" type="number" step="1" placeholder="e.g. 50" oninput="rmCalc()"></div>
+                    <div class="field-group"><label>Labour (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="rm-f-ufh-labour" type="number" step="0.5" placeholder="e.g. 15" oninput="rmCalc()"><input id="rm-f-ufh-labour-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-f-ufh-labour')"></div>
                 </div>
                 <div class="field-group" style="margin-bottom:0;">
                     <label>Other description</label>
@@ -1575,15 +1636,15 @@
             <div class="prep-options">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-cementboard" onchange="rmCalc()">
-                    <div class="prep-text"><span>Cement Board</span><span class="prep-cost">+£<span class="pc-cb"></span>/m²</span></div>
+                    <div class="prep-text"><span>Cement Board</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-cb"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-membrane" onchange="rmCalc()">
-                    <div class="prep-text"><span>Anti-Crack Membrane</span><span class="prep-cost">+£<span class="pc-mem"></span>/m²</span></div>
+                    <div class="prep-text"><span>Anti-Crack Membrane</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-mem"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-levelling" onchange="rmToggleLevelF()">
-                    <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+£<span class="pc-lev-f"></span>/m²</span></div>
+                    <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-lev-f"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <div id="rm-f-level-depth" class="prep-depth hidden">
                     <label>Depth</label>
@@ -1596,26 +1657,26 @@
                 <div id="rm-f-clips-row" class="hidden">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-clips" onchange="rmCalc()">
-                    <div class="prep-text"><span>Levelling Clips &amp; Wedges</span><span class="prep-cost">+£<span class="pc-clips"></span>/200 clips</span></div>
+                    <div class="prep-text"><span>Levelling Clips &amp; Wedges</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-clips"></span>/200 clips</span></div>
                 </label>
                 </div>
 
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-tanking" onchange="rmCalc()">
-                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-f"></span>/kit</span></div>
+                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-tank-f"></span>/kit</span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-primer" onchange="rmCalc()">
-                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-primer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-stone" onchange="rmToggleStoneF()">
-                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-stone"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <div id="rm-f-sealer-row" class="hidden">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-f-sealer" onchange="rmCalc()">
-                    <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                    <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-sealer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 </div>
             </div>
@@ -1638,21 +1699,24 @@
         <div id="rm-form-wall" class="measure-form hidden">
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:8px;">
-                <label style="color:var(--amber,#E07A2F);">Total m² <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
+                <label style="color:var(--amber,#E07A2F);"><span class="arealabel" data-form="long">Total m²</span> <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(enter if known — skips length × width)</span></label>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <input id="rm-w-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-w-area-direct','rm-w-width','rm-w-height')" style="flex:1;min-width:0;">
+                    <input id="rm-w-area-direct-ft2" type="text" class="hidden" placeholder="e.g. 134.5" oninput="rmAreaInSync('rm-w-area-direct')" style="flex:1;min-width:0;">
                     <button type="button" class="disto-btn ar-area-btn" data-ar-area-target="rm-w-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Trace the wall's outline in AR — handles irregular shapes and cutouts (e.g. a cupboard)">📐 AR</button>
-                    <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-w-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the Disto (or type) each wall's length — handles irregular shapes and cutouts (e.g. a cupboard), no camera/AR needed">✏️ Sketch</button>
+                    <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-w-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the laser (or type) each wall's length — handles irregular shapes and cutouts (e.g. a cupboard), no camera/AR needed">✏️ Sketch</button>
                 </div>
             </div>
             <div class="field-row">
                 <div class="field-group">
-                    <label>Width (m)</label>
+                    <label>Width (<span class="dimunit">m</span>)</label>
                     <input id="rm-w-width" type="number" step="0.01" placeholder="e.g. 3.5" oninput="rmCalc()" data-disto>
+                    <input id="rm-w-width-ft" type="text" class="hidden" placeholder="e.g. 11' 6&quot;" oninput="rmFtInSync('rm-w-width')" data-ft-shadow="1">
                 </div>
                 <div class="field-group">
-                    <label>Height (m)</label>
+                    <label>Height (<span class="dimunit">m</span>)</label>
                     <input id="rm-w-height" type="number" step="0.01" placeholder="e.g. 2.4" oninput="rmCalc()" data-disto>
+                    <input id="rm-w-height-ft" type="text" class="hidden" placeholder="e.g. 8' 0&quot;" oninput="rmFtInSync('rm-w-height')" data-ft-shadow="1">
                 </div>
             </div>
             <div class="field-group" style="margin-bottom:0;">
@@ -1667,8 +1731,9 @@
         <div class="rm-jump-nav" id="rm-jump-nav-wall"></div>
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-group" style="margin-bottom:6px;">
-                <label>Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                <label>Tile Price (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
                 <input id="rm-w-tilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+                <input id="rm-w-tilecost-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-w-tilecost')">
             </div>
             <div class="rm-section-toggle" onclick="toggleDeductPanel('w')" id="deduct-toggle-w">
                 <div><span class="rm-section-title">Deductions</span></div>
@@ -1676,10 +1741,10 @@
             </div>
             <div id="deduct-panel-w" class="hidden">
             <div class="deduct-chips">
-                <label class="deduct-chip"><input type="checkbox" value="door"     onchange="updateDeductTotals()">🚪 Door<br><small>1.9x0.7m</small></label>
-                <label class="deduct-chip"><input type="checkbox" value="bathwall" onchange="updateDeductTotals()">🛁 Bath Wall<br><small>1.7x0.6m</small></label>
-                <label class="deduct-chip"><input type="checkbox" value="bathend1" onchange="updateDeductTotals()">🛁 Bath End<br><small>0.7x0.7m</small></label>
-                <label class="deduct-chip"><input type="checkbox" value="bathend2" onchange="updateDeductTotals()">🛁 Bath End 2<br><small>0.7x0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="door"     onchange="updateDeductTotals()">🚪 Door<br><small class="deduct-dim" data-w="1.9" data-h="0.7" data-sep="x">1.9x0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathwall" onchange="updateDeductTotals()">🛁 Bath Wall<br><small class="deduct-dim" data-w="1.7" data-h="0.6" data-sep="x">1.7x0.6m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend1" onchange="updateDeductTotals()">🛁 Bath End<br><small class="deduct-dim" data-w="0.7" data-h="0.7" data-sep="x">0.7x0.7m</small></label>
+                <label class="deduct-chip"><input type="checkbox" value="bathend2" onchange="updateDeductTotals()">🛁 Bath End 2<br><small class="deduct-dim" data-w="0.7" data-h="0.7" data-sep="x">0.7x0.7m</small></label>
                 <label class="deduct-chip deduct-chip-manual" onclick="addManualDeduct(event)">✏ Custom<br><small>enter size</small></label>
             </div>
             <div id="deduct-w-manual" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;"></div>
@@ -1728,11 +1793,11 @@
             <div id="collapse-panel-trim-w" class="hidden">
             <div class="field-row">
                 <div class="field-group">
-                    <label>Lengths (× 2.5m)</label>
+                    <label>Lengths (× <span class="trimlen">2.4m</span>)</label>
                     <input id="rm-w-trim-lengths" type="number" step="1" min="0" placeholder="0" oninput="rmCalc();updateTrimBadge('w')">
                 </div>
                 <div class="field-group">
-                    <label>Price per length (£)</label>
+                    <label>Price per length (<span class="curr">£</span>)</label>
                     <input id="rm-w-trim-price" type="number" step="0.01" placeholder="Uses settings default" oninput="rmCalc();updateTrimBadge('w')">
                 </div>
             </div>
@@ -1755,21 +1820,25 @@
             </div>
             <div class="field-row">
                 <div class="field-group">
-                    <label>Tile W (mm)</label>
+                    <label>Tile W (<span class="mmunit">mm</span>)</label>
                     <input id="rm-w-tilew" type="number" value="300" oninput="rmCalc();rmUpdateTileBadge('wall-tile','rm-w-tilew','rm-w-tileh','rm-w-grout')">
+                    <input id="rm-w-tilew-in" type="text" class="hidden" placeholder="e.g. 11 13/16&quot;" oninput="rmMmInSync('rm-w-tilew')">
                 </div>
                 <div class="field-group">
-                    <label>Tile H (mm)</label>
+                    <label>Tile H (<span class="mmunit">mm</span>)</label>
                     <input id="rm-w-tileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('wall-tile','rm-w-tilew','rm-w-tileh','rm-w-grout')">
+                    <input id="rm-w-tileh-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-w-tileh')">
                 </div>
                 <div class="field-group">
-                    <label>Tile Thickness (mm)</label>
+                    <label>Tile Thickness (<span class="mmunit">mm</span>)</label>
                     <input id="rm-w-tilethick" type="number" value="8" oninput="rmCalc()">
+                    <input id="rm-w-tilethick-in" type="text" class="hidden" placeholder="e.g. 5/16&quot;" oninput="rmMmInSync('rm-w-tilethick')">
                 </div>
             </div>
             <div class="field-group">
-                <label>Grout Joint (mm)</label>
+                <label>Grout Joint (<span class="mmunit">mm</span>)</label>
                 <input id="rm-w-grout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('wall-tile','rm-w-tilew','rm-w-tileh','rm-w-grout')">
+                <input id="rm-w-grout-in" type="text" class="hidden" placeholder="e.g. 1/16&quot;" oninput="rmMmInSync('rm-w-grout')">
             </div>
             </div>
             <div class="rm-section-toggle" onclick="toggleCollapse('wall-prep')" id="collapse-toggle-wall-prep">
@@ -1780,20 +1849,20 @@
             <div class="prep-options">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-w-tanking" onchange="rmCalc()">
-                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-w"></span>/kit</span></div>
+                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-tank-w"></span>/kit</span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-w-primer" onchange="rmCalc()">
-                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-primer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-w-stone" onchange="rmToggleStoneW()">
-                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-stone"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <div id="rm-w-sealer-row" class="hidden">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-w-sealer" onchange="rmCalc()">
-                    <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                    <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-sealer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 </div>
             </div>
@@ -1817,16 +1886,19 @@
         <div class="form-card" style="margin-bottom:8px;">
             <div class="field-row">
                 <div class="field-group">
-                    <label>Width (m)</label>
+                    <label>Width (<span class="dimunit">m</span>)</label>
                     <input id="rm-sh-width" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc();rmShSyncTrayDims()" data-disto>
+                    <input id="rm-sh-width-ft" type="text" class="hidden" placeholder="e.g. 3' 0&quot;" oninput="rmFtInSync('rm-sh-width')" data-ft-shadow="1">
                 </div>
                 <div class="field-group">
-                    <label>Depth (m)</label>
+                    <label>Depth (<span class="dimunit">m</span>)</label>
                     <input id="rm-sh-depth" type="number" step="0.01" placeholder="e.g. 0.9" oninput="rmCalc();rmShSyncTrayDims()" data-disto>
+                    <input id="rm-sh-depth-ft" type="text" class="hidden" placeholder="e.g. 3' 0&quot;" oninput="rmFtInSync('rm-sh-depth')" data-ft-shadow="1">
                 </div>
                 <div class="field-group">
-                    <label>Height (m)</label>
+                    <label>Height (<span class="dimunit">m</span>)</label>
                     <input id="rm-sh-height" type="number" step="0.01" placeholder="e.g. 2.1" oninput="rmCalc()" data-disto>
+                    <input id="rm-sh-height-ft" type="text" class="hidden" placeholder="e.g. 6' 11&quot;" oninput="rmFtInSync('rm-sh-height')" data-ft-shadow="1">
                 </div>
             </div>
             <div class="field-group" style="margin-bottom:10px;">
@@ -1841,8 +1913,9 @@
                 <input id="rm-sh-wwastage" type="number" min="0" max="50" step="1" value="15" oninput="rmCalc()" style="width:80px;">
             </div>
             <div class="field-group" style="margin-top:8px;">
-                <label>Wall Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                <label>Wall Tile Price (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
                 <input id="rm-sh-wtilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+                <input id="rm-sh-wtilecost-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-sh-wtilecost')">
             </div>
         </div>
 
@@ -1874,21 +1947,25 @@
             </div>
             <div class="field-row">
                 <div class="field-group">
-                    <label>Tile W (mm)</label>
+                    <label>Tile W (<span class="mmunit">mm</span>)</label>
                     <input id="rm-sh-wtilew" type="number" value="300" oninput="rmCalc();rmUpdateTileBadge('shower-wall-tile','rm-sh-wtilew','rm-sh-wtileh','rm-sh-wgrout')">
+                    <input id="rm-sh-wtilew-in" type="text" class="hidden" placeholder="e.g. 11 13/16&quot;" oninput="rmMmInSync('rm-sh-wtilew')">
                 </div>
                 <div class="field-group">
-                    <label>Tile H (mm)</label>
+                    <label>Tile H (<span class="mmunit">mm</span>)</label>
                     <input id="rm-sh-wtileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('shower-wall-tile','rm-sh-wtilew','rm-sh-wtileh','rm-sh-wgrout')">
+                    <input id="rm-sh-wtileh-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-sh-wtileh')">
                 </div>
                 <div class="field-group">
-                    <label>Thickness (mm)</label>
+                    <label>Thickness (<span class="mmunit">mm</span>)</label>
                     <input id="rm-sh-wtilethick" type="number" value="8" oninput="rmCalc()">
+                    <input id="rm-sh-wtilethick-in" type="text" class="hidden" placeholder="e.g. 5/16&quot;" oninput="rmMmInSync('rm-sh-wtilethick')">
                 </div>
             </div>
             <div class="field-group">
-                <label>Wall Grout Joint (mm)</label>
+                <label>Wall Grout Joint (<span class="mmunit">mm</span>)</label>
                 <input id="rm-sh-wgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('shower-wall-tile','rm-sh-wtilew','rm-sh-wtileh','rm-sh-wgrout')">
+                <input id="rm-sh-wgrout-in" type="text" class="hidden" placeholder="e.g. 1/16&quot;" oninput="rmMmInSync('rm-sh-wgrout')">
             </div>
             </div>
             <div class="rm-section-toggle" onclick="toggleCollapse('shower-wall-prep')" id="collapse-toggle-shower-wall-prep">
@@ -1899,20 +1976,20 @@
             <div class="prep-options">
                 <label class="prep-option">
                     <input type="checkbox" id="rm-sh-tanking" onchange="rmCalc()" checked>
-                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-sh"></span>/kit</span></div>
+                    <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-tank-sh"></span>/kit</span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-sh-wprimer" onchange="rmCalc()">
-                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                    <div class="prep-text"><span>Primer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-primer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <label class="prep-option">
                     <input type="checkbox" id="rm-sh-wstone" onchange="rmToggleWStoneShower()">
-                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+£<span class="pc-stone"></span>/m²</span></div>
+                    <div class="prep-text"><span>Natural Stone Install</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-stone"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                 </label>
                 <div id="rm-sh-wsealer-row" class="hidden">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-sh-wsealer" onchange="rmCalc()">
-                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+£<span class="pc-sealer"></span>/m²</span></div>
+                        <div class="prep-text"><span>Stone Sealer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-sealer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                 </div>
             </div>
@@ -1930,21 +2007,23 @@
                 <div class="prep-options" style="margin-bottom:10px;">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-sh-tray" onchange="rmShTrayToggle()">
-                        <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost">£<span id="pc-wet-tray"></span> flat rate</span></div>
+                        <div class="prep-text"><span>Wetroom Tray</span><span class="prep-cost"><span class="curr">£</span><span id="pc-wet-tray"></span> flat rate</span></div>
                     </label>
                     <div id="rm-sh-tray-size-row" class="hidden" style="padding:6px 0 4px 28px;">
                         <div class="field-row" style="gap:8px;">
                             <div class="field-group">
-                                <label>Tray Price (£)</label>
+                                <label>Tray Price (<span class="curr">£</span>)</label>
                                 <input id="rm-sh-tray-price" type="number" step="1" placeholder="e.g. 150" oninput="rmCalc()">
                             </div>
                             <div class="field-group">
-                                <label>Width (mm)</label>
+                                <label>Width (<span class="mmunit">mm</span>)</label>
                                 <input id="rm-sh-tray-w" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                <input id="rm-sh-tray-w-in" type="text" class="hidden" placeholder="e.g. 35 7/16&quot;" oninput="rmMmInSync('rm-sh-tray-w')">
                             </div>
                             <div class="field-group">
-                                <label>Depth (mm)</label>
+                                <label>Depth (<span class="mmunit">mm</span>)</label>
                                 <input id="rm-sh-tray-d" type="number" step="10" placeholder="e.g. 900" oninput="rmCalc()">
+                                <input id="rm-sh-tray-d-in" type="text" class="hidden" placeholder="e.g. 35 7/16&quot;" oninput="rmMmInSync('rm-sh-tray-d')">
                             </div>
                         </div>
                     </div>
@@ -1953,8 +2032,9 @@
                     <label>Floor Wastage %</label>
                     <input id="rm-sh-fwastage" type="number" min="0" max="50" step="1" value="10" oninput="rmCalc()" style="width:80px;">
                 <div class="field-group" style="margin-top:8px;">
-                    <label>Floor Tile Price (£/m²) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
+                    <label>Floor Tile Price (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>) <span style="color:var(--text-muted);font-size:11px;">leave blank to use settings default</span></label>
                     <input id="rm-sh-ftilecost" type="number" step="0.01" placeholder="e.g. 25.00" oninput="rmCalc()">
+                    <input id="rm-sh-ftilecost-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('rm-sh-ftilecost')">
                 </div>
                 </div>
                 <div class="rm-section-toggle" onclick="toggleCollapse('shower-floor-tile')" id="collapse-toggle-shower-floor-tile">
@@ -1964,31 +2044,35 @@
                 <div id="collapse-panel-shower-floor-tile" class="hidden">
                 <div class="field-row">
                     <div class="field-group">
-                        <label>Tile W (mm)</label>
+                        <label>Tile W (<span class="mmunit">mm</span>)</label>
                         <input id="rm-sh-ftilew" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('shower-floor-tile','rm-sh-ftilew','rm-sh-ftileh','rm-sh-fgrout')">
+                        <input id="rm-sh-ftilew-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-sh-ftilew')">
                     </div>
                     <div class="field-group">
-                        <label>Tile H (mm)</label>
+                        <label>Tile H (<span class="mmunit">mm</span>)</label>
                         <input id="rm-sh-ftileh" type="number" value="600" oninput="rmCalc();rmUpdateTileBadge('shower-floor-tile','rm-sh-ftilew','rm-sh-ftileh','rm-sh-fgrout')">
+                        <input id="rm-sh-ftileh-in" type="text" class="hidden" placeholder="e.g. 23 5/8&quot;" oninput="rmMmInSync('rm-sh-ftileh')">
                     </div>
                     <div class="field-group">
-                        <label>Thickness (mm)</label>
+                        <label>Thickness (<span class="mmunit">mm</span>)</label>
                         <input id="rm-sh-ftilethick" type="number" value="10" oninput="rmCalc()">
+                        <input id="rm-sh-ftilethick-in" type="text" class="hidden" placeholder="e.g. 3/8&quot;" oninput="rmMmInSync('rm-sh-ftilethick')">
                     </div>
                 </div>
                 <div class="field-group">
-                    <label>Floor Grout Joint (mm)</label>
+                    <label>Floor Grout Joint (<span class="mmunit">mm</span>)</label>
                     <input id="rm-sh-fgrout" type="number" value="2" oninput="rmCalc();rmUpdateTileBadge('shower-floor-tile','rm-sh-ftilew','rm-sh-ftileh','rm-sh-fgrout')">
+                    <input id="rm-sh-fgrout-in" type="text" class="hidden" placeholder="e.g. 1/16&quot;" oninput="rmMmInSync('rm-sh-fgrout')">
                 </div>
                 </div>
                 <div class="prep-options" style="border-top:0.5px solid var(--border);padding-top:8px;margin-top:4px;">
                     <label class="prep-option">
                         <input type="checkbox" id="rm-sh-ftanking" onchange="rmCalc()" checked>
-                        <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+£<span class="pc-tank-sh"></span>/kit</span></div>
+                        <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-tank-sh"></span>/kit</span></div>
                     </label>
                     <label class="prep-option">
                         <input type="checkbox" id="rm-sh-levelling" onchange="rmToggleLevelSh()">
-                        <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+£<span class="pc-lev-sh"></span>/m²</span></div>
+                        <div class="prep-text"><span>Levelling Compound</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-lev-sh"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                     <div id="rm-sh-level-depth" class="prep-depth hidden">
                         <label>Depth</label>
@@ -2000,7 +2084,7 @@
                     </div>
                     <label class="prep-option">
                         <input type="checkbox" id="rm-sh-primer" onchange="rmCalc()">
-                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+£<span class="pc-primer"></span>/m²</span></div>
+                        <div class="prep-text"><span>Primer</span><span class="prep-cost">+<span class="curr">£</span><span class="pc-primer"></span>/<span class="arealabel" data-form="short">m²</span></span></div>
                     </label>
                 </div>
             </div>
@@ -2065,7 +2149,7 @@
                 <div class="field-group" style="margin-bottom:0;">
                     <label>Labour Pricing</label>
                     <div class="labour-toggle">
-                        <button id="ltbtn-m2"  onclick="setLabourType('m2')"  class="ltbtn ltbtn-active">£/m²</button>
+                        <button id="ltbtn-m2"  onclick="setLabourType('m2')"  class="ltbtn ltbtn-active"><span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span></button>
                         <button id="ltbtn-day" onclick="setLabourType('day')" class="ltbtn">Day Rate</button>
                     </div>
                 </div>
@@ -2076,7 +2160,7 @@
                             <input id="rm-days" type="number" step="0.5" min="0.5" placeholder="e.g. 2" oninput="rmCalc()">
                         </div>
                         <div class="field-group" style="margin-bottom:0;">
-                            <label>Day Rate (£)</label>
+                            <label>Day Rate (<span class="curr">£</span>)</label>
                             <input id="rm-dayrate" type="number" step="10" oninput="rmCalc()">
                         </div>
                     </div>
@@ -2088,7 +2172,7 @@
 
         <div class="live-total-card">
             <div class="live-total-label">Estimated Room Total <span id="rm-area" class="live-total-m2"></span></div>
-            <div class="live-total-value">£<span id="rm-total">0.00</span></div>
+            <div class="live-total-value"><span class="curr">£</span><span id="rm-total">0.00</span></div>
             <div id="rm-breakdown" class="total-breakdown"></div>
         </div>
 
@@ -2216,6 +2300,16 @@
                 <button onclick="changePassword()" class="btn-primary" style="width:100%;margin-top:8px;">Update Password</button>
             </div>
             <div class="form-card">
+                <div class="form-section-label">Region</div>
+                <div class="field-group">
+                    <label>Country <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(sets currency, tax label and date format)</span></label>
+                    <select id="set-region">
+                        <option value="uk">🇬🇧 United Kingdom</option>
+                        <option value="us">🇺🇸 United States</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Company Details</div>
                 <div class="field-group"><label>Company Name</label><input id="set-company-name" placeholder="Your Tiling Co." oninput="if(typeof updateEnquiryLinkPreview==='function')updateEnquiryLinkPreview()"></div>
                 <div class="field-group">
@@ -2363,12 +2457,12 @@
                     </select>
                 </div>
             </div>
-            <div class="form-card" style="margin-top:12px;">
+            <div class="form-card hidden" style="margin-top:12px;">
                 <div class="form-section-label">📆 Calendar Sync</div>
                 <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Scheduled jobs are pushed to your Google Calendar automatically, and your other Google Calendar events show up alongside job dates in TileIQ's calendar.</div>
                 <button id="btn-gcal" onclick="googleCalendarConnect()" class="btn-secondary" style="width:100%;border-color:#4285F4;color:#4285F4;">🔗 Connect Google Calendar</button>
             </div>
-            <div class="form-card" style="margin-top:12px;">
+            <div class="form-card hidden" style="margin-top:12px;">
                 <div class="form-section-label">📞 Business Phone</div>
                 <div class="field-group">
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -2429,9 +2523,9 @@
             <div class="form-card">
                 <div class="form-section-label">Tiles & Grout</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Tile Price (£/m²)</label><input id="set-tile-price" type="number" step="0.01"></div>
-                    <div class="field-group"><label>Grout 2.5kg bag (£)</label><input id="set-grout-price-25" type="number" step="0.01"></div>
-                    <div class="field-group"><label>Grout 5kg bag (£)</label><input id="set-grout-price-5" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Tile Price (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-tile-price" type="number" step="0.01"><input id="set-tile-price-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-tile-price')"></div>
+                    <div class="field-group"><label>Grout 2.5kg bag (<span class="curr">£</span>)</label><input id="set-grout-price-25" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Grout 5kg bag (<span class="curr">£</span>)</label><input id="set-grout-price-5" type="number" step="0.01"></div>
                 </div>
                 <div class="field-row">
                     <div class="field-group"><label>Grout bag size used</label>
@@ -2445,64 +2539,64 @@
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Adhesive & Silicone</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Grey Standard (per 20kg) £</label><input id="set-adhesive-price" type="number" step="0.01"></div>
-                    <div class="field-group"><label>Grey Rapid Set (per 20kg) £</label><input id="set-rapid-adh-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Grey Standard (per 20kg) <span class="curr">£</span></label><input id="set-adhesive-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Grey Rapid Set (per 20kg) <span class="curr">£</span></label><input id="set-rapid-adh-price" type="number" step="0.01"></div>
                 </div>
                 <div class="field-row">
-                    <div class="field-group"><label>White Standard (per 20kg) £</label><input id="set-adhesive-price-white" type="number" step="0.01"></div>
-                    <div class="field-group"><label>White Rapid Set (per 20kg) £</label><input id="set-rapid-adh-price-white" type="number" step="0.01"></div>
+                    <div class="field-group"><label>White Standard (per 20kg) <span class="curr">£</span></label><input id="set-adhesive-price-white" type="number" step="0.01"></div>
+                    <div class="field-group"><label>White Rapid Set (per 20kg) <span class="curr">£</span></label><input id="set-rapid-adh-price-white" type="number" step="0.01"></div>
                 </div>
                 <div class="field-row">
-                    <div class="field-group"><label>Silicone (per tube) £</label><input id="set-silicone-price" type="number" step="0.01"></div>
+                    <div class="field-group"><label>Silicone (per tube) <span class="curr">£</span></label><input id="set-silicone-price" type="number" step="0.01"></div>
                     <div class="field-group"><label>Silicone coverage (m/tube)</label><input id="set-silicone-coverage" type="number" step="0.1"></div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Cement Board</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Material (£/m²)</label><input id="set-cementboard" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Fitting Labour (£/m²)</label><input id="set-cb-labour" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Material (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-cementboard" type="number" step="0.50"><input id="set-cementboard-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-cementboard')"></div>
+                    <div class="field-group"><label>Fitting Labour (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-cb-labour" type="number" step="0.50"><input id="set-cb-labour-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-cb-labour')"></div>
                     <div class="field-group"><label>Bonding Adhesive (kg/m²)</label><input id="set-cb-adh" type="number" step="0.5"></div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Anti-Crack Membrane</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Material (£/m²)</label><input id="set-membrane" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Fitting Labour (£/m²)</label><input id="set-mem-labour" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Material (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-membrane" type="number" step="0.50"><input id="set-membrane-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-membrane')"></div>
+                    <div class="field-group"><label>Fitting Labour (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-mem-labour" type="number" step="0.50"><input id="set-mem-labour-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-mem-labour')"></div>
                     <div class="field-group"><label>Bedding Adhesive (kg/m²)</label><input id="set-mem-adh" type="number" step="0.5"></div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Levelling & Prep</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Levelling 2mm (£/m²)</label><input id="set-level2" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Levelling 3mm (£/m²)</label><input id="set-level3" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Levelling 4mm (£/m²)</label><input id="set-level4" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Levelling 2mm (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-level2" type="number" step="0.50"><input id="set-level2-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-level2')"></div>
+                    <div class="field-group"><label>Levelling 3mm (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-level3" type="number" step="0.50"><input id="set-level3-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-level3')"></div>
+                    <div class="field-group"><label>Levelling 4mm (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-level4" type="number" step="0.50"><input id="set-level4-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-level4')"></div>
                 </div>
                 <div class="field-row">
-                    <div class="field-group"><label>Compound Bag Cost (£)</label><input id="set-compound-bag-price" type="number" step="0.50" placeholder="e.g. 12.00"></div>
+                    <div class="field-group"><label>Compound Bag Cost (<span class="curr">£</span>)</label><input id="set-compound-bag-price" type="number" step="0.50" placeholder="e.g. 12.00"></div>
                     <div class="field-group"><label>Compound Coverage (m²/bag)</label><input id="set-compound-coverage" type="number" step="0.5" placeholder="e.g. 3.0"></div>
                 </div>
                 <div class="field-row">
-                    <div class="field-group"><label>Tanking Kit (£ per kit, covers 6m²)</label><input id="set-tanking" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Tanking Labour (£/m²)</label><input id="set-tanking-labour" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Primer (£/m²)</label><input id="set-primer-price" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Tanking Kit (<span class="curr">£</span> per kit, covers 6m²)</label><input id="set-tanking" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Tanking Labour (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-tanking-labour" type="number" step="0.50"><input id="set-tanking-labour-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-tanking-labour')"></div>
+                    <div class="field-group"><label>Primer (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-primer-price" type="number" step="0.50"><input id="set-primer-price-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-primer-price')"></div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Trims & Clips</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Tile Trim (£ per 2.5m)</label><input id="set-trim-price" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Clips (£ per 200)</label><input id="set-clip-price" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Wedges (£ per 200)</label><input id="set-wedge-price" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Tile Trim (<span class="curr">£</span> per 2.4m)</label><input id="set-trim-price" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Clips (<span class="curr">£</span> per 200)</label><input id="set-clip-price" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Wedges (<span class="curr">£</span> per 200)</label><input id="set-wedge-price" type="number" step="0.50"></div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Natural Stone</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Stone Install (£/m²)</label><input id="set-stone-surcharge" type="number" step="0.50"></div>
-                    <div class="field-group"><label>Stone Sealer (£/m²)</label><input id="set-sealer-price" type="number" step="0.50"></div>
+                    <div class="field-group"><label>Stone Install (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-stone-surcharge" type="number" step="0.50"><input id="set-stone-surcharge-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-stone-surcharge')"></div>
+                    <div class="field-group"><label>Stone Sealer (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-sealer-price" type="number" step="0.50"><input id="set-sealer-price-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-sealer-price')"></div>
                 </div>
                 <div class="field-row">
                     <div class="field-group"><label>Sealer Coverage (m²/litre)</label><input id="set-sealer-coverage" type="number" step="0.5" placeholder="4"></div>
@@ -2521,17 +2615,17 @@
             <div class="form-card">
                 <div class="form-section-label">Labour Rates</div>
                 <div class="field-row">
-                    <div class="field-group"><label>Labour Rate (£/m²)</label><input id="set-labour-m2" type="number" step="0.5"></div>
-                    <div class="field-group"><label>Day Rate (£/day)</label><input id="set-day-rate" type="number"></div>
+                    <div class="field-group"><label>Labour Rate (<span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span>)</label><input id="set-labour-m2" type="number" step="0.5"><input id="set-labour-m2-ft2rate" type="text" class="hidden" placeholder="e.g. 2.50" oninput="rmRateInSync('set-labour-m2')"></div>
+                    <div class="field-group"><label>Day Rate (<span class="curr">£</span>/day)</label><input id="set-day-rate" type="number"></div>
                 </div>
                 <div class="field-row">
-                    <div class="field-group"><label>Wet Room Tray (£)</label><input id="set-wet-room-tray" type="number" step="1"></div>
-                    <div class="field-group"><label>Niche Labour (£ each)</label><input id="set-niche-labour" type="number" step="1"></div>
+                    <div class="field-group"><label>Wet Room Tray (<span class="curr">£</span>)</label><input id="set-wet-room-tray" type="number" step="1"></div>
+                    <div class="field-group"><label>Niche Labour (<span class="curr">£</span> each)</label><input id="set-niche-labour" type="number" step="1"></div>
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
                 <div class="form-section-label">Labour Rate Multipliers by Tile Type</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Applied to base £/m² rate. 1.0 = standard rate.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Applied to base <span class="curr">£</span>/<span class="arealabel" data-form="short">m²</span> rate. 1.0 = standard rate.</div>
                 <div class="field-row">
                     <div class="field-group"><label>Ceramic</label><input id="set-rate-ceramic" type="number" step="0.05" placeholder="1.0"></div>
                     <div class="field-group"><label>Porcelain</label><input id="set-rate-porcelain" type="number" step="0.05" placeholder="1.2"></div>
@@ -2544,14 +2638,14 @@
                 </div>
             </div>
             <div class="form-card" style="margin-top:12px;">
-                <div class="form-section-label">Markup & VAT</div>
+                <div class="form-section-label">Markup &amp; <span class="taxlabel">VAT</span></div>
                 <div class="field-row">
                     <div class="field-group"><label>Material Markup (%)</label><input id="set-markup" type="number"></div>
                     <div class="field-group"><label>Markup Labour too?</label>
                         <select id="set-labour-markup"><option value="false">No</option><option value="true">Yes</option></select>
                     </div>
                 </div>
-                <div class="field-group"><label>Apply VAT by default?</label>
+                <div class="field-group"><label>Apply <span class="taxlabel">VAT</span> by default?</label>
                     <select id="set-vat"><option value="true">Yes – 20%</option><option value="false">No</option></select>
                 </div>
             </div>
@@ -2616,7 +2710,7 @@
     <div class="page-body">
         <div class="form-card" style="margin-bottom:14px;">
             <div class="field-row">
-                <div class="field-group"><label>Apply VAT?</label>
+                <div class="field-group"><label>Apply <span class="taxlabel">VAT</span>?</label>
                     <select id="q-vat" onchange="renderQuote()"><option value="true">Yes – 20%</option><option value="false">No</option></select>
                 </div>
                 <div class="field-group"><label>Valid for (days)</label>
@@ -4039,7 +4133,7 @@
                 <div style="font-family:'Syne',sans-serif;font-weight:800;color:#2b1e05;font-size:17px;letter-spacing:.2px;">📐 Sketch the outline</div>
                 <div id="sketch-hint" style="color:rgba(43,30,5,.75);font-size:12px;margin-top:2px;">Tap to place each corner — snaps to 45°. Need at least 3 points.</div>
             </div>
-            <button type="button" id="sketch-disto-connect-btn" class="disto-btn" style="background:rgba(0,0,0,.15);border:none;color:#2b1e05;font-weight:700;font-size:11px;padding:8px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;white-space:nowrap;">⚪ Disto</button>
+            <button type="button" id="sketch-disto-connect-btn" class="disto-btn" style="background:rgba(0,0,0,.15);border:none;color:#2b1e05;font-weight:700;font-size:11px;padding:8px 10px;border-radius:8px;cursor:pointer;flex-shrink:0;white-space:nowrap;">⚪ Laser</button>
         </div>
     </div>
     <canvas id="sketch-canvas" style="flex:1;min-height:0;touch-action:none;"></canvas>
