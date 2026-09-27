@@ -9,7 +9,9 @@
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;font-family:Arial,Helvetica,sans-serif}
 .demo-bar{height:38px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 12px;background:#E07A2F;color:#111;font-size:12px;font-weight:700;position:relative;z-index:10}
 .demo-bar span{font-weight:500}
-.demo-bar a{position:absolute;right:12px;color:#111;text-decoration:none;font-weight:800}
+.demo-bar .demo-exit{position:absolute;right:12px;color:#111;text-decoration:none;font-weight:800}
+.demo-bar .demo-get{background:#111;color:#fff;text-decoration:none;font-weight:800;padding:6px 12px;border-radius:99px;white-space:nowrap}
+.demo-bar .demo-get:hover{background:#000}
 
 .demo-stage{
   width:100%;
@@ -51,7 +53,8 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;fon
 
 @media(max-width:640px){
   .demo-bar{height:34px;font-size:11px;justify-content:flex-start;padding-right:88px}
-  .demo-bar a{right:9px}
+  .demo-bar span{display:none}
+  .demo-bar .demo-exit{right:9px}
   .demo-stage{height:calc(100% - 34px);padding:0;background:none}
   .phone-frame{width:100%;height:100%;border-radius:0;padding:0;box-shadow:none;background:transparent}
   .phone-frame::before{display:none}
@@ -60,13 +63,20 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;fon
 </style>
 </head>
 <body>
-<div class="demo-bar">TileIQ Pro Demo <span>— real app, demo account</span><a href="https://tile-iq.com">Exit demo</a></div>
+<div class="demo-bar">TileIQ Pro Demo <span>— real app, demo account</span><a class="demo-get" id="demo-get-app" href="https://tile-iq.com/" target="_blank" rel="noopener">Get the app free</a><a class="demo-exit" href="https://tile-iq.com">Exit demo</a></div>
 <div class="demo-stage">
   <div class="phone-frame">
     <iframe id="tileiq-demo-app" class="demo-frame" src="/app/?demo=1" title="TileIQ Pro Demo"></iframe>
   </div>
 </div>
 <script>
+// "Get the app free": straight to the right store on a phone, the homepage (both badges) elsewhere
+(() => {
+  const get = document.getElementById('demo-get-app');
+  const ua = navigator.userAgent;
+  if (/android/i.test(ua)) get.href = 'https://play.google.com/store/apps/details?id=com.tileiqpro.android';
+  else if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && 'ontouchend' in document)) get.href = 'https://apps.apple.com/gb/app/tileiq-pro/id6787447373';
+})();
 (() => {
   const frame = document.getElementById('tileiq-demo-app');
   let loginClicked = false;
