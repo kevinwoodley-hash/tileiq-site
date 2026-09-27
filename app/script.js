@@ -442,6 +442,7 @@ function showDemoDownloadSheet(what) {
             <a href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener" style="display:block;text-align:center;background:#f59e0b;color:#000;text-decoration:none;border-radius:12px;padding:15px;font-size:15px;font-weight:800;margin-bottom:10px;">Get it on Google Play</a>
             <a href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener" style="display:block;text-align:center;background:#f59e0b;color:#000;text-decoration:none;border-radius:12px;padding:15px;font-size:15px;font-weight:800;margin-bottom:10px;">Download on the App Store</a>
             <button onclick="document.getElementById('demo-download-sheet').remove()" style="width:100%;background:transparent;color:#94a3b8;border:none;padding:12px;font-size:15px;font-weight:600;cursor:pointer;">Keep exploring the demo</button>
+            <a href="https://tile-iq.com" target="_top" style="display:block;text-align:center;color:#f59e0b;font-size:14px;font-weight:700;text-decoration:none;padding:6px;">Visit tile-iq.com</a>
         </div>`;
     document.body.appendChild(sheet);
 }
