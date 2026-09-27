@@ -422,6 +422,16 @@ function uid()     { return Date.now().toString(36) + Math.random().toString(36)
 // visitor tries themselves get a download prompt instead; background cloud
 // saves are skipped silently, so each visitor's edits stay in their browser.
 const DEMO_EMAIL = "demo@tile-iq.com";
+// Email actions (quotes, invoices, invites, review requests, customer replies)
+// carry the signed-in session so the worker can check who is sending.
+function emailAuthHeaders() {
+    const h = { "Content-Type": "application/json" };
+    try {
+        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+        if (tok) h["Authorization"] = "Bearer " + tok;
+    } catch(e) {}
+    return h;
+}
 function isDemoAccount() { return !!currentUser && currentUser.email === DEMO_EMAIL; }
 function demoBlocked(what) {
     if (!isDemoAccount()) return false;
@@ -4650,7 +4660,7 @@ async function saveAndSendSchedule() {
     try {
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: emailAuthHeaders(),
             body: JSON.stringify({
                 action:       "send_calendar_invite",
                 to:           j.email,
@@ -4733,6 +4743,7 @@ async function addToCalendar() {
 }
 
 async function emailCalendarInvite() {
+    if (demoBlocked("Emailing calendar invites")) return;
     const j = getJob();
     if (!j?.jobStartDate) { alert("Save dates first."); return; }
     if (!j.email)         { alert("No customer email saved on this job."); return; }
@@ -4747,7 +4758,7 @@ async function emailCalendarInvite() {
     try {
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: emailAuthHeaders(),
             body: JSON.stringify({
                 action:       "send_calendar_invite",
                 to:           j.email,
@@ -5029,7 +5040,7 @@ async function sendTilerReply(messageId, quoteToken) {
     const btn = input.nextElementSibling;
     if (btn) { btn.disabled = true; btn.textContent = "Sending\u2026"; }
     try {
-        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"send_tiler_reply",message_id:messageId,token:quoteToken,reply}) });
+        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", { method:"POST", headers: emailAuthHeaders(), body:JSON.stringify({action:"send_tiler_reply",message_id:messageId,token:quoteToken,reply}) });
         if (!resp.ok) throw new Error();
         await goMessages();
     } catch(e) { if (btn) { btn.disabled = false; btn.textContent = "Send Reply"; } }
@@ -5905,7 +5916,7 @@ async function sendReviewRequestEmail(job) {
     job.reviewRequestSent = true; // set synchronously so the imminent saveAll() persists it, and can't double-fire
     try {
         const resp = await fetch(TILEIQ_WORKER_URL, {
-            method: "POST", headers: { "Content-Type": "application/json" },
+            method: "POST", headers: emailAuthHeaders(),
             body: JSON.stringify({
                 action: "send_review_request_email",
                 to: job.email, customerName: job.customerName,
@@ -12717,7 +12728,7 @@ async function sendInvoiceByEmail(jobId) {
         try {
             const fileName = `Invoice-${(j.customerName || "Customer").replace(/[^a-z0-9]/gi, "-")}.pdf`;
             const resp = await fetch(TILEIQ_WORKER_URL, {
-                method: "POST", headers: { "Content-Type": "application/json" },
+                method: "POST", headers: emailAuthHeaders(),
                 body: JSON.stringify({
                     action: "send_quote_email",
                     to: j.email, customerName: j.customerName, quoteUrl: "",
@@ -12891,7 +12902,7 @@ async function sendQuoteByEmail() {
 
     try {
         const resp = await fetch(TILEIQ_WORKER_URL, {
-            method: "POST", headers: { "Content-Type": "application/json" },
+            method: "POST", headers: emailAuthHeaders(),
             body: JSON.stringify({
                 action: "send_quote_email", to: j.email, customerName: j.customerName, quoteUrl: url,
                 companyName: settings.companyName || "", companyPhone: settings.companyPhone || "",
