@@ -1,0 +1,52 @@
+/* Ad landing pages (/lp/*): one message, one action — try the live demo.
+   Builds on /style.css (colours, buttons, feature grids, FAQ, CTA band). */
+
+.lp-page .site-header .nav { justify-content: space-between; }
+.lp-header-cta { white-space: nowrap; }
+
+.lp-hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 48px; align-items: center; }
+.lp-hero h1 { margin-top: 10px; }
+.lp-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 26px; }
+.lp-note { font-size: 14px; color: var(--muted); }
+.lp-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+.lp-badges img { display: block; width: auto; }
+.lp-badges .gp img { height: 60px; margin: -8px; }
+.lp-badges .as img { height: 42px; }
+
+.lp-phone { justify-self: center; width: 100%; max-width: 300px; }
+.lp-phone img { display: block; width: 100%; height: auto; border-radius: 30px; border: 8px solid #1b1f24; box-shadow: 0 24px 60px rgba(0, 0, 0, .45); }
+.lp-wide img { display: block; width: 100%; height: auto; border-radius: 18px; }
+
+.lp-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 22px; }
+.lp-step { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.lp-step img { display: block; width: 100%; max-width: 230px; height: auto; align-self: center; border-radius: 16px; border: 1px solid var(--line); margin-bottom: 6px; }
+.lp-step .lp-num { font: 800 13px 'Manrope', sans-serif; letter-spacing: .12em; color: var(--yellow); }
+.lp-step h3 { margin: 0; font: 800 20px/1.25 'Manrope', sans-serif; }
+.lp-step p { margin: 0; color: var(--muted); line-height: 1.55; }
+
+.lp-try { background: var(--panel); border: 2px solid var(--yellow); border-radius: 22px; padding: 30px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center; }
+.lp-try h2 { margin: 6px 0 12px; }
+.lp-try ol { margin: 0; padding-left: 22px; color: #dfe3e6; line-height: 1.7; }
+.lp-try ol li + li { margin-top: 4px; }
+.lp-try small { display: block; margin-top: 12px; color: var(--muted); }
+
+.lp-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 26px 0; }
+.lp-more p { margin: 0; color: var(--muted); max-width: 640px; }
+.lp-more a { color: var(--yellow); font-weight: 700; text-decoration: none; }
+
+.lp-footer { border-top: 1px solid var(--line); padding: 28px 0 32px; color: var(--muted); font-size: 14px; }
+.lp-footer .container { display: flex; flex-wrap: wrap; gap: 10px 22px; justify-content: space-between; }
+.lp-footer a { color: var(--muted); }
+
+.lp-sticky { display: none; }
+
+@media (max-width: 860px) {
+  .lp-hero { grid-template-columns: 1fr; gap: 32px; }
+  .lp-phone { max-width: 260px; }
+  .lp-try { grid-template-columns: 1fr; padding: 24px 20px; }
+}
+@media (max-width: 760px) {
+  .lp-page { padding-bottom: 88px; }
+  .lp-sticky { display: block; position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 60; text-align: center; background: var(--yellow); color: #07090b; font: 800 17px 'Manrope', sans-serif; padding: 16px; border-radius: 14px; text-decoration: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+  .lp-header-cta { display: none; }
+}
