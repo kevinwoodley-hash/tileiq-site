@@ -1036,6 +1036,10 @@
         <div class="rm-jump-nav" id="rm-jump-nav-room"></div>
 
         <div class="form-card" style="margin-bottom:8px;">
+            <label class="checkbox-label" style="margin-bottom:10px;">
+                <input type="checkbox" id="rm-r-inclfloor" checked onchange="rmToggleFloor()">
+                Include floor
+            </label>
             <div class="rm-section-toggle" onclick="toggleDeductPanel('r')" id="deduct-toggle-r">
                 <div><span class="rm-section-title">Deductions</span></div>
                 <span class="rm-section-arrow">▸</span>
@@ -1057,11 +1061,8 @@
         </div>
 
         <div class="form-card" style="margin-bottom:8px;">
-            <div class="rm-section-toggle" onclick="toggleCollapse('room-wall-opts')" id="collapse-toggle-room-wall-opts">
-                <div><span class="rm-section-title">Wall Options</span></div>
-                <span class="rm-section-arrow" id="collapse-arrow-room-wall-opts">▸</span>
-            </div>
-            <div id="collapse-panel-room-wall-opts" class="hidden" style="padding-top:10px;">
+            <!-- Full Room walls: Wall Tile / Wall Prep / Niches are top-level jump-nav sections (no group header) -->
+            <div id="collapse-panel-room-wall-opts">
                 <div class="rm-section-toggle" onclick="toggleCollapse('walltiles')" id="collapse-toggle-walltiles">
                     <div><span class="rm-section-title">Wall Tiles</span><span id="walltiles-badge" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:6px;"></span></div>
                     <span class="rm-section-arrow" id="collapse-arrow-walltiles">▸</span>
@@ -1176,16 +1177,14 @@
         </div>
 
         <div class="form-card" style="margin-bottom:8px;">
-            <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-opts')" id="collapse-toggle-room-floor-opts">
-                <div><span class="rm-section-title">Floor Options</span></div>
-                <span class="rm-section-arrow" id="collapse-arrow-room-floor-opts">▸</span>
-            </div>
-            <div id="collapse-panel-room-floor-opts" class="hidden" style="padding-top:8px;">
-            <label class="checkbox-label" style="margin-bottom:10px;">
-                <input type="checkbox" id="rm-r-inclfloor" checked onchange="rmToggleFloor()">
-                Include floor
-            </label>
+            <!-- Full Room floor: Floor Tile / Floor Prep / UFH / Wetroom Tray are top-level jump-nav sections (no group header) -->
+            <div id="collapse-panel-room-floor-opts">
             <div id="rm-r-floor-opts">
+                <div class="rm-section-toggle" onclick="toggleCollapse('wetroom-r')" id="collapse-toggle-wetroom-r">
+                    <div><span class="rm-section-title">Wetroom Tray</span></div>
+                    <span class="rm-section-arrow" id="collapse-arrow-wetroom-r">▸</span>
+                </div>
+                <div id="collapse-panel-wetroom-r" class="hidden" style="padding-top:8px;">
                 <label class="checkbox-label" style="margin-bottom:10px;">
                     <input type="checkbox" id="rm-r-wetroom" onchange="rmToggleWetRoomR()">
                     Wetroom Tray
@@ -1219,6 +1218,7 @@
                             <div class="prep-text"><span>Tanking (Waterproofing)</span><span class="prep-cost">+<span class="curr">£</span><span id="pc-tank-r"></span>/kit</span></div>
                         </label>
                     </div>
+                </div>
                 </div>
                 <div class="rm-section-toggle" onclick="toggleCollapse('room-floor-tile')" id="collapse-toggle-room-floor-tile">
                     <div><span class="rm-section-title">Floor Tile</span><span id="room-floor-tile-badge" class="rm-section-badge"></span></div>

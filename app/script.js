@@ -6752,7 +6752,7 @@ function rmSelectType(type, isEdit) {
     renderRoomJumpNav();
     renderRoomSummary();
     // Close all collapsible panels when switching type
-    ["walltiles","sealant","extrawork","trim","room-labour","room-wall-opts","room-wall-prep","room-floor-opts","room-floor-tile","room-floor-prep",
+    ["walltiles","sealant","extrawork","trim","room-labour","room-wall-prep","niches-r","room-floor-tile","room-floor-prep","ufh-r","wetroom-r",
      "floor-tile","floor-prep","wall-tile","wall-prep",
      "shower-wall-tile","shower-wall-prep","shower-floor-opts","shower-floor-tile",
      "niches-sh","extrawork-sh","extrawork-f","trim-f","trim-w","wetroom-f","room-extra-floors","room-extra-walls",
@@ -6832,6 +6832,9 @@ function rmFTrayToggle() {
 function rmToggleFloor() {
     const show = document.getElementById("rm-r-inclfloor").checked;
     document.getElementById("rm-r-floor-opts").style.display = show ? "" : "none";
+    // Floor sections leave/rejoin the jump nav; close one that was open
+    if (!show && RM_ROOM_FLOOR_KEYS.includes(rmActiveSection)) { closeCollapse(rmActiveSection); rmActiveSection = null; }
+    renderRoomJumpNav(); renderRoomSummary(); syncRoomSectionCards();
     rmCalc();
 }
 
@@ -7013,6 +7016,7 @@ function restoreRoomInputs(room) {
             setCb("rm-r-inclfloor", false);
             document.getElementById("rm-r-floor-opts").style.display = "none";
         }
+        renderRoomJumpNav(); syncRoomSectionCards();
     } else if (currentSurfType === "floor" && floors.length) {
         // Same fix as rRealDims above — a genuinely square floor shouldn't be
         // treated as fake/derived just because length equals width.
@@ -8478,9 +8482,9 @@ function clearDeducts() {
 
 // Sections grouped by form — opening one closes others in the same group
 const COLLAPSE_GROUPS = {
-    roomMain:   ["room-labour","room-wall-opts","room-floor-opts"],
+    roomMain:   ["room-labour"],
     roomWall:   ["walltiles","room-wall-prep","niches-r"],
-    roomFloor:  ["room-floor-tile","room-floor-prep","ufh-r"],
+    roomFloor:  ["room-floor-tile","room-floor-prep","ufh-r","wetroom-r"],
     floor:      ["floor-tile","floor-prep"],
     wallTile:   ["wall-tile","wall-prep"],
     shower:       ["shower-wall-tile","shower-wall-prep"],
@@ -8489,7 +8493,8 @@ const COLLAPSE_GROUPS = {
 // The top-level sections shown as jump-nav chips / breadcrumbs per room type —
 // same keys used by the jump-nav buttons and the collapsible panels themselves.
 const RM_JUMP_SECTIONS = {
-    room:   [["room-wall-opts","Wall Options"], ["room-floor-opts","Floor Options"], ["sealant","Sealant"], ["extrawork","Extra Work"], ["trim","Tile Trim"], ["room-extra-floors","+ Floors"], ["room-extra-walls","+ Walls"]],
+    // Full Room is flat like the others: walls first, then floor, then the shared extras.
+    room:   [["walltiles","Wall Tile"], ["room-wall-prep","Wall Prep"], ["niches-r","Niches"], ["room-floor-tile","Floor Tile"], ["room-floor-prep","Floor Prep"], ["ufh-r","UFH"], ["wetroom-r","Wetroom Tray"], ["sealant","Sealant"], ["extrawork","Extra Work"], ["trim","Tile Trim"], ["room-extra-floors","+ Floors"], ["room-extra-walls","+ Walls"]],
     floor:  [["floor-tile","Tile"], ["floor-prep","Floor Prep"], ["ufh-f","UFH"], ["wetroom-f","Wetroom Tray"], ["sealant-f","Sealant"], ["extrawork-f","Extra Work"], ["trim-f","Tile Trim"], ["floor-extra","+ Floors"]],
     wall:   [["wall-tile","Tile"], ["wall-prep","Wall Prep"], ["niches-w","Niches"], ["sealant-w","Sealant"], ["extrawork-w","Extra Work"], ["trim-w","Tile Trim"], ["wall-extra","+ Walls"]],
     shower: [["shower-wall-tile","Wall Tiles"], ["shower-wall-prep","Wall Prep"], ["shower-floor-opts","Wetroom Tray"], ["niches-sh","Niches"], ["sealant-sh","Sealant"], ["extrawork-sh","Extra Work"], ["shower-extra","+ Floors / Walls"]],
@@ -8497,8 +8502,15 @@ const RM_JUMP_SECTIONS = {
 let rmVisitedSections = new Set(); // top-level sections the tiler has opened + moved on from
 let rmActiveSection = null;        // top-level section currently open, if any
 
+const RM_ROOM_FLOOR_KEYS = ["room-floor-tile","room-floor-prep","ufh-r","wetroom-r"];
+function rmJumpSectionsForCurrentType() {
+    const sections = RM_JUMP_SECTIONS[currentSurfType] || [];
+    if (currentSurfType === "room" && document.getElementById("rm-r-inclfloor")?.checked === false)
+        return sections.filter(([k]) => !RM_ROOM_FLOOR_KEYS.includes(k));
+    return sections;
+}
 function rmJumpKeysForCurrentType() {
-    return (RM_JUMP_SECTIONS[currentSurfType] || []).map(([k]) => k);
+    return rmJumpSectionsForCurrentType().map(([k]) => k);
 }
 
 function toggleCollapse(key) {
@@ -8590,7 +8602,7 @@ function jumpToSection(key) {
 function renderRoomJumpNav() {
     const container = document.getElementById("rm-jump-nav-" + currentSurfType);
     if (!container) return;
-    const sections = RM_JUMP_SECTIONS[currentSurfType] || [];
+    const sections = rmJumpSectionsForCurrentType();
     container.innerHTML = sections.map(([key, label]) => {
         const isActive = key === rmActiveSection;
         const isDone   = !isActive && rmVisitedSections.has(key);
@@ -8607,7 +8619,7 @@ function renderRoomJumpNav() {
 function renderRoomSummary() {
     const container = document.getElementById("rm-summary");
     if (!container) return;
-    const sections = (RM_JUMP_SECTIONS[currentSurfType] || []).filter(([key]) => rmVisitedSections.has(key));
+    const sections = rmJumpSectionsForCurrentType().filter(([key]) => rmVisitedSections.has(key));
     if (!sections.length) {
         container.classList.add("hidden");
         container.innerHTML = "";
