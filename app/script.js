@@ -439,7 +439,8 @@ const StartHere = (() => {
         quoting: { title: "Build a quote in 2 minutes", items: [
             { text: "Open <b>Paul Anderson</b>, the new enquiry", done: () => onJob("Paul Anderson"), go: () => openJob("Paul Anderson") },
             { text: "Add a room: try <b>Floor only</b>, 3 m × 2 m, pick a tile and save", done: () => (byName("Paul Anderson")?.rooms || []).length > 0, go: () => openJob("Paul Anderson", goAddRoom) },
-            { text: "Open the <b>quote</b>: materials, labour and total", done: () => screen() === "screen-quote" && getJob()?.customerName === "Paul Anderson", go: () => openJob("Paul Anderson", goQuote) },
+            // No room yet → the quote screen would only alert "add a room first", so start there instead
+            { text: "Open the <b>quote</b>: materials, labour and total", done: () => screen() === "screen-quote" && getJob()?.customerName === "Paul Anderson", go: () => openJob("Paul Anderson", (byName("Paul Anderson")?.rooms || []).length ? goQuote : goAddRoom) },
         ]},
         admin: { title: "Your office, in your pocket", items: [
             { text: "Open <b>Emma Wilson</b>: her quote's been accepted", done: () => onJob("Emma Wilson"), go: () => openJob("Emma Wilson") },
