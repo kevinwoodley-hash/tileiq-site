@@ -1988,6 +1988,13 @@ async function loadUserData() {
 
 // On startup — check localStorage for existing session directly
 (async () => {
+    // Wait until the rest of this script has run. This block sits ~11,000
+    // lines above `let _proStatus` / `let _rcAppUserId` (and other late
+    // let/const), and touching those before their declaration throws — which
+    // the catch below swallowed, so a saved session NEVER restored: every
+    // launch landed on the sign-in screen. One microtask defers this past the
+    // end of the script, when every declaration exists.
+    await null;
     const t0 = Date.now();
 
     if (localStorage.getItem("tileiq-signed-out")) {
@@ -2003,12 +2010,33 @@ async function loadUserData() {
     const stored = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token");
     if (stored) {
         try {
-            const session = JSON.parse(stored);
+            let session = JSON.parse(stored);
             const now = Math.floor(Date.now() / 1000);
-            const tokenExpired = session.expires_at <= now;
+            let tokenExpired = session.expires_at <= now;
 
             // Use navigator.onLine as quick check — loadUserData handles real failures gracefully
             const isOffline = !navigator.onLine;
+
+            // Access tokens only last ~1 hour, so opening the app the next day
+            // always found an expired one and dropped the user on the sign-in
+            // screen. Renew it with the saved refresh token instead: getSession()
+            // refreshes an expired session itself (sharing supabase-js's own
+            // refresh lock, so it can't race its background auto-refresh). Only
+            // if that fails does the user see the sign-in screen.
+            if (tokenExpired && !isOffline && session.refresh_token) {
+                try {
+                    const res = await Promise.race([
+                        sb.auth.getSession(),
+                        new Promise(resolve => setTimeout(() => resolve(null), 8000))
+                    ]);
+                    const fresh = res?.data?.session;
+                    if (fresh?.access_token && fresh.expires_at > Math.floor(Date.now() / 1000)) {
+                        session = fresh;
+                        tokenExpired = false;
+                        localStorage.setItem("sb-lzwmqabxpxuuznhbpewm-auth-token", JSON.stringify(fresh));
+                    }
+                } catch(e) { console.warn("Session refresh failed:", e.message); }
+            }
 
             if (session.user && (!tokenExpired || isOffline)) {
                 currentUser = session.user;
@@ -2073,7 +2101,7 @@ async function loadUserData() {
                 }, 500);
                 return;
             }
-        } catch(e) {}
+        } catch(e) { console.error("Startup session restore failed:", e); }
     }
 
     // No session — sign in screen
