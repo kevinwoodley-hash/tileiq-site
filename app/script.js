@@ -422,6 +422,117 @@ function uid()     { return Date.now().toString(36) + Math.random().toString(36)
 // visitor tries themselves get a download prompt instead; background cloud
 // saves are skipped silently, so each visitor's edits stay in their browser.
 const DEMO_EMAIL = "demo@tile-iq.com";
+// ── "Start here" guide ────────────────────────────────────────
+// A short checklist for web-demo visitors (tile-iq.com/app/demo), picked by
+// the landing page they came from: /app/demo?try=quoting|admin|reviews|social
+// (anything else → the whole-app tour). Items tick themselves off by watching
+// app state (the room gets added, the job gets booked, the screen opens) —
+// never by hooking the app's own functions — and each has a "Show me"
+// shortcut. Written as a general guide so it can later serve new real users.
+const StartHere = (() => {
+    const KEY = "tileiq-starthere";
+    const byName = n => jobs.find(j => (j.customerName || "") === n);
+    const screen = () => document.querySelector(".screen:not(.hidden)")?.id || "";
+    const onJob  = n => screen() === "screen-job" && getJob()?.customerName === n;
+    const openJob = (n, then) => { const j = byName(n); if (!j) return; goJob(j.id); if (then) setTimeout(then, 350); };
+    const TRACKS = {
+        quoting: { title: "Build a quote in 2 minutes", items: [
+            { text: "Open <b>Paul Anderson</b>, the new enquiry", done: () => onJob("Paul Anderson"), go: () => openJob("Paul Anderson") },
+            { text: "Add a room: try <b>Floor only</b>, 3 m × 2 m, pick a tile and save", done: () => (byName("Paul Anderson")?.rooms || []).length > 0, go: () => openJob("Paul Anderson", goAddRoom) },
+            { text: "Open the <b>quote</b>: materials, labour and total", done: () => screen() === "screen-quote" && getJob()?.customerName === "Paul Anderson", go: () => openJob("Paul Anderson", goQuote) },
+        ]},
+        admin: { title: "Your office, in your pocket", items: [
+            { text: "Open <b>Emma Wilson</b>: her quote's been accepted", done: () => onJob("Emma Wilson"), go: () => openJob("Emma Wilson") },
+            { text: "Book her in: tap <b>Schedule Job</b> and pick dates", done: () => !!byName("Emma Wilson")?.jobStartDate, go: () => openJob("Emma Wilson", () => typeof showScheduleSheet === "function" && showScheduleSheet()) },
+            { text: "Turn <b>David Harris</b>'s quote into an <b>invoice</b>", done: () => !!document.getElementById("send-invoice-sheet") && getJob()?.customerName === "David Harris", go: () => openJob("David Harris", goQuote) },
+            { text: "Check the <b>Calendar</b>", done: () => screen() === "screen-calendar", go: () => goCalendar() },
+        ]},
+        reviews: { title: "Google reviews on autopilot", note: "Nothing is emailed from the demo.", items: [
+            { text: "Open <b>Settings</b> and find <b>Google Reviews</b>", done: () => screen() === "screen-settings", go: () => { goSettings(); setTimeout(() => [...document.querySelectorAll("#screen-settings *")].find(e => e.children.length === 0 && e.textContent.trim() === "Google Reviews")?.scrollIntoView({ behavior: "smooth", block: "center" }), 400); } },
+            { text: "Open <b>Michael Brown</b>, the job in progress", done: () => onJob("Michael Brown"), go: () => openJob("Michael Brown") },
+            { text: "Mark his job <b>Complete</b>: that's what lines up the review request", done: () => byName("Michael Brown")?.status === "complete", go: () => openJob("Michael Brown") },
+        ]},
+        social: { title: "Finished jobs into posts", note: "The caption writer needs photos of real work, so try it on your last job in the app.", items: [
+            { text: "Open <b>James Fletcher</b>, a finished job", done: () => onJob("James Fletcher"), go: () => openJob("James Fletcher") },
+            { text: "Find <b>Job Photos</b> and <b>Create Social Post</b> on the job", manual: true, go: () => openJob("James Fletcher") },
+        ]},
+        full: { title: "The whole job, one app", items: [
+            { text: "<b>Helen Martin</b>: open her quote", done: () => screen() === "screen-quote" && getJob()?.customerName === "Helen Martin", go: () => openJob("Helen Martin", goQuote) },
+            { text: "<b>Emma Wilson</b>: book her job in", done: () => !!byName("Emma Wilson")?.jobStartDate, go: () => openJob("Emma Wilson", () => typeof showScheduleSheet === "function" && showScheduleSheet()) },
+            { text: "Check the <b>Calendar</b>", done: () => screen() === "screen-calendar", go: () => goCalendar() },
+            { text: "<b>James Fletcher</b>: finished, invoiced and paid", done: () => onJob("James Fletcher"), go: () => openJob("James Fletcher") },
+        ]},
+    };
+    const trackKey = (() => { const t = new URLSearchParams(location.search).get("try"); return TRACKS[t] ? t : "full"; })();
+    const track = TRACKS[trackKey];
+    let st = { done: [], collapsed: false, dismissed: false };
+    try { st = { ...st, ...JSON.parse(sessionStorage.getItem(KEY + "-" + trackKey) || "{}") }; } catch(e) {}
+    const save = () => { try { sessionStorage.setItem(KEY + "-" + trackKey, JSON.stringify(st)); } catch(e) {} };
+    const SHOW_ON = ["screen-home", "screen-dashboard", "screen-job", "screen-quote", "screen-room", "screen-calendar", "screen-settings", "screen-customers"];
+    let el = null, lastSig = "";
+
+    function render() {
+        if (!el) return;
+        const n = track.items.length, d = st.done.length, all = d >= n;
+        const sig = JSON.stringify([st, all]);
+        if (sig === lastSig) return;
+        lastSig = sig;
+        if (st.collapsed && !all) {
+            el.innerHTML = `<button type="button" class="sh-pill" onclick="StartHere.expand()">🧭 Start here · ${d}/${n}</button>`;
+            return;
+        }
+        el.innerHTML = `
+            <div class="sh-card">
+                <div class="sh-head">
+                    <div><div class="sh-kicker">START HERE · ${d}/${n}</div><div class="sh-title">${all ? "That's TileIQ" : track.title}</div></div>
+                    <button type="button" class="sh-x" aria-label="${all ? "Close" : "Minimise"}" onclick="StartHere.${all ? "dismiss" : "collapse"}()">${all ? "✕" : "–"}</button>
+                </div>
+                ${all ? `
+                <p class="sh-p">Now try it on your own jobs. 30-day free trial, no card needed.</p>
+                <a class="sh-cta" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener">Get it on Google Play</a>
+                <a class="sh-cta" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener">Download on the App Store</a>
+                <button type="button" class="sh-link" onclick="StartHere.dismiss()">Keep exploring the demo</button>` : `
+                <ol class="sh-list">${track.items.map((it, i) => {
+                    const ok = st.done.includes(i);
+                    return `<li class="${ok ? "sh-done" : ""}">
+                        <button type="button" class="sh-tick" aria-label="${ok ? "Done" : "Mark done"}" onclick="StartHere.tick(${i})">${ok ? "✓" : i + 1}</button>
+                        <span>${it.text}</span>
+                        ${ok ? "" : `<button type="button" class="sh-go" onclick="StartHere.go(${i})">Show me</button>`}
+                    </li>`;
+                }).join("")}</ol>
+                ${track.note ? `<p class="sh-note">${track.note}</p>` : ""}`}
+            </div>`;
+    }
+
+    function poll() {
+        const visible = isDemoAccount() && jobs.length > 0 && !st.dismissed && SHOW_ON.includes(screen());
+        if (!visible) { if (el) el.hidden = true; return; }
+        if (!el) {
+            el = document.createElement("div");
+            el.id = "start-here";
+            document.body.appendChild(el);
+        }
+        el.hidden = false;
+        let changed = false;
+        track.items.forEach((it, i) => {
+            if (!it.manual && !st.done.includes(i) && it.done()) { st.done.push(i); changed = true; }
+        });
+        if (changed) { if (st.done.length >= track.items.length) st.collapsed = false; save(); }
+        render();
+    }
+
+    return {
+        start() { if (new URLSearchParams(location.search).get("demo") === "1") setInterval(poll, 700); },
+        go(i) { st.collapsed = true; save(); render(); try { track.items[i].go(); } catch(e) { console.warn("StartHere go:", e); } },
+        tick(i) { st.done = st.done.includes(i) ? st.done.filter(x => x !== i) : [...st.done, i]; if (st.done.length >= track.items.length) st.collapsed = false; save(); render(); },
+        expand() { st.collapsed = false; save(); render(); },
+        collapse() { st.collapsed = true; save(); render(); },
+        dismiss() { st.dismissed = true; save(); if (el) el.hidden = true; },
+    };
+})();
+window.StartHere = StartHere;
+StartHere.start();
+
 // Email actions (quotes, invoices, invites, review requests, customer replies)
 // carry the signed-in session so the worker can check who is sending.
 function emailAuthHeaders() {
