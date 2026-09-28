@@ -13259,6 +13259,7 @@ const TRIAL_DAYS = 30;
 const TRIAL_REMINDER_DAYS = 7; // only show the "X days left" countdown in the final week
 
 function trialDaysElapsed() {
+    if (isDemoAccount()) return 0; // demo account never ages out of the trial, so no "Trial ended" nag
     if (!currentUser?.created_at) return 0;
     const created = new Date(currentUser.created_at).getTime();
     if (isNaN(created)) return 0;
