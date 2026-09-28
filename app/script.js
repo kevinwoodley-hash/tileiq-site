@@ -2227,6 +2227,13 @@ async function loadUserData() {
             if (App) { const r = await App.getLaunchUrl(); if (r?.url) handleDeepLink(r.url); }
         } catch(e) {}
     }, 300);
+})();
+
+// Measuring tools (laser measures, AR, Shape Sketch) — set up in their own block
+// so they run on every launch. They used to sit at the end of the startup block
+// above, which returns early once a signed-in session is restored, so the Laser
+// button did nothing, Shape Sketch never loaded and the hidden AR button showed.
+(async () => {
     // ── Bluetooth laser measures (Leica Disto, Bosch GLM) ─────────────
     // There's no generic BLE "laser measure" profile — each brand defines its
     // own private GATT service/characteristic and byte framing. Rather than

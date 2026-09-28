@@ -972,7 +972,6 @@
     <header class="app-header"><div class="header-row">
         <button onclick="goJob()" class="btn-back">← Rooms</button>
         <h2 id="room-screen-title" class="header-title">Add Room</h2>
-        <button id="ar-measure-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📷 AR</button>
         <button id="disto-connect-btn" class="disto-btn" style="font-size:12px;padding:7px 10px;">📏 Laser</button>
     </div></header>
     <div class="page-body">
@@ -1431,7 +1430,6 @@
                 <div style="display:flex;gap:6px;align-items:center;">
                     <input id="rm-f-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-f-area-direct','rm-f-length','rm-f-width')" style="flex:1;min-width:0;">
                     <input id="rm-f-area-direct-ft2" type="text" class="hidden" placeholder="e.g. 134.5" oninput="rmAreaInSync('rm-f-area-direct')" style="flex:1;min-width:0;">
-                    <button type="button" class="disto-btn ar-area-btn" data-ar-area-target="rm-f-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Trace the floor's outline in AR — handles irregular shapes and cutouts">📐 AR</button>
                     <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-f-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the laser (or type) each wall's length — handles irregular shapes and cutouts, no camera/AR needed">✏️ Sketch</button>
                 </div>
             </div>
@@ -1703,7 +1701,6 @@
                 <div style="display:flex;gap:6px;align-items:center;">
                     <input id="rm-w-area-direct" type="number" step="0.1" min="0" placeholder="e.g. 12.5" oninput="applyDirectArea('rm-w-area-direct','rm-w-width','rm-w-height')" style="flex:1;min-width:0;">
                     <input id="rm-w-area-direct-ft2" type="text" class="hidden" placeholder="e.g. 134.5" oninput="rmAreaInSync('rm-w-area-direct')" style="flex:1;min-width:0;">
-                    <button type="button" class="disto-btn ar-area-btn" data-ar-area-target="rm-w-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Trace the wall's outline in AR — handles irregular shapes and cutouts (e.g. a cupboard)">📐 AR</button>
                     <button type="button" class="disto-btn sketch-area-btn" data-sketch-area-target="rm-w-area-direct" style="font-size:11px;padding:7px 9px;white-space:nowrap;" title="Sketch the outline, then fire the laser (or type) each wall's length — handles irregular shapes and cutouts (e.g. a cupboard), no camera/AR needed">✏️ Sketch</button>
                 </div>
             </div>
