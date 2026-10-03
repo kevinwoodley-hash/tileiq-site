@@ -7150,11 +7150,16 @@ function restoreRoomInputs(room) {
             set("rm-r-length", walls[0].width);
             set("rm-r-width",  walls[2].width);
             set("rm-r-height", walls[0].height);
+        }
+        // Wall tile and wall prep settings belong to the walls, however the room's size was
+        // entered. They used to be restored only in the last branch above (no saved length,
+        // width or area), so a normal room lost its wall tanking, primer, stone/sealer and wall
+        // tile size the moment it was opened for editing — and re-saving it dropped them for good.
+        if (walls.length) {
             set("rm-r-wtilew", walls[0].tileW);
             set("rm-r-wtileh", walls[0].tileH);
             set("rm-r-wtilethick", walls[0].tileThick || 8);
             set("rm-r-wgrout", walls[0].grout);
-            setCb("rm-r-tanking", walls[0].tanking);
             setCb("rm-r-wtanking-a", walls[0]?.tanking || false);
             setCb("rm-r-wtanking-b", walls[1]?.tanking || false);
             setCb("rm-r-wtanking-c", walls[2]?.tanking || false);
@@ -7181,6 +7186,16 @@ function restoreRoomInputs(room) {
             setCb("rm-r-stone",       floors[0].stone);
             setCb("rm-r-sealer",      floors[0].sealer);
             if (floors[0].stone) document.getElementById("rm-r-sealer-row").classList.remove("hidden");
+            // Wetroom floor (tray and its tanking) and plain floor tanking weren't restored either,
+            // so editing a wetroom silently dropped its tray and tanking from the price.
+            const wetFloor = !!(floors[0].wetRoomTray || floors[0].label === "Wet Room Floor");
+            setCb("rm-r-wetroom", wetFloor);
+            rmToggleWetRoomR();                                   // shows the wetroom options (and ticks tanking by default)…
+            setCb("rm-r-ftanking", wetFloor && floors[0].tanking); // …then put back what was actually saved
+            setCb("rm-r-tray", floors[0].wetRoomTray);
+            if (floors[0].wetRoomTray) set("rm-r-tray-price", floors[0].wetRoomTrayPrice);
+            rmRTrayToggle();
+            setCb("rm-r-tanking", !wetFloor && floors[0].tanking);
             if (floors[0].levelling) {
                 set("rm-r-leveldepth", floors[0].levelDepth || 2);
                 document.getElementById("rm-r-level-depth").classList.remove("hidden");
@@ -8113,7 +8128,7 @@ function buildSurfaces() {
             const rTrayPrice = rTray ? (parseFloat(document.getElementById("rm-r-tray-price")?.value) || parseFloat(settings.wetRoomTrayRate) || 150) : 0;
             const rTrayW     = rTray ? (parseFloat(document.getElementById("rm-r-tray-w")?.value) || 0) : 0;
             const rTrayD     = rTray ? (parseFloat(document.getElementById("rm-r-tray-d")?.value) || 0) : 0;
-            const rFTanking  = rWetRoom && cb("rm-r-ftanking");
+            const rFTanking  = rWetRoom ? cb("rm-r-ftanking") : cb("rm-r-tanking");
             surfaces.push({
                 type:"floor", label: rWetRoom ? "Wet Room Floor" : "Floor", length:rL, width:rW,
                 tileType: document.getElementById("rm-r-ftile-type")?.value || "porcelain",
