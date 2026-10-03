@@ -8884,14 +8884,27 @@ function calcSealantCost(roomOrForm) {
     return base * (1 + (parseFloat(settings.markup) || 0) / 100);
 }
 
-// A saved room's full price: its surfaces plus the costs that belong to the room
-// rather than to any one surface (extra work, trim, sealant, niches) — the same sum
-// the room editor's live estimate and saveRoom() use. Job totals must be built from
-// this, or they come out lower than the room cards they're made of.
-function roomGrandTotal(room) {
-    const surfaces = (room.surfaces || []).reduce((a, s) => a + parseFloat(s.total || 0), 0);
+// A saved room's price, split into the materials and labour lines that quotes, the PDF,
+// the customer's quote link and invoice exports show. total is the room's full price:
+// its surfaces plus the costs that belong to the room rather than to any one surface
+// (extra work, trim, sealant, niches) — the same sum the room editor's live estimate
+// and saveRoom() use. materials + labour always equals total, so no document can show
+// lines that don't add up, or a total lower than the room cards it's made of. prep is
+// the part of materials that's surface prep, for documents that list it separately.
+// Callers that need today's prices run calcSurface() over the surfaces first.
+function roomPriceParts(room) {
+    const surfaces = room.surfaces || [];
+    const sum = key => surfaces.reduce((a, s) => a + (parseFloat(s[key]) || 0), 0);
     const nicheCost = getNicheSurfaces(null, room.niches).reduce((a, n) => a + n.labourCost, 0);
-    return surfaces + parseFloat(room.extraWorkCost || 0) + parseFloat(room.trimCost || 0) + calcSealantCost(room) + nicheCost;
+    const total = sum("total") + parseFloat(room.extraWorkCost || 0) + parseFloat(room.trimCost || 0) + calcSealantCost(room) + nicheCost;
+    const prep = sum("prepCost");
+    const materials = sum("materialSell") + prep + sum("trayCost") + parseFloat(room.trimCost || 0) + calcSealantCost(room);
+    // Labour takes the remainder so the two lines add up to the penny (s.total is rounded per surface)
+    return { total, materials, labour: total - materials, prep };
+}
+
+function roomGrandTotal(room) {
+    return roomPriceParts(room).total;
 }
 
 /* Build a minimal room-like object from the current sealant form fields.
@@ -9302,9 +9315,10 @@ async function exportAllData() {
                 let labOpts = null;
                 if (room.labourType === "day") labOpts = { type:"day", days: room.days||1, dayRate: room.dayRate||settings.dayRate||200, totalArea: rArea };
                 surfaces.forEach(s => { s.tileType = s.tileType || room.tileType || "ceramic"; calcSurface(s, ct, labOpts); });
-                totalMats  += surfaces.reduce((a, s) => a + (s.materialSell || 0), 0);
-                totalLab   += surfaces.reduce((a, s) => a + (s.labour || 0) + (s.ufhCost || 0), 0);
-                totalPrep  += surfaces.reduce((a, s) => a + (s.prepCost || 0), 0);
+                const parts = roomPriceParts(room);
+                totalMats  += parts.materials - parts.prep;
+                totalLab   += parts.labour;
+                totalPrep  += parts.prep;
             });
 
             const subtotal = totalMats + totalLab + totalPrep;
@@ -11133,6 +11147,7 @@ function renderQuote() {
     const addr = [j.address, j.city, j.postcode].filter(Boolean).join(", ");
 
     let totalMats = 0, totalLabour = 0, totalPrep = 0, totalExtras = 0, totalWallTilesQ = 0, totalFloorTilesQ = 0;
+    let quoteMaterials = 0, quoteLabour = 0;
     let totalAdhKg = 0,
         totalRapidAdhKg = 0,
         totalWallGroutKg = 0,
@@ -11162,6 +11177,9 @@ function renderQuote() {
         totalLabour    += surfaces.reduce((a, s) => a + (s.labour || 0) + (s.ufhCost || 0), 0);
         totalPrep      += surfaces.reduce((a, s) => a + (s.prepCost || 0), 0);
         totalExtras    += parseFloat(room.extraWorkCost || 0);
+        const qParts = roomPriceParts(room);
+        quoteMaterials += qParts.materials;
+        quoteLabour    += qParts.labour;
         surfaces.forEach(s => {
             const tup = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
             const tc = ct ? 0 : tup * s.area * (1 + settings.markup/100);
@@ -11212,7 +11230,7 @@ function renderQuote() {
         const extraDesc = (room.extraWorkDesc || "").trim();
         const extraCost = parseFloat(room.extraWorkCost || 0);
         const inline = inlineParts.length ? inlineParts.join(" · ") : "—";
-const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + parseFloat(room.extraWorkCost||0);
+        const roomTotal = qParts.total;
         return `
             <tr class="qt-room-header">
                 <td>${esc(room.name)}<span class="qt-area-note">${fmtArea(totalArea)}${areaUnit()}</span>${room.tileType ? ` <span style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;margin-left:4px;">${TILE_TYPE_LABELS[room.tileType] || room.tileType}</span>` : ""}</td>
@@ -11329,7 +11347,7 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
       </div>
     ` : "";
 
-    const subtotal = totalMats + totalLabour + totalPrep + totalExtras + jobSilSell;
+    const subtotal = quoteMaterials + quoteLabour;
     const vatAmt   = applyVat ? subtotal * 0.2 : 0;
     const grand    = subtotal + vatAmt;
 
@@ -11361,8 +11379,8 @@ const roomTotal = surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0) + pars
             <tbody>
                 ${totalWallTilesQ > 0 ? `<tr><td>🧱 Wall Tiles</td><td style="text-align:right">${currencySymbol()}${totalWallTilesQ.toFixed(2)}</td></tr>` : ""}
                 ${totalFloorTilesQ > 0 ? `<tr><td>⬜ Floor Tiles</td><td style="text-align:right">${currencySymbol()}${totalFloorTilesQ.toFixed(2)}</td></tr>` : ""}
-                <tr><td>Materials</td><td style="text-align:right">${currencySymbol()}${(totalMats + totalPrep + jobSilSell).toFixed(2)}</td></tr>
-                <tr><td>Labour</td><td style="text-align:right">${currencySymbol()}${(totalLabour + totalExtras).toFixed(2)}</td></tr>
+                <tr><td>Materials</td><td style="text-align:right">${currencySymbol()}${quoteMaterials.toFixed(2)}</td></tr>
+                <tr><td>Labour</td><td style="text-align:right">${currencySymbol()}${quoteLabour.toFixed(2)}</td></tr>
             </tbody>
         </table>
         `}
@@ -11865,8 +11883,7 @@ function buildPDFDoc() {
         let labourOpts = null;
         if (room.labourType === "day") labourOpts = { type:"day", days: room.days||1, dayRate: room.dayRate||settings.dayRate||200, totalArea };
         surfaces.forEach(s => { s.tileType = s.tileType || room.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
-        previewTotal += surfaces.reduce((a,s) => a + parseFloat(s.total||0), 0);
-        previewTotal += parseFloat(room.extraWorkCost||0) + calcSealantCost(room);
+        previewTotal += roomGrandTotal(room);
     });
     const grandPreview = applyVat ? previewTotal * 1.2 : previewTotal;
     doc.setFont("helvetica", "bold");
@@ -11927,15 +11944,12 @@ function buildPDFDoc() {
         if (room.labourType === "day") labourOpts = { type:"day", days: room.days||1, dayRate: room.dayRate||settings.dayRate||200, totalArea };
         surfaces.forEach(s => { s.tileType = s.tileType || room.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
 
-        const roomMats   = surfaces.reduce((a,s) => a + (s.materialSell||0), 0);
-        const roomLabour = surfaces.reduce((a,s) => a + (s.labour||0) + (s.ufhCost||0), 0);
-        const roomPrep   = surfaces.reduce((a,s) => a + (s.prepCost||0), 0);
+        const parts      = roomPriceParts(room);
         const extraCost  = parseFloat(room.extraWorkCost||0);
-        const sealCost   = calcSealantCost(room);
-        const roomTotal  = roomMats + roomLabour + roomPrep + extraCost + sealCost;
+        const roomTotal  = parts.total;
 
-        grandMaterials += roomMats + roomPrep + sealCost;
-        grandLabour    += roomLabour;
+        grandMaterials += parts.materials;
+        grandLabour    += parts.labour;
         subtotal       += roomTotal;
 
         // Alternating row background
@@ -11951,8 +11965,8 @@ function buildPDFDoc() {
         doc.setTextColor(...SLATE);
         doc.text(`${fmtArea(totalArea)}`, 130, y + 4, { align:"right" });
         if (!hideBreakdown) {
-            doc.text(`${currencySymbol()}${(roomMats + roomPrep + sealCost).toFixed(2)}`, 158, y + 4, { align:"right" });
-            doc.text(`${currencySymbol()}${roomLabour.toFixed(2)}`, 178, y + 4, { align:"right" });
+            doc.text(`${currencySymbol()}${parts.materials.toFixed(2)}`, 158, y + 4, { align:"right" });
+            doc.text(`${currencySymbol()}${parts.labour.toFixed(2)}`, 178, y + 4, { align:"right" });
         }
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...DARK);
@@ -12435,9 +12449,10 @@ async function exportFreeAgent() {
             (room.surfaces || []).forEach(s => {
                 s.tileType = s.tileType || room.tileType || "ceramic";
                 calcSurface(s, ct, rLabOpts);
-                totalLabour    += parseFloat(s.labour || 0) + parseFloat(s.ufhCost || 0) + parseFloat(s.prepCost || 0);
-                totalMaterials += parseFloat(s.materialSell || 0);
             });
+            const parts = roomPriceParts(room);
+            totalLabour    += parts.labour + parts.prep;
+            totalMaterials += parts.materials - parts.prep;
         });
         const items = [];
         if (totalLabour > 0)    items.push({ description: j.description || "Labour",  quantity: 1, price: totalLabour.toFixed(2),    vat_rate: applyVat ? 20 : 0 });
@@ -12549,9 +12564,10 @@ async function exportQBO() {
             (room.surfaces || []).forEach(s => {
                 s.tileType = s.tileType || room.tileType || "ceramic";
                 calcSurface(s, ct, rLabOpts);
-                totalLabour    += parseFloat(s.labour || 0) + parseFloat(s.ufhCost || 0) + parseFloat(s.prepCost || 0);
-                totalMaterials += parseFloat(s.materialSell || 0);
             });
+            const parts = roomPriceParts(room);
+            totalLabour    += parts.labour + parts.prep;
+            totalMaterials += parts.materials - parts.prep;
         });
         const jobDesc = (j.description || [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works");
         const jobAddr = [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works";
@@ -12728,9 +12744,10 @@ async function exportXero() {
             (room.surfaces || []).forEach(s => {
                 s.tileType = s.tileType || room.tileType || "ceramic";
                 calcSurface(s, ct, rLabOpts);
-                totalLabour    += parseFloat(s.labour || 0) + parseFloat(s.ufhCost || 0) + parseFloat(s.prepCost || 0);
-                totalMaterials += parseFloat(s.materialSell || 0);
             });
+            const parts = roomPriceParts(room);
+            totalLabour    += parts.labour + parts.prep;
+            totalMaterials += parts.materials - parts.prep;
         });
         const jobDesc = (j.description || [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works");
         const jobAddr = [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works";
@@ -13154,11 +13171,12 @@ async function buildQuoteUrl(j) {
         let rLabOpts = null;
         if (room.labourType === "day") rLabOpts = { type: "day", days: room.days || 1, dayRate: room.dayRate || settings.dayRate || 200, totalArea: rArea };
         surfaces.forEach(s => { s.tileType = s.tileType || room.tileType || "ceramic"; calcSurface(s, rCt, rLabOpts); });
+        const parts = roomPriceParts(room);
+        totalMats   += parts.materials - parts.prep;
+        totalLabour += parts.labour;
+        totalPrep   += parts.prep;
+        grand       += parts.total;
         surfaces.forEach(s => {
-            totalMats   += parseFloat(s.materialSell || 0);
-            totalLabour += parseFloat(s.labour || 0) + parseFloat(s.ufhCost || 0);
-            totalPrep   += parseFloat(s.prepCost || 0);
-            grand       += parseFloat(s.total || 0);
             const tileUP2 = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
             const tileCostS = rCt ? 0 : tileUP2 * s.area * (1 + settings.markup/100);
             if (s.type === "wall")  totalWallTiles  += tileCostS;
