@@ -131,13 +131,42 @@ let settings = {
     companyEmail:  "",
     vatNumber:     "",
     quoteReminderDays: 3,  // days before chasing a pending quote
-    terms: "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.",
+    terms: "Payment due by the date shown on the invoice. All works guaranteed for 12 months against defects in workmanship.",
     quotesCreatedLifetime: 0,  // lifetime counter, kept for reference/analytics only — nothing is gated on it
     quotesMonthKey: null,      // "YYYY-M" the quotesThisMonth counter applies to
     quotesThisMonth: 0,        // informational only (was the old free-tier monthly cap) — resets monthly, not enforced
     dashboardWidgets: null  // ordered list of visible home-dashboard widget ids; null = use default order/visibility
 };
 const DEFAULT_SETTINGS = { ...settings }; // snapshot of defaults for reset on sign out
+
+// The old default terms promised "Payment due within 14 days" while invoices actually fell
+// due after paymentTermsDays (30 by default), so customers were told two different dates.
+// Anyone still on that untouched default gets the new wording, which defers to the due date
+// printed on the invoice; terms the tiler has written themselves are always used as written.
+const OLD_DEFAULT_TERMS = "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.";
+function quoteTerms() {
+    return settings.terms === OLD_DEFAULT_TERMS ? DEFAULT_SETTINGS.terms : (settings.terms || "");
+}
+
+// Invoice numbers run in sequence across all of the tiler's jobs (INV-1001, INV-1002, …).
+// Worked out from the jobs themselves, so the numbering follows the jobs between devices;
+// a job keeps its number once it has one, so re-sending an invoice doesn't renumber it.
+function assignInvoiceRef(j) {
+    if (j.invoiceRef) return j.invoiceRef;
+    const used = jobs.map(x => parseInt(String(x.invoiceRef || "").replace(/^INV-/, ""), 10)).filter(n => n > 0);
+    j.invoiceRef = "INV-" + (used.length ? Math.max(...used) + 1 : 1001);
+    saveAll();
+    return j.invoiceRef;
+}
+
+// An invoice's issue and due dates: issued when it was first sent (or today, if it's being
+// raised now), due paymentTermsDays later, the same date the job's Invoiced bar shows.
+function invoiceDates(j) {
+    const issued = j && j.invoicedAt ? new Date(j.invoicedAt) : new Date();
+    const due = new Date(issued);
+    due.setDate(due.getDate() + (parseInt(settings.paymentTermsDays) || 30));
+    return { issued, due };
+}
 
 let currentJobId    = null;   // id of job currently open
 let currentRoomIdx  = null;   // null = new room, number = editing existing
@@ -10401,7 +10430,7 @@ function goSettings() {
     document.getElementById("set-company-phone").value  = s.companyPhone || "";
     document.getElementById("set-company-email").value  = s.companyEmail || "";
     document.getElementById("set-vat-number").value     = s.vatNumber    || "";
-    document.getElementById("set-terms").value          = s.terms || "";
+    document.getElementById("set-terms").value          = (s.terms === OLD_DEFAULT_TERMS ? DEFAULT_SETTINGS.terms : s.terms) || "";
     document.getElementById("set-reminder-days").value  = s.quoteReminderDays ?? 3;
     const docTypeEl = document.getElementById("set-doc-type");
     if (docTypeEl) docTypeEl.value = s.docType || "quote";
@@ -11142,7 +11171,9 @@ function renderQuote() {
     const co      = settings.companyName  || "Your Tiling Company";
     const phone   = settings.companyPhone || "";
     const email   = settings.companyEmail || "";
-    const quoteRef = currentQuoteRef || ("Q" + Date.now().toString().slice(-6));
+    const isInvoice = settings.docType === "invoice";
+    const quoteRef = (isInvoice && j.invoiceRef) || currentQuoteRef || ("Q" + Date.now().toString().slice(-6));
+    const invDates = invoiceDates(j);
 
     const addr = [j.address, j.city, j.postcode].filter(Boolean).join(", ");
 
@@ -11361,8 +11392,8 @@ function renderQuote() {
             </div>
             <div class="quote-meta">
                 <div class="quote-ref">${settings.docType === "estimate" ? "ESTIMATE" : settings.docType === "invoice" ? "INVOICE" : "QUOTATION"} ${quoteRef}</div>
-                <div>Issued: ${fmt(today)}</div>
-                <div>Expires: ${fmt(expiry)}</div>
+                <div>Issued: ${fmt(isInvoice ? invDates.issued : today)}</div>
+                <div>${isInvoice ? `Due: ${fmt(invDates.due)}` : `Expires: ${fmt(expiry)}`}</div>
             </div>
         </div>
 
@@ -11391,7 +11422,7 @@ function renderQuote() {
             <div class="quote-total-row quote-grand"><span>Total</span><span>${currencySymbol()}${grand.toFixed(2)}</span></div>
         </div>
 
-        ${settings.terms ? `<div class="quote-terms">${esc(settings.terms)}</div>` : ""}
+        ${quoteTerms() ? `<div class="quote-terms">${esc(quoteTerms())}</div>` : ""}
         ${(settings.bankAccountNumber || settings.bankSortCode) ? `
         <div class="quote-terms" style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px;">
             <div style="font-weight:700;font-size:12px;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.05em;">BANK DETAILS</div>
@@ -11804,7 +11835,9 @@ function buildPDFDoc() {
     const today  = new Date();
     const expiry = new Date();
     expiry.setDate(today.getDate() + parseInt(document.getElementById("q-expiry")?.value || 30));
-    const quoteRef = currentQuoteRef || ("Q" + Date.now().toString().slice(-6));
+    const isInvoice = settings.docType === "invoice";
+    const quoteRef = (isInvoice && j.invoiceRef) || currentQuoteRef || ("Q" + Date.now().toString().slice(-6));
+    const invDates = invoiceDates(j);
 
     // ── Full-bleed header ────────────────────────────────────────
     doc.setFillColor(...DARK);
@@ -11842,7 +11875,8 @@ function buildPDFDoc() {
     doc.setTextColor(...AMBER);
     doc.text(quoteRef, W - 12, 24, { align:"right" });
     doc.setTextColor(160, 170, 180);
-    doc.text(`Issued: ${fmt(today)}   Expires: ${fmt(expiry)}`, W - 12, 30, { align:"right" });
+    doc.text(isInvoice ? `Issued: ${fmt(invDates.issued)}   Due: ${fmt(invDates.due)}`
+                       : `Issued: ${fmt(today)}   Expires: ${fmt(expiry)}`, W - 12, 30, { align:"right" });
 
     // ── Two-column info band ─────────────────────────────────────
     let y = settings.vatNumber ? 48 : 42;
@@ -12038,7 +12072,7 @@ function buildPDFDoc() {
     y += 14;
 
     // ── Terms ────────────────────────────────────────────────────
-    if (settings.terms) {
+    if (quoteTerms()) {
         doc.setDrawColor(...BORDER);
         doc.setLineWidth(0.3);
         doc.line(12, y, W - 12, y);
@@ -12051,7 +12085,7 @@ function buildPDFDoc() {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
         doc.setTextColor(150, 160, 170);
-        const termLines = doc.splitTextToSize(settings.terms, W - 24);
+        const termLines = doc.splitTextToSize(quoteTerms(), W - 24);
         doc.text(termLines, 12, y);
         y += termLines.length * 3.5 + 4;
     }
@@ -12462,7 +12496,7 @@ async function exportFreeAgent() {
             body: JSON.stringify({
                 action: "fa_push", access_token: tokens.access_token,
                 contact: { name: j.customerName, email: j.email || "", phone: j.phone || "" },
-                invoice: { reference: currentQuoteRef || ("Q" + Date.now().toString().slice(-6)), dated_on: new Date().toISOString().split("T")[0] },
+                invoice: { reference: j.invoiceRef || currentQuoteRef || ("Q" + Date.now().toString().slice(-6)), dated_on: new Date().toISOString().split("T")[0] },
                 items
             })
         });
@@ -12579,7 +12613,7 @@ async function exportQBO() {
             body: JSON.stringify({
                 action: "qbo_push", access_token: tokens.access_token, realm_id: tokens.realm_id,
                 contact: { name: j.customerName, email: j.email || "", phone: j.phone || "" },
-                invoice: { reference: currentQuoteRef || ("Q" + Date.now().toString().slice(-6)), dated_on: new Date().toISOString().split("T")[0] },
+                invoice: { reference: j.invoiceRef || currentQuoteRef || ("Q" + Date.now().toString().slice(-6)), dated_on: new Date().toISOString().split("T")[0] },
                 items
             })
         });
@@ -12763,7 +12797,7 @@ async function exportXero() {
                 vat_registered: applyVat,
                 vat_number:     vatNumber,
                 contact: { name: j.customerName, email: j.email || "", phone: j.phone || "" },
-                invoice: { reference: currentQuoteRef || ("Q" + Date.now().toString().slice(-6)), dueDate: "" },
+                invoice: { reference: j.invoiceRef || currentQuoteRef || ("Q" + Date.now().toString().slice(-6)), dueDate: "" },
                 items
             })
         });
@@ -12861,6 +12895,7 @@ async function convertToInvoice() {
     }
 
     // Generate and share PDF
+    assignInvoiceRef(j);
     const pdf = buildPDFBase64();
     if (!pdf) { settings.docType = prevDocType; alert("Could not generate invoice PDF."); return; }
 
@@ -13210,7 +13245,7 @@ async function buildQuoteUrl(j) {
         companyName:  settings.companyName || "",
         companyPhone: settings.companyPhone || "",
         companyEmail: settings.companyEmail || "",
-        terms:        settings.terms || "",
+        terms:        quoteTerms(),
         customerEmail: j.email || "",
         phone:         j.phone || "",
         customerEmail: j.email || "",
