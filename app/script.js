@@ -5765,7 +5765,7 @@ function renderJobQuoteButton(job) {
     const btn = document.getElementById("job-quote-btn");
     if (!btn) return;
     const invoiceNext = job.quoteStatus === "accepted" && job.status === "complete";
-    btn.textContent = invoiceNext ? "🧾 Invoice →" : "Quote →";
+    btn.textContent = invoiceNext ? "Invoice →" : "Quote →";
     btn.onclick = invoiceNext ? () => { goQuote(); setTimeout(convertToInvoice, 400); } : () => goQuote();
     const copyBtn = document.getElementById("job-copy-quote-btn");
     if (copyBtn) copyBtn.style.display = (job.rooms || []).length ? "" : "none";

@@ -298,8 +298,11 @@ textarea { resize: vertical; }
 }
 .running-total strong { font-size: 18px; color: var(--amber); }
 
-.job-actions { display: flex; gap: 10px; margin-bottom: 8px; }
+.job-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+/* each direct child is its own full-width row: Edit Customer, then the Materials/Preview/Quote
+   row, then Copy Quote — without wrapping they were squeezed into narrow side-by-side columns */
 .job-actions button { flex: 1; }
+.job-actions > *, .job-actions > button { flex: 1 1 100%; }
 
 /* ── ROOM EDITOR ──────────────────────────────────────────── */
 .stype-row {
