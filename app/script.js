@@ -5724,11 +5724,23 @@ function goJob(id) {
     if (j && j.quoteToken) loadMessagesBadge(j.quoteToken);
 }
 
+// Once the customer has accepted the quote and the job's marked Complete, the next thing to
+// send is the invoice — so the job screen's main button goes straight to Convert to Invoice
+// instead of back to the quote. Any other stage (or a declined/pending quote) keeps Quote.
+function renderJobQuoteButton(job) {
+    const btn = document.getElementById("job-quote-btn");
+    if (!btn) return;
+    const invoiceNext = job.quoteStatus === "accepted" && job.status === "complete";
+    btn.textContent = invoiceNext ? "🧾 Invoice →" : "Quote →";
+    btn.onclick = invoiceNext ? () => { goQuote(); setTimeout(convertToInvoice, 400); } : () => goQuote();
+}
+
 function renderJobView() {
     const job = getJob();
     if (!job) { goDashboard(); return; }
 
     document.getElementById("job-header-title").textContent = job.customerName;
+    renderJobQuoteButton(job);
     renderJobPhotos(job);
     renderFinishedPhotos(job);
 
