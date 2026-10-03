@@ -5766,7 +5766,7 @@ function renderJobQuoteButton(job) {
     if (!btn) return;
     const invoiceNext = job.quoteStatus === "accepted" && job.status === "complete";
     btn.textContent = invoiceNext ? "Invoice →" : "Quote →";
-    btn.onclick = invoiceNext ? () => { goQuote(); setTimeout(convertToInvoice, 400); } : () => goQuote();
+    btn.onclick = invoiceNext ? () => convertToInvoice(true) : () => goQuote();
     const copyBtn = document.getElementById("job-copy-quote-btn");
     if (copyBtn) copyBtn.style.display = (job.rooms || []).length ? "" : "none";
 }
@@ -10999,12 +10999,39 @@ function saveSettings() {
 /* ================================================================
    QUOTE PREVIEW
 ================================================================ */
-function goQuote() {
+// The quote screen doubles as the invoice screen. In "invoice" mode (entered from the job's
+// Invoice button or Convert to Invoice) the title, document, preview and Send are all the
+// invoice: INVOICE INV-…, issued/due dates, and Send emails the invoice PDF. It used to stay a
+// quote on screen — QUOTATION Q…, "Quote Preview", Send = the quote — with only the PDF
+// briefly switched to an invoice while it was built. Opening the quote normally resets it.
+let quoteScreenMode = "quote";
+function docTypeNow() {
+    return quoteScreenMode === "invoice" ? "invoice" : settings.docType;
+}
+function applyQuoteScreenMode() {
+    const inv = quoteScreenMode === "invoice";
+    const setText = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+    setText("quote-screen-title", inv ? "Invoice" : "Quote");
+    setText("quote-preview-title", inv ? "Invoice Preview" : "Quote Preview");
+    const send = document.getElementById("quote-send-btn");
+    if (send) send.onclick = inv ? () => sendInvoice() : () => sendQuote();
+    const pSend = document.getElementById("quote-preview-send-btn");
+    if (pSend) pSend.onclick = () => { closeQuotePreview(); inv ? sendInvoice() : sendQuote(); };
+    const convert = document.getElementById("quote-convert-btn");
+    if (convert) convert.style.display = inv ? "none" : "";
+    const expiry = document.getElementById("q-expiry-group");
+    if (expiry) expiry.style.visibility = inv ? "hidden" : "";
+}
+
+function goQuote(mode) {
     const j = getJob();
     if (!j || !j.rooms || !j.rooms.length) {
         alert("Add at least one room before generating a quote.");
         return;
     }
+    quoteScreenMode = mode === "invoice" ? "invoice" : "quote";
+    if (quoteScreenMode === "invoice") assignInvoiceRef(j);
+    applyQuoteScreenMode();
     currentQuoteRef = "Q" + Date.now().toString().slice(-6);
     const vatEl = document.getElementById("q-vat");
     const expiryEl = document.getElementById("q-expiry");
@@ -11234,7 +11261,7 @@ function renderQuote() {
     const co      = settings.companyName  || "Your Tiling Company";
     const phone   = settings.companyPhone || "";
     const email   = settings.companyEmail || "";
-    const isInvoice = settings.docType === "invoice";
+    const isInvoice = docTypeNow() === "invoice";
     const quoteRef = (isInvoice && j.invoiceRef) || currentQuoteRef || ("Q" + Date.now().toString().slice(-6));
     const invDates = invoiceDates(j);
 
@@ -11454,7 +11481,7 @@ function renderQuote() {
                 ${email ? `<div>${esc(email)}</div>` : ""}
             </div>
             <div class="quote-meta">
-                <div class="quote-ref">${settings.docType === "estimate" ? "ESTIMATE" : settings.docType === "invoice" ? "INVOICE" : "QUOTATION"} ${quoteRef}</div>
+                <div class="quote-ref">${docTypeNow() === "estimate" ? "ESTIMATE" : docTypeNow() === "invoice" ? "INVOICE" : "QUOTATION"} ${quoteRef}</div>
                 <div>Issued: ${fmt(isInvoice ? invDates.issued : today)}</div>
                 <div>${isInvoice ? `Due: ${fmt(invDates.due)}` : `Expires: ${fmt(expiry)}`}</div>
             </div>
@@ -11898,7 +11925,7 @@ function buildPDFDoc() {
     const today  = new Date();
     const expiry = new Date();
     expiry.setDate(today.getDate() + parseInt(document.getElementById("q-expiry")?.value || 30));
-    const isInvoice = settings.docType === "invoice";
+    const isInvoice = docTypeNow() === "invoice";
     const quoteRef = (isInvoice && j.invoiceRef) || currentQuoteRef || ("Q" + Date.now().toString().slice(-6));
     const invDates = invoiceDates(j);
 
@@ -11930,7 +11957,7 @@ function buildPDFDoc() {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
     doc.setTextColor(...WHITE);
-    doc.text((settings.docType === "estimate" ? "ESTIMATE" : settings.docType === "invoice" ? "INVOICE" : "QUOTATION"), W - 12, 16, { align:"right" });
+    doc.text((docTypeNow() === "estimate" ? "ESTIMATE" : docTypeNow() === "invoice" ? "INVOICE" : "QUOTATION"), W - 12, 16, { align:"right" });
 
     // Ref / dates (right side)
     doc.setFont("helvetica", "normal");
@@ -12214,7 +12241,7 @@ function buildPDFBase64() {
     try {
         return {
             base64:       result.doc.output("datauristring").split(",")[1],
-            fileName:     result.safeName + "-quote.pdf",
+            fileName:     result.safeName + (docTypeNow() === "invoice" ? "-invoice.pdf" : "-quote.pdf"),
             customerName: result.customerName,
             email:        result.email
         };
@@ -12941,30 +12968,32 @@ async function copyQuoteLink() {
     try { await navigator.clipboard.writeText(url); alert("Link copied!"); } catch(e) { alert(url); }
 }
 
-async function convertToInvoice() {
+async function convertToInvoice(skipConfirm) {
     const j = getJob();
     if (!j) return;
 
-    // Confirm conversion
-    if (!confirm(`Convert this quote to an invoice for ${j.customerName}?\n\nThis will generate a PDF invoice with your bank details for payment.`)) return;
+    // Confirm conversion (the job screen's Invoice button has already said what it does)
+    if (!skipConfirm && !confirm(`Convert this quote to an invoice for ${j.customerName}?\n\nThis will generate a PDF invoice with your bank details for payment.`)) return;
 
-    // Temporarily switch doc type to invoice
-    const prevDocType = settings.docType;
-    settings.docType = "invoice";
+    // The screen becomes the invoice, then the send options open over it
+    goQuote("invoice");
+    sendInvoice();
+}
 
-    // Check bank details
+// Send the invoice for the current job: build its PDF and open the send options
+function sendInvoice() {
+    const j = getJob();
+    if (!j) return;
     if (!settings.bankAccountNumber && !settings.bankSortCode) {
         alert("⚠️ No bank details saved.\n\nGo to Settings → Profile → Bank Details to add your account details so customers know how to pay.");
     }
-
-    // Generate and share PDF
     assignInvoiceRef(j);
+    const prevMode = quoteScreenMode;
+    quoteScreenMode = "invoice";              // the PDF is always the invoice, whichever screen this is called from
     const pdf = buildPDFBase64();
-    if (!pdf) { settings.docType = prevDocType; alert("Could not generate invoice PDF."); return; }
-
-    // Show send options
+    quoteScreenMode = prevMode;
+    if (!pdf) { alert("Could not generate invoice PDF."); return; }
     showSendInvoiceSheet(j, pdf);
-    settings.docType = prevDocType;
 }
 
 function showSendInvoiceSheet(j, pdf) {

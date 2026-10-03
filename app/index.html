@@ -2699,10 +2699,10 @@
 <div id="screen-quote" class="screen hidden">
     <header class="app-header"><div class="header-row">
         <button onclick="goJob()" class="btn-back">← Back</button>
-        <h2 class="header-title">Quote</h2>
+        <h2 id="quote-screen-title" class="header-title">Quote</h2>
         <div style="display:flex;gap:6px;">
             <button onclick="previewQuote()" class="btn-secondary" style="padding:8px 14px;font-size:14px;">👁 Preview</button>
-            <button onclick="sendQuote()" class="btn-primary" style="padding:8px 14px;font-size:14px;">📤 Send</button>
+            <button id="quote-send-btn" onclick="sendQuote()" class="btn-primary" style="padding:8px 14px;font-size:14px;">📤 Send</button>
         </div>
     </div></header>
     <div class="page-body">
@@ -2711,7 +2711,7 @@
                 <div class="field-group"><label>Apply <span class="taxlabel">VAT</span>?</label>
                     <select id="q-vat" onchange="renderQuote()"><option value="true">Yes – 20%</option><option value="false">No</option></select>
                 </div>
-                <div class="field-group"><label>Valid for (days)</label>
+                <div id="q-expiry-group" class="field-group"><label>Valid for (days)</label>
                     <input id="q-expiry" type="number" value="30" onchange="renderQuote()">
                 </div>
             </div>
@@ -2754,7 +2754,7 @@
             </div>
         </div>
         <div id="quote-status-bar" style="display:none;margin-bottom:10px;padding:12px 14px;border-radius:10px;text-align:center;font-weight:700;font-size:15px;"></div>
-        <button onclick="convertToInvoice()" class="btn-secondary" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px;">🧾 Convert to Invoice</button>
+        <button id="quote-convert-btn" onclick="convertToInvoice()" class="btn-secondary" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px;">🧾 Convert to Invoice</button>
         <div id="invoice-status-bar" style="display:none;margin-bottom:12px;"></div>
         <div id="accounting-export-section" style="display:none;">
             <div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:0.05em;margin-bottom:8px;">EXPORT QUOTE</div>
@@ -4022,8 +4022,8 @@
 <div id="screen-quote-preview" class="screen hidden">
     <header class="app-header"><div class="header-row">
         <button onclick="closeQuotePreview()" class="btn-back">✕ Close</button>
-        <h2 class="header-title">Quote Preview</h2>
-        <button onclick="closeQuotePreview();sendQuote()" class="btn-primary" style="padding:8px 14px;font-size:13px;">📤 Send</button>
+        <h2 id="quote-preview-title" class="header-title">Quote Preview</h2>
+        <button id="quote-preview-send-btn" onclick="closeQuotePreview();sendQuote()" class="btn-primary" style="padding:8px 14px;font-size:13px;">📤 Send</button>
     </div></header>
     <div class="page-body">
         <div id="quote-preview-content"></div>
