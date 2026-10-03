@@ -3188,7 +3188,7 @@ function renderYourDay() {
     const overdueInv     = getOverdueInvoices();
     const overdueTotal   = overdueInv.reduce((sum, j) => {
         let grand = 0;
-        (j.rooms || []).forEach(room => (room.surfaces || []).forEach(s => { grand += parseFloat(s.total || 0); }));
+        (j.rooms || []).forEach(room => { grand += roomGrandTotal(room); });
         return sum + grand;
     }, 0);
     const needInvoicing  = getNeedInvoicing();
@@ -3397,9 +3397,7 @@ function renderQuoteTotals() {
 
     getRealJobs().forEach(j => {
         let grand = 0;
-        (j.rooms || []).forEach(room => {
-            (room.surfaces || []).forEach(s => { grand += parseFloat(s.total || 0); });
-        });
+        (j.rooms || []).forEach(room => { grand += roomGrandTotal(room); });
         if (j.quoteStatus === "accepted") acceptedTotal += grand;
         else if (j.quoteToken && (!j.quoteStatus || j.quoteStatus === "pending")) pendingTotal += grand;
     });
@@ -3579,7 +3577,7 @@ function renderHomeDashboard() {
 
     jobs.forEach(j => {
         if (j.jobArchived || j.isDemo) return; // demo jobs never touch dashboard figures
-        const grand = (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
+        const grand = (j.rooms || []).reduce((a, r) => a + roomGrandTotal(r), 0);
         if (j.quoteStatus === "accepted" && j.quoteRespondedAt) {
             const d = new Date(j.quoteRespondedAt);
             if (d >= startOfMonth) monthAccepted += grand;
@@ -3654,7 +3652,7 @@ function renderHomeDashboard() {
         </div>
         ${scheduleWeek.length ? scheduleWeek.map(j => {
             const addr    = [j.address, j.city].filter(Boolean).join(", ");
-            const total   = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
+            const total   = (j.rooms || []).reduce((a, r) => a + roomGrandTotal(r), 0);
             const statusColor = STATUS_TEXT[j.status] || "#2563eb";
             const statusText  = STATUS_LABEL[j.status] || j.status || "";
             const dateLabel   = new Date(j.jobStartDate).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
@@ -4087,7 +4085,7 @@ function renderDashboard() {
     }
 
     const sort = document.getElementById("jobs-sort")?.value || "updated";
-    const jobTotal = j => (j.rooms || []).reduce((a, r) => a + (r.surfaces || []).reduce((b, s) => b + parseFloat(s.total || 0), 0), 0);
+    const jobTotal = j => (j.rooms || []).reduce((a, r) => a + roomGrandTotal(r), 0);
     const quoteOrder = { accepted: 0, pending: 1, declined: 2, archived: 3 };
     if (sort === "updated")         filtered.sort((a, b) => new Date(b.updatedAt || b.updated_at || b.createdAt || b.created_at || 0) - new Date(a.updatedAt || a.updated_at || a.createdAt || a.created_at || 0));
     else if (sort === "value-desc") filtered.sort((a, b) => jobTotal(b) - jobTotal(a));
@@ -4108,7 +4106,7 @@ function renderDashboard() {
     empty.classList.add("hidden");
 
     list.innerHTML = filtered.map(j => {
-        const total  = (j.rooms || []).reduce((a, r) => a + parseFloat(r.total || 0), 0);
+        const total  = (j.rooms || []).reduce((a, r) => a + roomGrandTotal(r), 0);
         const count  = (j.rooms || []).length;
         const addr   = [j.address, j.city].filter(Boolean).join(", ");
         const hasQuote = !!j.quoteToken;
@@ -5883,7 +5881,7 @@ function renderJobView() {
                     <div class="room-card-name">${esc(r.name)}</div>
                     <div class="room-card-meta">${areaStr}${r.tileType ? ` · <span style="color:var(--accent);font-weight:600;">${TILE_TYPE_LABELS[r.tileType] || r.tileType}</span>` : ""}</div>
                 </div>
-                <div class="room-card-total">${r.total ? currencySymbol() + r.total : ""}</div>
+                <div class="room-card-total">${currencySymbol()}${roomGrandTotal(r).toFixed(2)}</div>
             </div>
             <div class="room-cost-breakdown">
                 <span class="rcb-item"><span class="rcb-label">Materials</span><span class="rcb-value">${currencySymbol()}${mats.toFixed(2)}</span></span>
@@ -5902,7 +5900,7 @@ function renderJobView() {
         </div>`;
     }).join("");
 
-    const grandTotal = rooms.reduce((a, r) => a + (r.surfaces||[]).reduce((b,s) => b + parseFloat(s.total||0), 0) + parseFloat(r.extraWorkCost||0), 0);
+    const grandTotal = rooms.reduce((a, r) => a + roomGrandTotal(r), 0);
 
     // Build cost breakdown across all rooms — internal only, never shown to the customer
     let totalMats = 0, totalLabour = 0, totalPrepMat = 0, totalPrepLab = 0;
@@ -7920,10 +7918,10 @@ function updateNiche(zone, id, field, value) {
     rmCalc();
 }
 
-function getNicheSurfaces(zone) {
+function getNicheSurfaces(zone, list = niches[zone]) {
     const S = settings;
     const mult = 1 + (S.markup || 0) / 100;
-    return niches[zone].map((n, i) => {
+    return (list || []).map((n, i) => {
         const W = parseFloat(n.width)  || 0;
         const H = parseFloat(n.height) || 0;
         const D = parseFloat(n.depth)  || 0;
@@ -8886,6 +8884,16 @@ function calcSealantCost(roomOrForm) {
     return base * (1 + (parseFloat(settings.markup) || 0) / 100);
 }
 
+// A saved room's full price: its surfaces plus the costs that belong to the room
+// rather than to any one surface (extra work, trim, sealant, niches) — the same sum
+// the room editor's live estimate and saveRoom() use. Job totals must be built from
+// this, or they come out lower than the room cards they're made of.
+function roomGrandTotal(room) {
+    const surfaces = (room.surfaces || []).reduce((a, s) => a + parseFloat(s.total || 0), 0);
+    const nicheCost = getNicheSurfaces(null, room.niches).reduce((a, n) => a + n.labourCost, 0);
+    return surfaces + parseFloat(room.extraWorkCost || 0) + parseFloat(room.trimCost || 0) + calcSealantCost(room) + nicheCost;
+}
+
 /* Build a minimal room-like object from the current sealant form fields.
    Each room type gets its own Sealant fields (only the controls relevant to
    what that type actually has — Floor Only has no tiled walls so no corners
@@ -9216,7 +9224,7 @@ function saveRoom() {
         surfaces,
         area,
         niches:      JSON.parse(JSON.stringify(niches[currentSurfType === "shower" ? "sh" : currentSurfType === "wall" ? "w" : "r"] || [])),
-        total:       (parseFloat(total) + (currentSurfType === "shower" || currentSurfType === "wall" ? calcNicheCost(currentSurfType === "shower" ? "sh" : "w") : 0)).toFixed(2),
+        total:       (parseFloat(total) + (currentSurfType === "floor" ? 0 : calcNicheCost(currentSurfType === "shower" ? "sh" : currentSurfType === "wall" ? "w" : "r"))).toFixed(2),
         ufh:         surfaces.some(s => s.ufh),
         tiles:       surfaces.reduce((a, s) => a + (s.tiles || 0), 0),
         adhBags:     Math.ceil(surfaces.reduce((a, s) => a + (s.adhKg || 0), 0) / 20),
