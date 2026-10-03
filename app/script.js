@@ -4162,7 +4162,7 @@ function renderDashboard() {
             ${j.jobArchived ? `<div style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:0.05em;margin-bottom:8px;">📦 ARCHIVED</div>` : ""}
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                 <div style="flex:1;min-width:0;">
-                    <div class="job-card-name">${j.customerName ? j.customerName.replace(/&/g,"&amp;").replace(/</g,"&lt;") : ""}${j.isDemo ? ` <span style="background:#1e40af;color:#dbeafe;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;vertical-align:middle;">DEMO</span>` : ""}</div>
+                    <div class="job-card-name">${j.customerName ? j.customerName.replace(/&/g,"&amp;").replace(/</g,"&lt;") : ""}${quoteOptionBadge(j)}${j.isDemo ? ` <span style="background:#1e40af;color:#dbeafe;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;vertical-align:middle;">DEMO</span>` : ""}</div>
                     ${addr ? `<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">📍 ${addr.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
                     ${j.phone ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📞 ${j.phone.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</div>` : ""}
                     ${(j.source === "voicemail" || j.source === "call" || j.source === "ai_receptionist") && j.areaMeta ? ballparkHtml(j, true) : ""}
@@ -5724,6 +5724,40 @@ function goJob(id) {
     if (j && j.quoteToken) loadMessagesBadge(j.quoteToken);
 }
 
+// Copy this job's quote as a new option for the same customer. When they ask for something
+// different (another tile, no tanking, an extra room), the tiler changes the copy and the
+// original stays exactly as it was quoted. The copy keeps the customer, description, notes and
+// every room, but nothing from the original's sending, acceptance, schedule, invoice, photos
+// or messages. Both are labelled Option 1, Option 2, … (quoteGroup ties them together).
+function copyQuote() {
+    const src = getJob();
+    if (!src || !(src.rooms || []).length) return;
+    const group = src.quoteGroup || src.id;
+    const options = jobs.filter(x => x.id === group || x.quoteGroup === group).map(x => x.quoteOption || 1);
+    const nextOption = Math.max(1, ...options) + 1;
+    if (!confirm(`Copy this quote for ${src.customerName} as Option ${nextOption}?\n\nYou can change the copy however you like — the original stays exactly as it is.`)) return;
+
+    src.quoteGroup  = group;
+    src.quoteOption = src.quoteOption || 1;
+    const now = new Date().toISOString();
+    const copy = { id: uid(), quoteGroup: group, quoteOption: nextOption, status: "surveyed", createdAt: now, updatedAt: now };
+    ["customerName", "phone", "email", "address", "city", "postcode", "description", "notes",
+     "tileSupply", "workType", "jobType", "areaMeta", "isDemo", "rooms"].forEach(k => {
+        if (src[k] !== undefined) copy[k] = JSON.parse(JSON.stringify(src[k]));
+    });
+    jobs.unshift(copy);
+    incrementMonthlyQuoteCount();
+    saveAll();
+    goJob(copy.id);
+}
+
+// "Option 2" tag for a job that's one of several quotes for the same customer
+function quoteOptionBadge(j) {
+    return j && j.quoteOption
+        ? ` <span style="background:#334155;color:#e2e8f0;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;vertical-align:middle;">Option ${j.quoteOption}</span>`
+        : "";
+}
+
 // Once the customer has accepted the quote and the job's marked Complete, the next thing to
 // send is the invoice — so the job screen's main button goes straight to Convert to Invoice
 // instead of back to the quote. Any other stage (or a declined/pending quote) keeps Quote.
@@ -5733,13 +5767,15 @@ function renderJobQuoteButton(job) {
     const invoiceNext = job.quoteStatus === "accepted" && job.status === "complete";
     btn.textContent = invoiceNext ? "🧾 Invoice →" : "Quote →";
     btn.onclick = invoiceNext ? () => { goQuote(); setTimeout(convertToInvoice, 400); } : () => goQuote();
+    const copyBtn = document.getElementById("job-copy-quote-btn");
+    if (copyBtn) copyBtn.style.display = (job.rooms || []).length ? "" : "none";
 }
 
 function renderJobView() {
     const job = getJob();
     if (!job) { goDashboard(); return; }
 
-    document.getElementById("job-header-title").textContent = job.customerName;
+    document.getElementById("job-header-title").textContent = job.customerName + (job.quoteOption ? ` · Option ${job.quoteOption}` : "");
     renderJobQuoteButton(job);
     renderJobPhotos(job);
     renderFinishedPhotos(job);
