@@ -441,6 +441,34 @@ function esc(s)    { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
         });
     }
 })();
+
+// ── GA4: demo_started ────────────────────────────────────────
+// Web-demo visits (?demo=1, normally inside the /app/demo wrapper, which sends the
+// visit's single page_view) send demo_started once per browser session, on the
+// visitor's first real interaction: a genuine tap/click or key press (isTrusted),
+// so the demo's own scripted sign-in and setup never count. A no-op in the native
+// apps and anywhere else gtag isn't loaded.
+(function trackDemoStarted() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") !== "1") return;
+    const KEY = "tileiq-demo-started";
+    try { if (sessionStorage.getItem(KEY)) return; } catch (_) {}
+    const TYPES = ["pointerdown", "keydown"];
+    const stop = () => TYPES.forEach(t => document.removeEventListener(t, onFirst, true));
+    function onFirst(e) {
+        if (!e.isTrusted || typeof window.gtag !== "function") return;
+        stop();
+        try {
+            if (sessionStorage.getItem(KEY)) return;
+            sessionStorage.setItem(KEY, "1");
+        } catch (_) {}
+        window.gtag("event", "demo_started", {
+            demo_track: params.get("try") || "tour",   // which landing page sent them (/app/demo?try=quoting …)
+            in_wrapper: window.self !== window.top,     // inside /app/demo, or /app/?demo=1 opened directly
+        });
+    }
+    TYPES.forEach(t => document.addEventListener(t, onFirst, true));
+})();
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 // ── Demo account guard ────────────────────────────────────────
