@@ -11,6 +11,34 @@
   // In the /app/demo wrapper the wrapper page sends the visit's page_view; GA4 stays on for demo_* events
   var tileiqDemoFrame = window.self !== window.top && new URLSearchParams(location.search).get('demo') === '1';
   gtag('config', 'G-274KES4P2G', tileiqDemoFrame ? { send_page_view: false } : {});
+
+  // Track demo visitors who click through to an app store from the wrapper CTA.
+  // The iframe and wrapper are same-origin, so the demo app can observe the parent button
+  // without changing the wrapper's automatic demo-login behaviour.
+  if (tileiqDemoFrame) {
+    window.addEventListener('DOMContentLoaded', function () {
+      try {
+        var getAppButton = window.parent.document.getElementById('demo-get-app');
+        if (!getAppButton || getAppButton.dataset.storeTrackingInstalled === '1') return;
+        getAppButton.dataset.storeTrackingInstalled = '1';
+
+        getAppButton.addEventListener('click', function () {
+          var href = getAppButton.href || '';
+          var eventName = '';
+          if (href.indexOf('play.google.com/') !== -1) eventName = 'demo_google_play_click';
+          else if (href.indexOf('apps.apple.com/') !== -1) eventName = 'demo_app_store_click';
+          if (!eventName) return;
+
+          var storageKey = 'tileiq-' + eventName;
+          if (sessionStorage.getItem(storageKey) === '1') return;
+          sessionStorage.setItem(storageKey, '1');
+          gtag('event', eventName, { link_url: href });
+        });
+      } catch (e) {
+        // Demo tracking must never interfere with the app itself.
+      }
+    });
+  }
 </script>
     <meta charset="UTF-8">
     <title>TileIQ Pro</title>
