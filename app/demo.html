@@ -85,6 +85,18 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b0f14;fon
   const ua = navigator.userAgent;
   if (/android/i.test(ua)) get.href = 'https://play.google.com/store/apps/details?id=com.tileiqpro.android';
   else if (/iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && 'ontouchend' in document)) get.href = 'https://apps.apple.com/gb/app/tileiq-pro/id6787447373';
+
+  get.addEventListener('click', () => {
+    let eventName = '';
+    if (get.href.includes('play.google.com/')) eventName = 'demo_google_play_click';
+    else if (get.href.includes('apps.apple.com/')) eventName = 'demo_app_store_click';
+    if (!eventName || typeof gtag !== 'function') return;
+
+    gtag('event', eventName, {
+      link_url: get.href,
+      transport_type: 'beacon'
+    });
+  });
 })();
 (() => {
   const frame = document.getElementById('tileiq-demo-app');
