@@ -469,6 +469,26 @@ function esc(s)    { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
     }
     TYPES.forEach(t => document.addEventListener(t, onFirst, true));
 })();
+
+// ── GA4: demo_feature_used ───────────────────────────────────
+// Web demo only (?demo=1): which main areas a demo visitor opens. Called from each
+// area's own button/navigation action; each feature is counted once per demo session.
+function trackDemoFeature(feature) {
+  if (!window.location.search.includes('demo=1')) return;
+
+  const key = 'tileiq-demo-feature-' + feature;
+
+  // Only count each feature once per demo session
+  if (sessionStorage.getItem(key) === '1') return;
+
+  sessionStorage.setItem(key, '1');
+
+  if (typeof gtag === 'function') {
+    gtag('event', 'demo_feature_used', {
+      feature: feature
+    });
+  }
+}
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 // ── Demo account guard ────────────────────────────────────────
@@ -3026,6 +3046,7 @@ function rmToggleStoneW()  { const c = document.getElementById("rm-w-stone").che
    DASHBOARD
 ================================================================ */
 function goCustomers() {
+    trackDemoFeature('customers');
     show('screen-customers');
     renderCustomersScreen('');
     renderTipCard("customers");
@@ -3292,7 +3313,7 @@ function renderYourDay() {
     });
     if (noReview.length) lines.push({
         icon: "⭐", text: `${noReview.length} completed job${noReview.length !== 1 ? "s" : ""} haven't been asked for a review`,
-        action: () => { document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
+        action: () => { trackDemoFeature('reviews'); document.getElementById("jobs-quote-filter").value = ""; goDashboard(); }
     });
     if (readyForPost.length) lines.push({
         icon: "📸", text: `${readyForPost.length} completed job${readyForPost.length !== 1 ? "s" : ""} ${readyForPost.length === 1 ? "has" : "have"} photos ready for a social post`,
@@ -5695,7 +5716,7 @@ const SocialPost = {
         }
     }
 };
-function openSocialPostComposer() { SocialPost.open(); }
+function openSocialPostComposer() { trackDemoFeature('social_media'); SocialPost.open(); }
 function closeSocialPostComposer() { SocialPost.close(); }
 function generateSocialCaption() { SocialPost.generate(); }
 function shareSocialPost() { SocialPost.share(); }
@@ -11059,6 +11080,7 @@ function goQuote(mode) {
     }
     quoteScreenMode = mode === "invoice" ? "invoice" : "quote";
     if (quoteScreenMode === "invoice") assignInvoiceRef(j);
+    else trackDemoFeature('quotes');
     applyQuoteScreenMode();
     currentQuoteRef = "Q" + Date.now().toString().slice(-6);
     const vatEl = document.getElementById("q-vat");

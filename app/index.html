@@ -504,7 +504,7 @@
                 <div style="font-size:15px;font-weight:800;color:#1c1400;">New Job</div>
                 <div style="font-size:10px;color:#5c4300;font-weight:600;">Create a tiling job</div>
             </button>
-            <button onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;cursor:pointer;box-shadow:var(--shadow);">
+            <button onclick="trackDemoFeature('jobs');document.getElementById('jobs-quote-filter').value='';goDashboard();" style="flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;cursor:pointer;box-shadow:var(--shadow);">
                 <span style="font-size:22px;">📋</span>
                 <div style="font-size:15px;font-weight:800;color:var(--ink);">View Jobs</div>
                 <div id="home-job-count" style="font-size:10px;color:var(--muted);font-weight:600;">Loading…</div>
@@ -2421,7 +2421,7 @@
                 </div>
                 <div class="field-group">
                     <label>Automatically ask for a review? <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(sent once, when a job's status is set to Complete)</span></label>
-                    <select id="set-auto-review">
+                    <select id="set-auto-review" onchange="trackDemoFeature('reviews')">
                         <option value="false">Off</option>
                         <option value="true">On</option>
                     </select>
@@ -2442,7 +2442,7 @@
                 </div>
                 <div class="field-group" style="margin-bottom:0;">
                     <label>Google Review Link</label>
-                    <input id="set-google-review-link" type="url" placeholder="https://g.page/r/.../review" inputmode="url">
+                    <input id="set-google-review-link" onchange="trackDemoFeature('reviews')" type="url" placeholder="https://g.page/r/.../review" inputmode="url">
                     <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Find this in your Google Business Profile — Ask for reviews → Share review form.</div>
                 </div>
             </div>
@@ -4010,7 +4010,7 @@
     <button onclick="goHome()" id="bnav-home" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
         <span style="font-size:22px;">🏠</span>Home
     </button>
-    <button onclick="document.getElementById('jobs-quote-filter').value='';goDashboard();" id="bnav-jobs" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
+    <button onclick="trackDemoFeature('jobs');document.getElementById('jobs-quote-filter').value='';goDashboard();" id="bnav-jobs" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
         <span style="font-size:22px;">📋</span>Jobs
     </button>
     <button onclick="goCustomers()" id="bnav-customers" style="flex:1;background:none;border:none;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-muted);font-size:10px;font-weight:700;">
