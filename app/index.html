@@ -29,10 +29,16 @@
           else if (href.indexOf('apps.apple.com/') !== -1) eventName = 'demo_app_store_click';
           if (!eventName) return;
 
-          var storageKey = 'tileiq-' + eventName;
-          if (sessionStorage.getItem(storageKey) === '1') return;
-          sessionStorage.setItem(storageKey, '1');
-          gtag('event', eventName, { link_url: href });
+          // Send through the wrapper page's GA4 instance because the CTA belongs to
+          // the wrapper. The link opens in a new tab, so the wrapper remains loaded
+          // long enough for GA4 to transmit the event.
+          var analytics = window.parent.gtag;
+          if (typeof analytics === 'function') {
+            analytics('event', eventName, {
+              link_url: href,
+              transport_type: 'beacon'
+            });
+          }
         });
       } catch (e) {
         // Demo tracking must never interfere with the app itself.
