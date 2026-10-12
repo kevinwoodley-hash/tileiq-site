@@ -509,7 +509,7 @@ const TQA = (() => {
     const CONSENT_KEY  = "tileiq-analytics-consent";   // "granted" | "denied" — same key /analytics.js uses on web
     const INTERNAL_KEY = "tileiq-internal";            // "1" = internal testing on this device/browser
     const ALLOWED = new Set(["app_mode", "platform_type", "currency", "estimate_type", "feature_name", "feature",
-                             "method", "store", "plan", "traffic_type", "debug_mode", "link_location"]);
+                             "method", "store", "plan", "traffic_type", "is_internal_test", "debug_mode", "link_location"]);
     const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
     const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) {} };
 
@@ -528,7 +528,9 @@ const TQA = (() => {
         try {
             if (consent() !== "granted") return;
             const all = { app_mode: appMode(), platform_type: platform(), currency: currency(), ...(params || {}) };
-            if (internal()) { all.traffic_type = "internal"; if (!isNativeApp()) all.debug_mode = true; }
+            // Internal testing: traffic_type is the field GA4's internal-traffic filter reads;
+            // is_internal_test is the same flag as an ordinary parameter, usable as a report dimension.
+            if (internal()) { all.traffic_type = "internal"; all.is_internal_test = "true"; if (!isNativeApp()) all.debug_mode = true; }
             const out = {};
             Object.keys(all).forEach(k => {
                 const v = all[k];
@@ -547,6 +549,9 @@ const TQA = (() => {
         if (!isNativeApp()) return;
         const fa = firebase();
         const on = consent() === "granted";
+        // Firebase's own automatic events (screen_view, session_start, …) don't pass through track(),
+        // so the internal markers are also set as Firebase default event parameters (Android plugin).
+        try { await window.Capacitor?.Plugins?.AnalyticsDefaults?.setInternal?.({ internal: internal() }); } catch (_) {}
         try { if (fa) await fa.setCollectionEnabled({ enabled: on }); } catch (_) {}
         try { if (fa && on) await fa.setUserProperty({ name: "internal_user", value: internal() ? "true" : "false" }); } catch (_) {}
         linkBilling();

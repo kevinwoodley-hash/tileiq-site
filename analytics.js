@@ -56,7 +56,7 @@
     // Inside the /app/demo wrapper the wrapper page sends the visit's page_view;
     // the app stays configured so its demo_* and other events still go through.
     if (inDemoFrame) cfg.send_page_view = false;
-    if (isInternal()) { cfg.traffic_type = 'internal'; cfg.debug_mode = true; }
+    if (isInternal()) { cfg.traffic_type = 'internal'; cfg.is_internal_test = 'true'; cfg.debug_mode = true; }
     push('js', new Date());
     if (isInternal()) push('set', 'user_properties', { internal_user: 'true' });
     push('config', GA_ID, cfg);
