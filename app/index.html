@@ -1,51 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-274KES4P2G"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  // In the /app/demo wrapper the wrapper page sends the visit's page_view; GA4 stays on for demo_* events
-  var tileiqDemoFrame = window.self !== window.top && new URLSearchParams(location.search).get('demo') === '1';
-  gtag('config', 'G-274KES4P2G', tileiqDemoFrame ? { send_page_view: false } : {});
-
-  // Track demo visitors who click through to an app store from the wrapper CTA.
-  // The iframe and wrapper are same-origin, so the demo app can observe the parent button
-  // without changing the wrapper's automatic demo-login behaviour.
-  if (tileiqDemoFrame) {
-    window.addEventListener('DOMContentLoaded', function () {
-      try {
-        var getAppButton = window.parent.document.getElementById('demo-get-app');
-        if (!getAppButton || getAppButton.dataset.storeTrackingInstalled === '1') return;
-        getAppButton.dataset.storeTrackingInstalled = '1';
-
-        getAppButton.addEventListener('click', function () {
-          var href = getAppButton.href || '';
-          var eventName = '';
-          if (href.indexOf('play.google.com/') !== -1) eventName = 'demo_google_play_click';
-          else if (href.indexOf('apps.apple.com/') !== -1) eventName = 'demo_app_store_click';
-          if (!eventName) return;
-
-          // Send through the wrapper page's GA4 instance because the CTA belongs to
-          // the wrapper. The link opens in a new tab, so the wrapper remains loaded
-          // long enough for GA4 to transmit the event.
-          var analytics = window.parent.gtag;
-          if (typeof analytics === 'function') {
-            analytics('event', eventName, {
-              link_url: href,
-              transport_type: 'beacon'
-            });
-          }
-        });
-      } catch (e) {
-        // Demo tracking must never interfere with the app itself.
-      }
-    });
-  }
-</script>
+<!-- TileIQ analytics: Google tag G-274KES4P2G with Consent Mode v2 (see /analytics.js) -->
+<script src="/analytics.js"></script>
     <meta charset="UTF-8">
     <title>TileIQ Pro</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0">
@@ -2728,6 +2685,17 @@
                 🗑 Delete Account
                 <span style="margin-left:auto;color:#ef4444;">›</span>
             </button>
+            <div class="form-card" style="margin-bottom:12px;">
+                <div class="form-section-label" onclick="TQA.titleTap()">Analytics</div>
+                <label class="checkbox-label" style="align-items:flex-start;">
+                    <input type="checkbox" id="set-analytics-consent" onchange="TQA.setConsent(this.checked ? 'granted' : 'denied')">
+                    <span>Share anonymous usage statistics<br><span style="font-size:12px;color:var(--text-muted);">Helps us see which features get used (Google Analytics). Never your customers, quotes or prices.</span></span>
+                </label>
+                <div id="set-analytics-internal-row" style="display:none;margin-top:10px;font-size:12px;font-weight:700;color:#f59e0b;">
+                    🧪 Internal testing mode is ON for this device
+                    <button type="button" onclick="TQA.setInternal(false)" style="margin-left:8px;background:none;border:1px solid #f59e0b;color:#f59e0b;border-radius:8px;padding:3px 9px;font-size:12px;cursor:pointer;">Turn off</button>
+                </div>
+            </div>
             <button onclick="goPrivacy()" style="width:100%;background:transparent;border:1px solid #334155;border-radius:10px;padding:13px;font-size:14px;color:#64748b;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;margin-bottom:8px;">
                 🔒 Privacy Policy
                 <span style="margin-left:auto;color:#475569;">›</span>
@@ -2830,7 +2798,7 @@
             <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">WHAT WE COLLECT</div>
             <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">
                 Your email address, company details, jobs, customer names and contact details, and device push notification token.
-                We do not collect analytics or tracking data.
+                If you allow it (Settings → Analytics), anonymous usage statistics — which screens and features are used — are shared with Google Analytics. This is off until you accept, never includes your customers, quotes or prices, and you can switch it off at any time.
             </div>
             <div style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:.05em;margin-bottom:6px;">HOW IT'S STORED</div>
             <div style="font-size:14px;color:#cbd5e1;line-height:1.6;margin-bottom:16px;">

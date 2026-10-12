@@ -481,14 +481,175 @@ function trackDemoFeature(feature) {
   // Only count each feature once per demo session
   if (sessionStorage.getItem(key) === '1') return;
 
+  // No analytics consent yet: leave it uncounted, so it can still count once they accept
+  if (typeof gtag !== 'function') return;
+
   sessionStorage.setItem(key, '1');
 
-  if (typeof gtag === 'function') {
-    gtag('event', 'demo_feature_used', {
-      feature: feature
-    });
-  }
+  gtag('event', 'demo_feature_used', {
+    feature: feature,
+    feature_name: feature,
+    app_mode: 'demo',
+    platform_type: 'web'
+  });
 }
+
+// ── Analytics (GA4): one consent-gated entry point for web, Android and iOS ──
+// TQA.track(name, params) is the only way the app sends a GA4 event (the two demo_*
+// events above keep their own gtag calls). It does nothing until the person has
+// accepted analytics; adds app_mode (demo/live), platform_type (web/android/ios) and
+// currency (GBP/USD) to every event; marks internal testing (traffic_type=internal);
+// and only lets through the parameters listed in ALLOWED — never names, emails, phone
+// numbers, addresses or quote text.
+//   web     → gtag, loaded by /analytics.js (Consent Mode v2 banner) once accepted
+//   android → Firebase Analytics through the Capacitor plugin (collection is off in
+//             the manifest and switched on here only after the person accepts)
+//   ios     → same code path as Android as soon as the plugin is added to the iOS build
+const TQA = (() => {
+    const CONSENT_KEY  = "tileiq-analytics-consent";   // "granted" | "denied" — same key /analytics.js uses on web
+    const INTERNAL_KEY = "tileiq-internal";            // "1" = internal testing on this device/browser
+    const ALLOWED = new Set(["app_mode", "platform_type", "currency", "estimate_type", "feature_name", "feature",
+                             "method", "store", "plan", "traffic_type", "debug_mode", "link_location"]);
+    const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) {} };
+
+    const platform = () => {
+        const p = window.Capacitor?.isNativePlatform?.() ? window.Capacitor.getPlatform() : "web";
+        return p === "android" || p === "ios" ? p : "web";
+    };
+    const isNativeApp = () => platform() !== "web";
+    const firebase = () => window.Capacitor?.Plugins?.FirebaseAnalytics || null;
+    const consent  = () => lsGet(CONSENT_KEY);
+    const internal = () => lsGet(INTERNAL_KEY) === "1";
+    const appMode  = () => (isDemoAccount() || new URLSearchParams(location.search).get("demo") === "1") ? "demo" : "live";
+    const currency = () => regionOf() === "us" ? "USD" : "GBP";
+
+    function track(name, params) {
+        try {
+            if (consent() !== "granted") return;
+            const all = { app_mode: appMode(), platform_type: platform(), currency: currency(), ...(params || {}) };
+            if (internal()) { all.traffic_type = "internal"; if (!isNativeApp()) all.debug_mode = true; }
+            const out = {};
+            Object.keys(all).forEach(k => {
+                const v = all[k];
+                if (!ALLOWED.has(k) || v === undefined || v === null || v === "") return;
+                out[k] = typeof v === "string" ? v.slice(0, 100) : v;
+            });
+            if (isNativeApp()) { const fa = firebase(); if (fa) fa.logEvent({ name, params: out }).catch(() => {}); }
+            else if (typeof window.gtag === "function") window.gtag("event", name, out);
+        } catch (_) { /* analytics must never break the app */ }
+    }
+
+    // Native apps: turn Firebase collection on/off to match the choice, tag internal testers, and give
+    // the billing system (RevenueCat) the analytics instance id so confirmed payment events can be
+    // attributed. With consent off the id is cleared, so no billing events are sent for this person.
+    async function applyNative() {
+        if (!isNativeApp()) return;
+        const fa = firebase();
+        const on = consent() === "granted";
+        try { if (fa) await fa.setCollectionEnabled({ enabled: on }); } catch (_) {}
+        try { if (fa && on) await fa.setUserProperty({ name: "internal_user", value: internal() ? "true" : "false" }); } catch (_) {}
+        linkBilling();
+    }
+    async function linkBilling() {
+        if (!isNativeApp()) return;
+        try {
+            const Purchases = window.Capacitor?.Plugins?.Purchases;
+            const fa = firebase();
+            if (!Purchases?.setFirebaseAppInstanceID || !fa) return;
+            const on = consent() === "granted";
+            const id = on ? (await fa.getAppInstanceId())?.instanceId : null;
+            await Purchases.setFirebaseAppInstanceID({ firebaseAppInstanceID: id || null });
+            if (Purchases.setAttributes) await Purchases.setAttributes({ tileiq_internal: internal() ? "1" : "0" });
+        } catch (_) {}
+    }
+
+    function setConsent(state) {
+        state = state === "granted" ? "granted" : "denied";
+        if (!isNativeApp() && window.tileiqConsent) window.tileiqConsent.set(state);   // web: /analytics.js owns the Google tag
+        else { lsSet(CONSENT_KEY, state); applyNative(); }
+        renderSettings();
+    }
+    function setInternal(on) {
+        lsSet(INTERNAL_KEY, on ? "1" : null);
+        applyNative();
+        renderSettings();
+    }
+
+    // Native apps ask once, the first time the Home screen shows (the website's banner does this on web)
+    function maybeAsk() {
+        if (!isNativeApp() || consent() || document.getElementById("tqa-consent")) return;
+        const el = document.createElement("div");
+        el.id = "tqa-consent";
+        el.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:99990;background:#111418;color:#f4f7f8;border:1px solid #2a3138;border-radius:16px;padding:16px;box-shadow:0 18px 50px rgba(0,0,0,.5);font-size:14px;line-height:1.5;";
+        el.innerHTML = `<div style="font-weight:800;font-size:15px;margin-bottom:6px;">Help improve TileIQ?</div>
+            <div style="color:#b9c2c8;margin-bottom:12px;">Share anonymous usage statistics (which features get used) through Google Analytics. Never your customers, quotes or prices. You can change this any time in Settings.</div>
+            <div style="display:flex;gap:8px;">
+                <button type="button" data-v="granted" style="flex:1;border:0;border-radius:10px;padding:12px;font-size:14px;font-weight:700;background:#e6af2e;color:#111418;">Allow</button>
+                <button type="button" data-v="denied" style="flex:1;border:0;border-radius:10px;padding:12px;font-size:14px;font-weight:700;background:#e6af2e;color:#111418;">No thanks</button>
+            </div>`;
+        el.addEventListener("click", e => {
+            const v = e.target?.getAttribute?.("data-v");
+            if (!v) return;
+            el.remove();
+            setConsent(v);
+        });
+        document.body.appendChild(el);
+    }
+
+    // Settings → Analytics. Tapping the heading seven times shows the internal-testing switch.
+    let taps = 0, tapTimer = null;
+    function titleTap() {
+        taps++;
+        clearTimeout(tapTimer);
+        tapTimer = setTimeout(() => { taps = 0; }, 2500);
+        if (taps < 7) return;
+        taps = 0;
+        const on = !internal();
+        setInternal(on);
+        alert(on ? "Internal testing mode ON.\n\nThis device's analytics are now marked as internal (traffic_type=internal)."
+                 : "Internal testing mode OFF.\n\nThis device's analytics count as normal again.");
+        if (!isNativeApp()) location.reload();          // web: the Google tag picks the flag up when it loads
+    }
+    function renderSettings() {
+        const box = document.getElementById("set-analytics-consent");
+        if (box) box.checked = consent() === "granted";
+        const row = document.getElementById("set-analytics-internal-row");
+        if (row) row.style.display = internal() ? "" : "none";
+    }
+
+    // New-room estimates: completed only counts for a room that was started as new
+    let estimateOpen = false;
+    function estimateType(surfType, job) {
+        if (surfType === "wall")  return "wall";
+        if (surfType === "floor") return "floor";
+        if (surfType === "shower" || /bath|shower|wet ?room|en-?suite/i.test(job?.workType || "")) return "bathroom";
+        return "other";
+    }
+    function estimateStarted() { estimateOpen = true; track("estimate_started"); }
+    function estimateCompleted(surfType, job) {
+        if (!estimateOpen) return;
+        estimateOpen = false;
+        track("estimate_completed", { estimate_type: estimateType(surfType, job) });
+    }
+
+    // A quote counts as generated once per job per session, however many times it's rebuilt
+    function quoteGenerated(job, method) {
+        if (!job?.id) return;
+        const key = "tqa-quote-" + job.id;
+        try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); } catch (_) {}
+        track("quote_generated", { method });
+    }
+
+    return { track, consent, internal, platform, setConsent, setInternal, applyNative, linkBilling, maybeAsk, titleTap, renderSettings,
+             estimateStarted, estimateCompleted, quoteGenerated, suppressLogin: false, loginMethod: "password" };
+})();
+document.addEventListener("DOMContentLoaded", () => {
+    TQA.applyNative();
+    TQA.renderSettings();
+    // Web: the choice can also be made in the site's cookie banner — keep the Settings box in step
+    if (window.tileiqConsent) window.tileiqConsent.onChange(() => TQA.renderSettings());
+});
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 // ── Demo account guard ────────────────────────────────────────
@@ -1083,6 +1244,8 @@ async function authSignIn() {
         );
 
         currentUser = json.body.user;
+        if (!TQA.suppressLogin && !isDemoAccount()) TQA.track("login", { method: TQA.loginMethod });
+        TQA.loginMethod = "password";
         // Request push permission immediately at sign-in rather than waiting for the
         // delayed initPushNotifications() call later in this flow (which can be
         // missed if the app backgrounds/closes within that window) — was also
@@ -1235,6 +1398,7 @@ async function completeOAuthSignIn(accessToken, refreshToken, expiresIn) {
         localStorage.setItem("sb-lzwmqabxpxuuznhbpewm-auth-token", JSON.stringify(sessionData));
 
         currentUser = user;
+        TQA.track("login", { method: "social" });
         if (currentUser?.id) { initPushNotifications().catch(e => console.warn('OneSignal init error:', e)); }
         const adminBtn = document.getElementById("btn-admin");
         if (adminBtn) adminBtn.style.display = isAppAdmin(currentUser) ? "flex" : "none";
@@ -1369,7 +1533,9 @@ async function authSignUp() {
         }).catch(() => {});
         document.getElementById("si-email").value    = email;
         document.getElementById("si-password").value = password;
-        await authSignIn();
+        TQA.suppressLogin = true;
+        try { await authSignIn(); } finally { TQA.suppressLogin = false; }
+        if (currentUser) TQA.track("sign_up", { method: "app" });
         // Bake the chosen region into this brand-new account's very first
         // settings row. authSignIn() has just set `settings = {...DEFAULT_SETTINGS}`
         // in memory (nothing saved to Supabase yet, since there's no existing
@@ -1732,6 +1898,7 @@ async function authBiometric() {
         document.getElementById("si-email").value = email;
         document.getElementById("si-password").value = password;
         if (btn) { btn.disabled = false; btn.textContent = "🔒 Sign in with Biometrics"; }
+        TQA.loginMethod = "biometric";
         await authSignIn();
     } catch(e) {
         if (btn) { btn.disabled = false; btn.textContent = "🔒 Sign in with Biometrics"; }
@@ -3358,6 +3525,7 @@ function renderYourDay() {
 }
 
 function goHome() {
+    TQA.maybeAsk();
     show("screen-home");
     renderHomeScreen();
 }
@@ -6839,6 +7007,7 @@ function updateRoomFloorTileType() {
 }
 
 function goAddRoom() {
+    TQA.estimateStarted();
     currentRoomIdx    = null;
     currentSurfType   = "room";
     currentLabourType = "m2";
@@ -6866,6 +7035,7 @@ function goAddRoom() {
 function goAddRoomFromEnquiry() {
     const job = getJob();
     if (!job) return;
+    TQA.estimateStarted();
 
     currentRoomIdx    = null;
     currentSurfType   = "room";
@@ -9386,10 +9556,12 @@ function saveRoom() {
     };
 
     const j = getJob();
+    const wasNewRoom = currentRoomIdx === null;
     if (currentRoomIdx === null) { j.rooms.push(room); }
     else                         { j.rooms[currentRoomIdx] = room; }
 
     saveAll();
+    if (wasNewRoom) TQA.estimateCompleted(currentSurfType, j);
     renderJobView();
     goJob();
 }
@@ -12281,7 +12453,7 @@ function downloadPDF() {
     }
     const result = buildPDFDoc();
     if (!result) { alert("Could not generate PDF."); return; }
-    try { result.doc.save(`${result.safeName}-quote.pdf`); }
+    try { result.doc.save(`${result.safeName}-quote.pdf`); if (docTypeNow() !== "invoice") TQA.quoteGenerated(getJob(), "pdf"); }
     catch(e) { console.error("PDF save failed", e); alert("PDF save failed: " + e.message); }
 }
 
@@ -12303,6 +12475,7 @@ function buildPDFBase64() {
 async function shareQuote() {
     const pdf = buildPDFBase64();
     if (!pdf) { alert("PDF generator not loaded."); return; }
+    if (docTypeNow() !== "invoice") TQA.quoteGenerated(getJob(), "pdf");
     try {
         const { Filesystem, Share } = window.Capacitor?.Plugins || {};
         if (Filesystem && Share) {
@@ -13189,6 +13362,7 @@ async function sendQuote() {
     if (!j) return;
     getQuoteToken(j);
     const url = await buildQuoteUrl(j);
+    if (url) TQA.quoteGenerated(j, "link");
     showSendQuoteSheet(j, url);
 }
 
@@ -13258,7 +13432,7 @@ async function sendQuoteByEmail() {
         const go = confirm("No customer email saved.\n\nThis will open your device email app — make sure you are sending from the right account.\n\nTap OK to continue.");
         if (!go) return;
         try { window.open(`mailto:?subject=${subject}&body=${encodeURIComponent(bodyText)}`, "_system"); } catch(e) {}
-        _markQuoteSent(j); return;
+        _markQuoteSent(j, "email_app"); return;
     }
 
     try {
@@ -13274,7 +13448,7 @@ async function sendQuoteByEmail() {
                 fromEmail: (settings.verifiedDomain && settings.domainStatus === "verified" && settings.companyEmail) ? settings.companyEmail : null
             })
         });
-        if (resp.ok) { _markQuoteSent(j); alert("✅ Quote sent to " + j.email); return; }
+        if (resp.ok) { _markQuoteSent(j, "email"); alert("✅ Quote sent to " + j.email); return; }
         const errData = await resp.json().catch(() => ({}));
         const errMsg = errData.error || ("HTTP " + resp.status);
         alert("❌ Failed to send: " + errMsg);
@@ -13304,7 +13478,7 @@ async function sendQuoteByWhatsApp() {
         if (Browser?.open) await Browser.open({ url: waUrl });
         else window.open(waUrl, "_system");
     }
-    _markQuoteSent(j);
+    _markQuoteSent(j, "whatsapp");
 }
 
 async function sendQuoteShare() {
@@ -13315,12 +13489,13 @@ async function sendQuoteShare() {
     if (!j) return;
     const text = `Hi ${j.customerName}, please view and accept your tiling quote here: ${url}`;
     const { Share } = window.Capacitor?.Plugins || {};
-    if (Share) { try { await Share.share({ title: `Quote – ${j.customerName}`, text, dialogTitle: "Send Quote" }); _markQuoteSent(j); return; } catch(e) {} }
+    if (Share) { try { await Share.share({ title: `Quote – ${j.customerName}`, text, dialogTitle: "Send Quote" }); _markQuoteSent(j, "share"); return; } catch(e) {} }
     try { await navigator.clipboard.writeText(url); alert("Link copied!"); } catch(e) { alert(url); }
-    _markQuoteSent(j);
+    _markQuoteSent(j, "copy_link");
 }
 
-function _markQuoteSent(j) {
+function _markQuoteSent(j, method) {
+    TQA.track("quote_sent", { method: method || "other" });
     if (!j.quoteStatus || j.quoteStatus === "pending") {
         j.quoteStatus = "pending";
         j.quoteSentAt = j.quoteSentAt || new Date().toISOString();
@@ -13481,6 +13656,7 @@ async function initRevenueCat() {
         if (Purchases) {
             const rcKey = window.Capacitor?.getPlatform() === "ios" ? "appl_bGoiXrIhxXmTqdTTbDScmgtQQRL" : "goog_XsqjRLLFdCnGQapXIsTsvTgPsgU";
             await Purchases.configure({ apiKey: rcKey, appUserID: userId });
+            TQA.linkBilling();
         }
         await refreshProStatus();
     } catch(e) { console.warn("RC init failed:", e.message); }
@@ -13903,6 +14079,7 @@ async function openPlayStorePurchase(plan, btnEl) {
         if (!pkg) { alert("Package not found. Please try again."); return; }
         const result = await Purchases.purchasePackage({ aPackage: pkg });
         if (result?.customerInfo?.entitlements?.active?.pro) {
+            if (String(result.customerInfo.entitlements.active.pro.periodType || "").toUpperCase() === "TRIAL") TQA.track("trial_started", { plan });
             _proStatus = true;
             updateProBadge();
             closePaywall();
