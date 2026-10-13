@@ -190,6 +190,9 @@ function show(id) {
         s.scrollTop = 0;
     });
     const el = document.getElementById(id);
+    // Native apps ask for the analytics choice the first time Home is shown, however it was reached:
+    // signing in and restoring a saved session call show("screen-home") directly, not goHome().
+    if (id === "screen-home") { try { TQA.maybeAsk(); } catch (_) {} }
     if (el) {
         el.classList.remove("hidden");
         el.scrollTop = 0;
@@ -581,7 +584,8 @@ const TQA = (() => {
         renderSettings();
     }
 
-    // Native apps ask once, the first time the Home screen shows (the website's banner does this on web)
+    // Native apps ask once, the first time the Home screen shows (the website's banner does this on web).
+    // Called from show("screen-home"), so sign-in, a restored session and the Home tab all trigger it.
     function maybeAsk() {
         if (!isNativeApp() || consent() || document.getElementById("tqa-consent")) return;
         const el = document.createElement("div");
@@ -3530,7 +3534,6 @@ function renderYourDay() {
 }
 
 function goHome() {
-    TQA.maybeAsk();
     show("screen-home");
     renderHomeScreen();
 }
@@ -14083,8 +14086,13 @@ async function openPlayStorePurchase(plan, btnEl) {
             : current.monthly ?? current.availablePackages?.find(p => p.packageType === "MONTHLY");
         if (!pkg) { alert("Package not found. Please try again."); return; }
         const result = await Purchases.purchasePackage({ aPackage: pkg });
-        if (result?.customerInfo?.entitlements?.active?.pro) {
-            if (String(result.customerInfo.entitlements.active.pro.periodType || "").toUpperCase() === "TRIAL") TQA.track("trial_started", { plan });
+        // An entitlement's key is whatever it is called in RevenueCat (currently "TileIQ Pro Pro"), so take
+        // whichever one is active rather than looking for one named "pro". That name never matched, so a
+        // successful purchase was never acknowledged here (no welcome, paywall left open) and trial_started
+        // could not fire. Same rule as the server's rc_check: any active entitlement means Pro.
+        const activeEntitlement = Object.values(result?.customerInfo?.entitlements?.active || {})[0];
+        if (activeEntitlement) {
+            if (String(activeEntitlement.periodType || "").toUpperCase() === "TRIAL") TQA.track("trial_started", { plan });
             _proStatus = true;
             updateProBadge();
             closePaywall();
