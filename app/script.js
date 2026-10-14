@@ -193,6 +193,7 @@ function show(id) {
     // Native apps ask for the analytics choice the first time Home is shown, however it was reached:
     // signing in and restoring a saved session call show("screen-home") directly, not goHome().
     if (id === "screen-home") { try { TQA.maybeAsk(); } catch (_) {} }
+    try { TQA.screen(id); } catch (_) {}
     if (el) {
         el.classList.remove("hidden");
         el.scrollTop = 0;
@@ -243,6 +244,7 @@ function _updateBottomNav(screenId) {
 function getJob()  { return jobs.find(j => j.id === currentJobId); }
 
 function getDirections(jobId) {
+    TQA.feature("directions");
     var job = jobId ? jobs.find(function(j){ return j.id === jobId; }) : getJob();
     if (!job) return;
     var parts = [job.address, job.city, job.postcode].filter(Boolean);
@@ -512,7 +514,8 @@ const TQA = (() => {
     const CONSENT_KEY  = "tileiq-analytics-consent";   // "granted" | "denied" — same key /analytics.js uses on web
     const INTERNAL_KEY = "tileiq-internal";            // "1" = internal testing on this device/browser
     const ALLOWED = new Set(["app_mode", "platform_type", "currency", "estimate_type", "feature_name", "feature",
-                             "method", "store", "plan", "traffic_type", "is_internal_test", "debug_mode", "link_location"]);
+                             "method", "store", "plan", "traffic_type", "is_internal_test", "debug_mode", "link_location",
+                             "status", "trigger", "tour", "step_number"]);
     const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
     const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) {} };
 
@@ -650,8 +653,90 @@ const TQA = (() => {
         track("quote_generated", { method });
     }
 
+    // True the first time a key is seen (per session, or for good with persist) — and only once the person
+    // has accepted, so nothing is used up before then. Keeps one-off events from repeating.
+    function once(key, persist) {
+        if (consent() !== "granted") return false;
+        const store = persist ? localStorage : sessionStorage;
+        try { if (store.getItem(key)) return false; store.setItem(key, "1"); } catch (_) {}
+        return true;
+    }
+    // The onboarding sample jobs (job.isDemo) aren't real work, so job/invoice events skip them
+    const realJob = j => !!j && !j.isDemo;
+
+    // feature_used: which parts of the app get used, each counted once per session
+    function feature(name) { if (once("tqa-f-" + name)) track("feature_used", { feature_name: name }); }
+
+    // Screens: native apps name the WebView's screens for GA4's Pages and screens report (otherwise
+    // every screen is "MainActivity"); the screens that are features in their own right also count
+    // as feature_used, on every platform.
+    const SCREEN_FEATURES = { "screen-materials": "materials_list", "screen-calendar": "calendar", "screen-customers": "customers",
+        "screen-voicemails": "voicemails", "screen-dashboard-customize": "dashboard_customise", "screen-inbox": "inbox",
+        "screen-messages": "messages", "screen-help": "help", "screen-quote-preview": "quote_preview" };
+    let lastScreen = "";
+    function screen(id) {
+        if (!id || id === lastScreen) return;
+        lastScreen = id;
+        if (consent() !== "granted") return;
+        if (isNativeApp()) { const fa = firebase(); if (fa?.setScreenName) fa.setScreenName({ screenName: id.replace(/^screen-/, "") }).catch(() => {}); }
+        if (SCREEN_FEATURES[id]) feature(SCREEN_FEATURES[id]);
+    }
+
+    // Job progress. Statuses are the app's own fixed pipeline names, never customer details.
+    function jobCreated(job) { if (realJob(job)) track("job_created"); }
+    function jobStatus(job, from) {
+        if (!realJob(job) || !job.status || job.status === from) return;
+        track("job_status_changed", { status: job.status });
+    }
+    function jobScheduled(job, wasScheduled) { if (realJob(job) && !wasScheduled) track("job_scheduled"); }
+    function invoiceCreated(job) { if (realJob(job) && job.id && once("tqa-inv-" + job.id)) track("invoice_created"); }
+    function invoiceSent(job, method) { if (realJob(job)) track("invoice_sent", { method: method || "other" }); }
+    function invoicePaid(job) { if (realJob(job)) track("invoice_paid"); }
+
+    // Customer responses, as the tiler's app finds them. Counted once per quote, on this device, and
+    // only when they happened in the last 14 days, so a reinstall doesn't replay old quotes.
+    const RECENT = 14 * 24 * 60 * 60 * 1000;
+    const recent = t => { const ms = new Date(t || 0).getTime(); return ms > 0 && Date.now() - ms < RECENT; };
+    function quoteResponse(job, status, at) {
+        if (!realJob(job) || (status !== "accepted" && status !== "declined") || !recent(at)) return;
+        if (once("tqa-qr-" + job.id, true)) track("quote_" + status);
+    }
+    async function quoteViews(list) {
+        try {
+            if (consent() !== "granted" || typeof sb === "undefined") return;
+            const byToken = {};
+            (list || []).forEach(j => { if (realJob(j) && j.quoteToken) byToken[j.quoteToken] = j; });
+            const tokens = Object.keys(byToken);
+            if (!tokens.length) return;
+            const { data, error } = await sb.from("quote_snapshots").select("token, first_viewed_at").in("token", tokens).not("first_viewed_at", "is", null);
+            if (error) return;
+            // The first lookup on a device only notes the views that already happened, so updating
+            // the app doesn't report them all as new
+            const baseline = !localStorage.getItem("tqa-qv-ready");
+            (data || []).forEach(r => {
+                const j = byToken[r.token];
+                if (!j) return;
+                if (baseline) localStorage.setItem("tqa-qv-" + j.id, "1");
+                else if (recent(r.first_viewed_at) && once("tqa-qv-" + j.id, true)) track("quote_viewed");
+            });
+            if (baseline) localStorage.setItem("tqa-qv-ready", "1");
+        } catch (_) {}
+    }
+
+    // Guided tours: the web demo's "Start here" card (tour = its track) and the sample-job tour in the app
+    function tourStep(tour, step) { if (once("tqa-tour-" + tour + "-" + step)) track("demo_tour_step", { tour, step_number: step }); }
+    function tourDone(tour)       { if (once("tqa-tour-" + tour + "-done")) track("demo_tour_completed", { tour }); }
+    function tourDismissed(tour, step) { if (once("tqa-tour-" + tour + "-x")) track("demo_tour_dismissed", { tour, step_number: step }); }
+    // Something a demo visitor tried that the demo switches off: which action, once per session
+    function demoBlockedAction(what) {
+        const name = String(what || "other").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+        if (once("tqa-blocked-" + name)) track("demo_action_blocked", { feature_name: name });
+    }
+
     return { track, consent, internal, platform, setConsent, setInternal, applyNative, linkBilling, maybeAsk, titleTap, renderSettings,
-             estimateStarted, estimateCompleted, quoteGenerated, suppressLogin: false, loginMethod: "password" };
+             estimateStarted, estimateCompleted, quoteGenerated, feature, screen, jobCreated, jobStatus, jobScheduled,
+             invoiceCreated, invoiceSent, invoicePaid, quoteResponse, quoteViews, tourStep, tourDone, tourDismissed, demoBlockedAction,
+             suppressLogin: false, loginMethod: "password" };
 })();
 document.addEventListener("DOMContentLoaded", () => {
     TQA.applyNative();
@@ -758,13 +843,15 @@ const StartHere = (() => {
         if (!el) {
             el = document.createElement("div");
             el.id = "start-here";
+            el.dataset.tqSpot = "demo_start_here";
             document.body.appendChild(el);
         }
         el.hidden = false;
         let changed = false;
         track.items.forEach((it, i) => {
-            if (!it.manual && !st.done.includes(i) && it.done()) { st.done.push(i); changed = true; }
+            if (!it.manual && !st.done.includes(i) && it.done()) { st.done.push(i); changed = true; TQA.tourStep(trackKey, i + 1); }
         });
+        if (st.done.length >= track.items.length) TQA.tourDone(trackKey);
         if (changed) { if (st.done.length >= track.items.length) st.collapsed = false; save(); }
         render();
     }
@@ -772,10 +859,18 @@ const StartHere = (() => {
     return {
         start() { if (new URLSearchParams(location.search).get("demo") === "1") setInterval(poll, 700); },
         go(i) { st.collapsed = true; save(); render(); try { track.items[i].go(); } catch(e) { console.warn("StartHere go:", e); } },
-        tick(i) { st.done = st.done.includes(i) ? st.done.filter(x => x !== i) : [...st.done, i]; if (st.done.length >= track.items.length) st.collapsed = false; save(); render(); },
+        tick(i) {
+            st.done = st.done.includes(i) ? st.done.filter(x => x !== i) : [...st.done, i];
+            if (st.done.includes(i)) TQA.tourStep(trackKey, i + 1);
+            if (st.done.length >= track.items.length) { st.collapsed = false; TQA.tourDone(trackKey); }
+            save(); render();
+        },
         expand() { st.collapsed = false; save(); render(); },
         collapse() { st.collapsed = true; save(); render(); },
-        dismiss() { st.dismissed = true; save(); if (el) el.hidden = true; },
+        dismiss() {
+            if (st.done.length < track.items.length) TQA.tourDismissed(trackKey, st.done.length);
+            st.dismissed = true; save(); if (el) el.hidden = true;
+        },
     };
 })();
 window.StartHere = StartHere;
@@ -794,6 +889,7 @@ function emailAuthHeaders() {
 function isDemoAccount() { return !!currentUser && currentUser.email === DEMO_EMAIL; }
 function demoBlocked(what) {
     if (!isDemoAccount()) return false;
+    TQA.demoBlockedAction(what);
     showDemoDownloadSheet(what);
     return true;
 }
@@ -801,6 +897,7 @@ function showDemoDownloadSheet(what) {
     document.getElementById("demo-download-sheet")?.remove();
     const sheet = document.createElement("div");
     sheet.id = "demo-download-sheet";
+    sheet.dataset.tqSpot = "demo_blocked_sheet";   // reported as app_download_clicked's link_location
     sheet.style.cssText = "position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;justify-content:flex-end;";
     sheet.innerHTML = `
         <div onclick="document.getElementById('demo-download-sheet').remove()" style="flex:1;background:rgba(0,0,0,0.55);"></div>
@@ -3361,6 +3458,7 @@ function newJobFromCustomer(id) {
     jobs.unshift(job);
     incrementMonthlyQuoteCount();
     saveAll();
+    TQA.jobCreated(job);
     currentJobId = job.id;
     renderJobView();
     goAddRoom();
@@ -4618,6 +4716,7 @@ function showPasteExtract() {
 }
 
 async function extractCustomerFromText() {
+    TQA.feature("paste_customer_details");
     const text = document.getElementById('paste-extract-text')?.value.trim();
     if (!text) return;
     const btn = document.getElementById('paste-extract-btn');
@@ -4697,6 +4796,7 @@ function createJob() {
     jobs.unshift(job);
     incrementMonthlyQuoteCount();
     saveAll();
+    TQA.jobCreated(job);
     currentJobId = job.id;
     renderJobView();
     goAddRoom();
@@ -4848,6 +4948,8 @@ function _demoTourStep()      { return parseInt(localStorage.getItem(_demoDismis
 function _setDemoTourStep(n)  { localStorage.setItem(_demoDismissKey("demo-tour-step"), String(n)); }
 function advanceDemoTour() {
     _setDemoTourStep(_demoTourStep() + 1);
+    TQA.tourStep("sample_job", _demoTourStep());
+    if (_demoTourStep() >= DEMO_TOUR_STEPS.length) TQA.tourDone("sample_job");
     const job = getJob();
     if (job) renderDemoJobUI(job);
 }
@@ -5020,6 +5122,7 @@ function saveSchedule() {
     const end   = document.getElementById("sched-end")?.value;
     if (!j || !start) return;
     if (new Date(end) < new Date(start)) { alert("End date can't be before start date."); return; }
+    TQA.jobScheduled(j, !!j.jobStartDate);
     j.jobStartDate = start;
     j.jobEndDate   = end || start;
     saveAll();
@@ -5036,6 +5139,7 @@ async function saveAndSendSchedule() {
     if (new Date(end) < new Date(start)) { alert("End date can't be before start date."); return; }
 
     // Save first
+    TQA.jobScheduled(j, !!j.jobStartDate);
     j.jobStartDate = start;
     j.jobEndDate   = end || start;
     saveAll();
@@ -5124,6 +5228,7 @@ function buildICS(j) {
 }
 
 async function addToCalendar() {
+    TQA.feature("device_calendar");
     const j = getJob();
     if (!j?.jobStartDate) { alert("Save dates first."); return; }
 
@@ -5142,6 +5247,7 @@ async function addToCalendar() {
 }
 
 async function emailCalendarInvite() {
+    TQA.feature("calendar_invite");
     if (demoBlocked("Emailing calendar invites")) return;
     const j = getJob();
     if (!j?.jobStartDate) { alert("Save dates first."); return; }
@@ -5555,6 +5661,7 @@ function renderFinishedPhotos(job) {
 }
 
 async function addJobPhoto() {
+    TQA.feature("job_photos");
     if (!currentUser) { alert("Please log in first."); return; }
     const job = getJob();
     if (!job) return;
@@ -5638,6 +5745,7 @@ function removeJobPhoto(url) {
 // the "finished/" prefix of the same job-photos bucket — see the comment on
 // renderFinishedPhotos() for why this is a separate collection.
 async function addFinishedPhoto() {
+    TQA.feature("finished_photos");
     if (!currentUser) { alert("Please log in first."); return; }
     const job = getJob();
     if (!job) return;
@@ -5892,10 +6000,10 @@ const SocialPost = {
         }
     }
 };
-function openSocialPostComposer() { trackDemoFeature('social_media'); SocialPost.open(); }
+function openSocialPostComposer() { trackDemoFeature('social_media'); TQA.feature("social_post"); SocialPost.open(); }
 function closeSocialPostComposer() { SocialPost.close(); }
-function generateSocialCaption() { SocialPost.generate(); }
-function shareSocialPost() { SocialPost.share(); }
+function generateSocialCaption() { TQA.feature("social_caption"); SocialPost.generate(); }
+function shareSocialPost() { TQA.feature("social_post_shared"); SocialPost.share(); }
 
 // Manual escape hatch for jobs already posted outside the in-app Share flow
 // (or from before this tracking existed) — clears the Your Day nudge without
@@ -5955,6 +6063,7 @@ function goJob(id) {
 // every room, but nothing from the original's sending, acceptance, schedule, invoice, photos
 // or messages. Both are labelled Option 1, Option 2, … (quoteGroup ties them together).
 function copyQuote() {
+    TQA.feature("copy_quote");
     const src = getJob();
     if (!src || !(src.rooms || []).length) return;
     const group = src.quoteGroup || src.id;
@@ -6314,9 +6423,11 @@ function renderJobView() {
 function setJobStatus(status) {
     const job = getJob();
     if (!job) return;
+    const prevStatus = job.status;
     job.status = status;
     if (status === "complete") stampReviewRequestDue(job);
     saveAll();
+    TQA.jobStatus(job, prevStatus);
     renderJobView();
     renderDashboard();
 }
@@ -6376,6 +6487,7 @@ async function sendReviewRequestEmail(job) {
             })
         });
         if (!resp.ok) { job.reviewRequestSent = false; saveAll(); }
+        else TQA.feature("review_request");
     } catch (e) {
         console.error("Review request email failed:", e);
         job.reviewRequestSent = false;
@@ -6400,6 +6512,7 @@ function advanceStatus() {
         job.status = PIPELINE[idx + 1];
         if (job.status === "complete") stampReviewRequestDue(job);
         saveAll();
+        TQA.jobStatus(job);
         renderJobView();
         renderDashboard();
     }
@@ -9605,6 +9718,7 @@ function settingsTab(tab) {
    FULL DATA EXPORT
 ═══════════════════════════════════════════════════════════════ */
 async function exportAllData() {
+    TQA.feature("data_export");
     const btn = document.querySelector('[onclick="exportAllData()"]');
     if (btn) { btn.textContent = "⏳"; btn.disabled = true; }
 
@@ -9815,6 +9929,7 @@ function helpAsk(question) {
 }
 
 async function helpSend() {
+    TQA.feature("help_chat");
     const input = document.getElementById("help-input");
     const text  = (input?.value || "").trim();
     if (!text) return;
@@ -9921,6 +10036,7 @@ const GCAL_AUTH_URL     = "https://accounts.google.com/o/oauth2/v2/auth";
 const GCAL_SCOPE        = "https://www.googleapis.com/auth/calendar.events";
 
 async function googleCalendarConnect() {
+    TQA.feature("google_calendar_connect");
     const params = new URLSearchParams({
         response_type: "code",
         client_id: GCAL_CLIENT_ID,
@@ -10781,6 +10897,7 @@ function updateEnquiryLinkPreview() {
 
 
 async function uploadLogo() {
+    TQA.feature("logo_upload");
     const btn = document.getElementById("btn-upload-logo");
     const msg = document.getElementById("logo-upload-msg");
     if (!currentUser) { alert("Please log in first."); return; }
@@ -11087,6 +11204,7 @@ function saveSlug() {
 function copyEnquiryLink() {
     const slug = document.getElementById("set-enquiry-slug")?.value || "";
     if (!slug) { alert("Please set your enquiry link slug first."); return; }
+    TQA.feature("enquiry_link");
     const url = "https://tile-iq.com/enquire/?t=" + slug;
     navigator.clipboard.writeText(url).then(() => {
         const btn = document.getElementById("btn-copy-enquiry-link");
@@ -11289,7 +11407,7 @@ function goQuote(mode) {
     renderJobQuoteStatusBar();
     renderInvoiceStatusBar();
     const j2 = getJob();
-    if (j2?.quoteToken) setTimeout(() => fetchQuoteResponse(j2.quoteToken).then(r => { if (r && r.status !== j2.quoteStatus) { j2.quoteStatus = r.status; j2.quoteRespondedAt = r.responded_at; saveAll(); renderJobQuoteStatusBar(); renderDashboard(); } }), 500);
+    if (j2?.quoteToken) setTimeout(() => fetchQuoteResponse(j2.quoteToken).then(r => { if (r && r.status !== j2.quoteStatus) { TQA.quoteResponse(j2, r.status, r.responded_at); j2.quoteStatus = r.status; j2.quoteRespondedAt = r.responded_at; saveAll(); renderJobQuoteStatusBar(); renderDashboard(); } }), 500);
 }
 
 /* ─── MATERIALS BREAKDOWN ─── */
@@ -11994,6 +12112,7 @@ async function callAnthropicAI(prompt) {
 
 /* ─── Quote AI Description ─── */
 async function generateAI() {
+    TQA.feature("ai_quote_text");
     const j     = getJob();
     const style = document.getElementById("ai-style").value;
     const box   = document.getElementById("ai-box");
@@ -12075,6 +12194,7 @@ function applyAIToJobDesc(btn) {
 
 /* ─── Job Description AI (New Job / Edit Job screens) ─── */
 async function generateJobDesc(descId, nameId, addressId, cityId) {
+    TQA.feature("ai_job_description");
     const nameEl = document.getElementById(nameId);
     const name   = nameEl ? nameEl.value.trim() : "";
     const addr   = document.getElementById(addressId)?.value.trim() || "";
@@ -12111,6 +12231,7 @@ Reply with only the sentence, no extra text.`;
 
 /* ─── CSV Export ─── */
 function exportCSV() {
+    TQA.feature("csv_export");
     const j = getJob();
     const rows = [["Quote ID","Customer","Room","Surface","Type",`Area (${areaUnit()})`,`Total (ex ${taxLabel()})`]];
     const qid  = "Q" + Date.now().toString().slice(-6);
@@ -12583,6 +12704,7 @@ async function shareViaEmail() {
 let addrSearchTimer = null;
 
 async function gpsAddress(prefix) {
+    TQA.feature("gps_address");
     const btn = document.querySelector(`[onclick="gpsAddress('${prefix}')"]`);
     if (btn) { btn.textContent = "⏳"; btn.disabled = true; }
 
@@ -12630,6 +12752,7 @@ async function gpsAddress(prefix) {
    prefix = 'nj' (new job) or 'ej' (edit job)
 ═══════════════════════════════════════════════════════════════ */
 async function pcLookup(prefix) {
+    TQA.feature("postcode_lookup");
     const raw = (document.getElementById("pc-input-" + prefix)?.value || "").trim().replace(/\s+/g, "");
     const out = document.getElementById("pc-result-" + prefix);
     if (!raw) { _pcShow(out, "err", "Please enter a postcode."); return; }
@@ -12688,6 +12811,7 @@ const FA_REDIRECT_URI = "https://tile-iq.com/fa-callback";
 const FA_AUTH_URL     = "https://api.freeagent.com/v2/approve_app";
 
 async function freeAgentConnect() {
+    TQA.feature("freeagent_connect");
     const params = new URLSearchParams({ response_type: "code", client_id: FA_CLIENT_ID, redirect_uri: FA_REDIRECT_URI });
     const url    = `${FA_AUTH_URL}?${params.toString()}`;
     const { Browser } = window.Capacitor?.Plugins || {};
@@ -12788,6 +12912,7 @@ function updateFreeAgentButton() {
 
 async function exportFreeAgent() {
     if (demoBlocked("Exporting to FreeAgent")) return;
+    TQA.feature("freeagent_export");
     const tokens = await getValidFreeAgentToken();
     if (!tokens) { freeAgentConnect(); return; }
     const j      = getJob();
@@ -12837,6 +12962,7 @@ const QBO_AUTH_URL    = "https://appcenter.intuit.com/connect/oauth2";
 const QBO_SCOPES      = "com.intuit.quickbooks.accounting";
 
 async function qboConnect() {
+    TQA.feature("quickbooks_connect");
     const state  = btoa(JSON.stringify({ ts: Date.now() }));
     const params = new URLSearchParams({ response_type: "code", client_id: QBO_CLIENT_ID, redirect_uri: QBO_REDIRECT_URI, scope: QBO_SCOPES, state });
     const url    = `${QBO_AUTH_URL}?${params.toString()}`;
@@ -12903,6 +13029,7 @@ function updateQBOButton() {
 
 async function exportQBO() {
     if (demoBlocked("Exporting to QuickBooks")) return;
+    TQA.feature("quickbooks_export");
     const tokens = await getValidQBOToken();
     if (!tokens) { qboConnect(); return; }
     const j      = getJob();
@@ -12974,6 +13101,7 @@ async function _xeroCodeChallenge(verifier) {
 
 // ── Connect ──────────────────────────────────────────────────
 async function xeroConnect() {
+    TQA.feature("xero_connect");
     localStorage.removeItem("xero-tokens");
     const verifier   = _xeroGenerateVerifier();
     const challenge  = await _xeroCodeChallenge(verifier);
@@ -13082,6 +13210,7 @@ function updateXeroButton() {
 
 async function exportXero() {
     if (demoBlocked("Exporting to Xero")) return;
+    TQA.feature("xero_export");
     const tokens = await getValidXeroToken();
     if (!tokens) { xeroConnect(); return; }
     const j        = getJob();
@@ -13224,6 +13353,7 @@ function sendInvoice() {
     const pdf = buildPDFBase64();
     quoteScreenMode = prevMode;
     if (!pdf) { alert("Could not generate invoice PDF."); return; }
+    TQA.invoiceCreated(j);
     showSendInvoiceSheet(j, pdf);
 }
 
@@ -13283,7 +13413,7 @@ async function sendInvoiceByEmail(jobId) {
                 })
             });
             if (resp.ok) {
-                markJobInvoiced(jobId);
+                markJobInvoiced(jobId, "email");
                 alert("\u2705 Invoice sent to " + j.email);
                 return;
             }
@@ -13294,14 +13424,15 @@ async function sendInvoiceByEmail(jobId) {
     const subject = encodeURIComponent(`Invoice \u2013 ${j.customerName}`);
     const body = encodeURIComponent(`Hi ${j.customerName},\n\nPlease find your invoice attached.\n\nKind regards,\n${settings.companyName || ""}`);
     window.open(`mailto:${j.email ? encodeURIComponent(j.email) : ""}?subject=${subject}&body=${body}`, "_system");
-    markJobInvoiced(jobId);
+    markJobInvoiced(jobId, "email_app");
 }
 
-function markJobInvoiced(jobId) {
+function markJobInvoiced(jobId, method) {
     const j = jobs.find(x => x.id === jobId);
     if (!j || j.invoicedAt) return;
     j.invoicedAt = new Date().toISOString();
     saveAll();
+    TQA.invoiceSent(j, method);
     renderInvoiceStatusBar();
     renderHomeDashboard();
 }
@@ -13311,6 +13442,7 @@ function markJobPaid(jobId) {
     if (!j || !j.invoicedAt || j.invoicePaidAt) return;
     j.invoicePaidAt = new Date().toISOString();
     saveAll();
+    TQA.invoicePaid(j);
     renderInvoiceStatusBar();
     renderHomeDashboard();
 }
@@ -13345,12 +13477,12 @@ async function sendInvoiceShare() {
             await Filesystem.writeFile({ path: fileName, data: pdf.base64, directory: "CACHE" });
             const { uri } = await Filesystem.getUri({ path: fileName, directory: "CACHE" });
             await Share.share({ title: `Invoice – ${pdf.customerName}`, text: "Please find your invoice attached.", files: [uri], dialogTitle: "Share Invoice" });
-            if (currentJobId) markJobInvoiced(currentJobId);
+            if (currentJobId) markJobInvoiced(currentJobId, "share");
             return;
         } catch(e) { console.error(e); }
     }
     downloadPDF();
-    if (currentJobId) markJobInvoiced(currentJobId);
+    if (currentJobId) markJobInvoiced(currentJobId, "download");
 }
 
 function previewQuote() {
@@ -13608,11 +13740,13 @@ function archiveQuote() {
 async function syncAllQuoteStatuses() {
     const pending = jobs.filter(j => j.quoteToken && (!j.quoteStatus || j.quoteStatus === "pending"));
     if (!pending.length) return;
+    TQA.quoteViews(pending);
     let changed = false;
     const PIPELINE = ["enquiry","surveyed","quoted","accepted","scheduled","in_progress","complete"];
     for (const j of pending) {
         const result = await fetchQuoteResponse(j.quoteToken);
         if (result) {
+            TQA.quoteResponse(j, result.status, result.responded_at);
             j.quoteStatus = result.status;
             j.quoteRespondedAt = result.responded_at;
             j.quoteMessage = result.message || "";
@@ -13704,6 +13838,7 @@ function isPro() { return _proStatus === true || checkAccessCodePro(); }
 function isPaidPro() { return isPro() && _proPeriodType !== "trial" && _proPeriodType !== "intro"; }
 
 function onAiReceptionistToggle(checkbox) {
+    if (checkbox.checked) TQA.feature("ai_receptionist");
     if (checkbox.checked && !isPaidPro()) {
         checkbox.checked = false;
         showPaywall("ai_receptionist");
@@ -13740,6 +13875,7 @@ function updateProBadge() {
 
 async function showPaywall(source) {
     show("screen-paywall");
+    TQA.track("paywall_viewed", { trigger: source || "other" });
     const subtitleEl = document.getElementById("paywall-subtitle");
     if (subtitleEl) {
         if (source === "trial_ended") {
@@ -13802,6 +13938,7 @@ function redeemAccessCode() {
 
         _proStatus = true;
         updateProBadge();
+        TQA.track("access_code_redeemed");
 
         msg.style.color = '#10b981';
         msg.textContent = '✅ Code accepted! Pro unlocked.';
@@ -13823,6 +13960,7 @@ function checkAccessCodePro() {
 function showLayoutDiagram() {
     const j = getJob();
     if (!j || !j.rooms || !j.rooms.length) { alert('No rooms to show layout for.'); return; }
+    TQA.feature("tile_layout");
 
     // Build room selector if multiple rooms
     const rooms = j.rooms.filter(r => r.surfaces && r.surfaces.some(s => s.area > 0));
@@ -14085,6 +14223,7 @@ async function openPlayStorePurchase(plan, btnEl) {
             ? current.annual ?? current.availablePackages?.find(p => p.packageType === "ANNUAL")
             : current.monthly ?? current.availablePackages?.find(p => p.packageType === "MONTHLY");
         if (!pkg) { alert("Package not found. Please try again."); return; }
+        TQA.track("checkout_started", { plan });
         const result = await Purchases.purchasePackage({ aPackage: pkg });
         // An entitlement's key is whatever it is called in RevenueCat (currently "TileIQ Pro Pro"), so take
         // whichever one is active rather than looking for one named "pro". That name never matched, so a
@@ -14099,6 +14238,7 @@ async function openPlayStorePurchase(plan, btnEl) {
             alert("🎉 Welcome to TileIQ Pro!");
         }
     } catch(e) {
+        TQA.track(e?.code === "1" ? "checkout_cancelled" : "checkout_failed", { plan });
         if (e?.code !== "1") {
             console.warn("Purchase error:", e.message);
             alert("Something went wrong with the purchase. Please try again.");
@@ -14114,6 +14254,7 @@ async function openPlayStorePurchase(plan, btnEl) {
 
 async function restorePurchases() {
     await refreshProStatus();
+    TQA.track("purchase_restored", { status: _proStatus ? "restored" : "none_found" });
     if (_proStatus) {
         closePaywall();
         alert("✅ Pro subscription restored!");
@@ -14427,6 +14568,7 @@ function deleteJobVoicemail(url) {
 }
 
 function playJobVoicemail(url) {
+    TQA.feature("voicemail_played");
     const audio = new Audio(url);
     audio.play().catch(e => {
         window.open(url, "_blank");
@@ -14434,6 +14576,7 @@ function playJobVoicemail(url) {
 }
 
 async function playVoicemail(id, url) {
+  TQA.feature("voicemail_played");
   // Mark as listened
   try {
     const session = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
@@ -14480,6 +14623,7 @@ async function deleteVoicemail(id) {
 
 /* ─── DIVERT SETUP ───────────────────────────────────────────── */
 function setupDivert() {
+    TQA.feature("call_divert");
     const twilioNum = (settings.twilioNumber || "").replace(/\s/g, "");
     if (!twilioNum) {
         alert("Please enter your TileIQ Business Number above and save settings first.");
@@ -14606,6 +14750,7 @@ function initPullToRefresh() {
 }
 
 async function provisionTwilioNumber() {
+    TQA.feature("business_number");
     if (demoBlocked("Getting a business number")) return;
     if (!currentUser) { alert("Please sign in first."); return; }
     const btn = document.querySelector("[onclick='provisionTwilioNumber()']");

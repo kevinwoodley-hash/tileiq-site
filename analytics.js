@@ -189,7 +189,10 @@
     var href = a.href || '';
     var store = /play\.google\.com\//.test(href) ? 'google_play' : /apps\.apple\.com\//.test(href) ? 'app_store' : '';
     if (!store) return;
-    var params = { store: store, link_location: location.pathname, app_mode: isDemo ? 'demo' : 'live', platform_type: 'web', transport_type: 'beacon' };
+    // Inside the web app, data-tq-spot names which prompt the link was in (e.g. #demo_blocked_sheet)
+    var spot = a.closest('[data-tq-spot]');
+    var where = location.pathname + (spot ? '#' + spot.getAttribute('data-tq-spot') : '');
+    var params = { store: store, link_location: where, app_mode: isDemo ? 'demo' : 'live', platform_type: 'web', transport_type: 'beacon' };
     window.gtag('event', 'app_download_clicked', params);
     // The demo's existing event names, kept so current reports carry on working
     if (isDemo) window.gtag('event', store === 'google_play' ? 'demo_google_play_click' : 'demo_app_store_click', { link_url: href, transport_type: 'beacon' });
