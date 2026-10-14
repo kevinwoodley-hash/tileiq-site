@@ -515,7 +515,7 @@ const TQA = (() => {
     const INTERNAL_KEY = "tileiq-internal";            // "1" = internal testing on this device/browser
     const ALLOWED = new Set(["app_mode", "platform_type", "currency", "estimate_type", "feature_name", "feature",
                              "method", "store", "plan", "traffic_type", "is_internal_test", "debug_mode", "link_location",
-                             "status", "trigger", "tour", "step_number"]);
+                             "status", "trigger", "tour", "step_number", "days_since_signup"]);
     const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
     const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) {} };
 
@@ -530,9 +530,21 @@ const TQA = (() => {
     const appMode  = () => (isDemoAccount() || new URLSearchParams(location.search).get("demo") === "1") ? "demo" : "live";
     const currency = () => regionOf() === "us" ? "USD" : "GBP";
 
+    // Events from before the person has answered the analytics question (a new account's sign_up
+    // happens just before the question appears) wait here, in memory only. They're sent if the
+    // person accepts and thrown away if they decline; nothing leaves the device without consent.
+    const pending = [];
     function track(name, params) {
+        const c = consent();
+        if (c === "granted") return send(name, params);
+        if (!c && pending.length < 30) pending.push([name, params]);
+    }
+    function consentChanged() {
+        const q = pending.splice(0);
+        if (consent() === "granted") q.forEach(([name, params]) => send(name, params));
+    }
+    function send(name, params) {
         try {
-            if (consent() !== "granted") return;
             const all = { app_mode: appMode(), platform_type: platform(), currency: currency(), ...(params || {}) };
             // Internal testing: traffic_type is the field GA4's internal-traffic filter reads;
             // is_internal_test is the same flag as an ordinary parameter, usable as a report dimension.
@@ -577,8 +589,8 @@ const TQA = (() => {
 
     function setConsent(state) {
         state = state === "granted" ? "granted" : "denied";
-        if (!isNativeApp() && window.tileiqConsent) window.tileiqConsent.set(state);   // web: /analytics.js owns the Google tag
-        else { lsSet(CONSENT_KEY, state); applyNative(); }
+        if (!isNativeApp() && window.tileiqConsent) window.tileiqConsent.set(state);   // web: /analytics.js owns the Google tag (its onChange sends/drops held events)
+        else { lsSet(CONSENT_KEY, state); applyNative().then(consentChanged, consentChanged); }
         renderSettings();
     }
     function setInternal(on) {
@@ -653,10 +665,10 @@ const TQA = (() => {
         track("quote_generated", { method });
     }
 
-    // True the first time a key is seen (per session, or for good with persist) — and only once the person
-    // has accepted, so nothing is used up before then. Keeps one-off events from repeating.
+    // True the first time a key is seen (per session, or for good with persist), unless the person has
+    // declined analytics. Keeps one-off events from repeating.
     function once(key, persist) {
-        if (consent() !== "granted") return false;
+        if (consent() === "denied") return false;
         const store = persist ? localStorage : sessionStorage;
         try { if (store.getItem(key)) return false; store.setItem(key, "1"); } catch (_) {}
         return true;
@@ -677,20 +689,43 @@ const TQA = (() => {
     function screen(id) {
         if (!id || id === lastScreen) return;
         lastScreen = id;
+        if (SCREEN_FEATURES[id]) feature(SCREEN_FEATURES[id]);       // held until the choice, like other events
         if (consent() !== "granted") return;
         if (isNativeApp()) { const fa = firebase(); if (fa?.setScreenName) fa.setScreenName({ screenName: id.replace(/^screen-/, "") }).catch(() => {}); }
-        if (SCREEN_FEATURES[id]) feature(SCREEN_FEATURES[id]);
     }
 
     // Job progress. Statuses are the app's own fixed pipeline names, never customer details.
-    function jobCreated(job) { if (realJob(job)) track("job_created"); }
+    // Onboarding milestones: the account's first real job, sent quote and sent invoice. Judged from the
+    // account's own jobs, so existing users updating the app don't trigger them. days_since_signup says how
+    // long it took.
+    function daysSinceSignup() {
+        const t = new Date(currentUser?.created_at || 0).getTime();
+        return t > 0 ? Math.max(0, Math.floor((Date.now() - t) / 864e5)) : undefined;
+    }
+    function milestone(name) {
+        if (once("tqa-" + name + "-" + (currentUser?.id || ""), true)) track(name, { days_since_signup: daysSinceSignup() });
+    }
+    function jobCreated(job) {
+        if (!realJob(job)) return;
+        track("job_created");
+        if (getRealJobs().length === 1) milestone("first_job_created");
+    }
+    function quoteSent(job) {
+        if (realJob(job) && !getRealJobs().some(j => j.quoteSentAt)) milestone("first_quote_sent");
+    }
     function jobStatus(job, from) {
         if (!realJob(job) || !job.status || job.status === from) return;
         track("job_status_changed", { status: job.status });
     }
     function jobScheduled(job, wasScheduled) { if (realJob(job) && !wasScheduled) track("job_scheduled"); }
     function invoiceCreated(job) { if (realJob(job) && job.id && once("tqa-inv-" + job.id)) track("invoice_created"); }
-    function invoiceSent(job, method) { if (realJob(job)) track("invoice_sent", { method: method || "other" }); }
+    function invoiceSent(job, method) {
+        if (!realJob(job)) return;
+        track("invoice_sent", { method: method || "other" });
+        if (!getRealJobs().some(j => j !== job && j.invoicedAt)) milestone("first_invoice_sent");
+    }
+    // The permissions screen a new account sees after signing up
+    function onboarding(status) { track("onboarding_permissions", { status }); }
     function invoicePaid(job) { if (realJob(job)) track("invoice_paid"); }
 
     // Customer responses, as the tiler's app finds them. Counted once per quote, on this device, and
@@ -734,7 +769,7 @@ const TQA = (() => {
     }
 
     return { track, consent, internal, platform, setConsent, setInternal, applyNative, linkBilling, maybeAsk, titleTap, renderSettings,
-             estimateStarted, estimateCompleted, quoteGenerated, feature, screen, jobCreated, jobStatus, jobScheduled,
+             estimateStarted, estimateCompleted, quoteGenerated, feature, screen, jobCreated, quoteSent, onboarding, consentChanged, jobStatus, jobScheduled,
              invoiceCreated, invoiceSent, invoicePaid, quoteResponse, quoteViews, tourStep, tourDone, tourDismissed, demoBlockedAction,
              suppressLogin: false, loginMethod: "password" };
 })();
@@ -742,7 +777,7 @@ document.addEventListener("DOMContentLoaded", () => {
     TQA.applyNative();
     TQA.renderSettings();
     // Web: the choice can also be made in the site's cookie banner — keep the Settings box in step
-    if (window.tileiqConsent) window.tileiqConsent.onChange(() => TQA.renderSettings());
+    if (window.tileiqConsent) window.tileiqConsent.onChange(() => { TQA.consentChanged(); TQA.renderSettings(); });
 });
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
@@ -12040,9 +12075,10 @@ async function completeOnboardingPermissions() {
             navigator.geolocation.getCurrentPosition(() => resolve(), () => resolve(), { timeout: 8000 });
         });
     } catch(e) {}
+    TQA.onboarding("completed");
     finishOnboardingPermissions();
 }
-function skipOnboardingPermissions() { finishOnboardingPermissions(); }
+function skipOnboardingPermissions() { TQA.onboarding("skipped"); finishOnboardingPermissions(); }
 function finishOnboardingPermissions() { show("screen-home"); }
 
 function showPushBanner(title, body, data) {
@@ -13636,6 +13672,7 @@ async function sendQuoteShare() {
 
 function _markQuoteSent(j, method) {
     TQA.track("quote_sent", { method: method || "other" });
+    TQA.quoteSent(j);
     if (!j.quoteStatus || j.quoteStatus === "pending") {
         j.quoteStatus = "pending";
         j.quoteSentAt = j.quoteSentAt || new Date().toISOString();
