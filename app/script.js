@@ -1739,15 +1739,22 @@ async function completeOAuthSignIn(accessToken, refreshToken, expiresIn) {
         localStorage.setItem("sb-lzwmqabxpxuuznhbpewm-auth-token", JSON.stringify(sessionData));
 
         currentUser = user;
-        TQA.track("login", { method: "social" });
-
         // Google/Apple sign-ups never go through authSignUp(), so they never got the
-        // welcome email (nor the BCC copy to info@). Treat an account created in the
-        // last 10 minutes as brand new and send it, once per account on this device.
+        // welcome email (nor the BCC copy to info@) or the sign_up event. Treat an account
+        // created in the last 10 minutes as brand new, once per account on this device.
+        const createdMs = Date.parse(user.created_at || "");
+        const brandNew  = !!createdMs && Date.now() - createdMs < 10 * 60 * 1000;
+        const provider  = user.app_metadata?.provider === "apple" ? "apple" : user.app_metadata?.provider === "google" ? "google" : "social";
+        if (brandNew && !localStorage.getItem("tqa-signup-" + user.id)) {
+            localStorage.setItem("tqa-signup-" + user.id, "1");
+            TQA.track("sign_up", { method: provider });
+        } else {
+            TQA.track("login", { method: "social" });
+        }
+
         try {
-            const createdMs  = Date.parse(user.created_at || "");
             const welcomeKey = "tileiq-welcome-sent-" + user.id;
-            if (user.email && createdMs && Date.now() - createdMs < 10 * 60 * 1000 && !localStorage.getItem(welcomeKey)) {
+            if (user.email && brandNew && !localStorage.getItem(welcomeKey)) {
                 localStorage.setItem(welcomeKey, "1");
                 fetch(TILEIQ_WORKER_URL + "/api/welcome-email", {
                     method: "POST",
