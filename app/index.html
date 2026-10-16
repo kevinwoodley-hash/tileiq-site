@@ -325,6 +325,54 @@
     <img id="photo-viewer-img" src="" style="max-width:80vw;max-height:65vh;border-radius:10px;object-fit:contain;" onclick="event.stopPropagation()">
 </div>
 
+<!-- ADD TO PORTFOLIO — pick photos from the job (or take/upload new ones), review the
+     suggested title/category/description, save as a private draft. Portfolio module in script.js. -->
+<div id="portfolio-add-overlay" class="hidden" style="position:fixed;inset:0;z-index:9700;background:var(--bg);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(135deg,#1B2A3C,#2B3D54);padding:calc(env(safe-area-inset-top,0px) + 22px) 14px 26px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <button type="button" onclick="closePortfolioAdd()" aria-label="Close" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:38px;height:38px;border-radius:10px;font-size:19px;cursor:pointer;flex-shrink:0;">✕</button>
+            <div style="flex:1;">
+                <div style="font-family:'Syne',sans-serif;font-weight:800;color:#fff;font-size:19px;letter-spacing:.2px;">🖼 Add to Portfolio</div>
+                <div style="color:rgba(255,255,255,.7);font-size:12.5px;margin-top:3px;">Saved as a private draft. Nothing is public until you publish it.</div>
+            </div>
+        </div>
+    </div>
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:14px;margin-top:-10px;">
+        <div style="display:flex;gap:8px;background:var(--amber-lt);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;line-height:1.45;">
+            <div style="flex-shrink:0;">🔒</div>
+            <div>Only use photos your customer is happy for you to show. Customer names, addresses, prices and job notes are never put in your portfolio, and location data is removed from every photo.</div>
+        </div>
+
+        <div class="form-card">
+            <div class="form-section-label" style="margin-bottom:4px;">📷 Photos</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Tap photos to include them. Tap the label under a chosen photo to mark it Before, During, After or Finished.</div>
+            <div id="portfolio-photo-groups"></div>
+            <button type="button" onclick="portfolioAddNewPhotos()" class="btn-secondary" style="width:100%;margin-top:10px;">📷 Take or choose photos</button>
+            <input type="file" id="portfolio-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple class="hidden" onchange="portfolioFilesChosen(this)">
+        </div>
+
+        <div class="form-card">
+            <div class="form-section-label" style="margin-bottom:10px;">✏️ Project details</div>
+            <label for="portfolio-title" style="font-size:12px;color:var(--muted);">Project title</label>
+            <input type="text" id="portfolio-title" maxlength="80" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="portfolio-category" style="font-size:12px;color:var(--muted);">Category</label>
+            <select id="portfolio-category" style="width:100%;box-sizing:border-box;margin:4px 0 10px;"></select>
+            <label for="portfolio-location" style="font-size:12px;color:var(--muted);">General area <span style="font-weight:400;">(optional, e.g. a town or county, never the address)</span></label>
+            <input type="text" id="portfolio-location" maxlength="60" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                <label for="portfolio-description" style="font-size:12px;color:var(--muted);">Description</label>
+                <span onclick="portfolioRewriteDescription()" style="font-size:12px;color:var(--amber);cursor:pointer;text-decoration:underline;">↺ Rewrite from job details</span>
+            </div>
+            <textarea id="portfolio-description" rows="6" maxlength="1500" style="width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;font-family:inherit;resize:vertical;"></textarea>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Written only from what's recorded on the job. Check it and change anything you like.</div>
+        </div>
+
+        <div id="portfolio-add-error" style="font-size:13px;color:var(--red);margin:6px 0;"></div>
+        <div id="portfolio-add-progress" style="font-size:13px;color:var(--muted);margin:6px 0;"></div>
+        <button type="button" id="portfolio-save-btn" onclick="savePortfolioDraft()" class="btn-primary" style="width:100%;padding:13px;font-size:15px;margin-bottom:24px;">💾 Save draft</button>
+    </div>
+</div>
+
 <!-- SOCIAL POST COMPOSER — pick finished-job photos, generate an AI caption
      from them + the room/tile/location context already in the job, then hand
      the caption + photo(s) to the OS share sheet. Deliberately not a direct
@@ -798,6 +846,11 @@
             <button type="button" onclick="addFinishedPhoto()" id="btn-add-finished-photo" class="btn-secondary" style="width:100%;margin-top:10px;">📷 Add Finished Photo</button>
             <div id="finished-photo-upload-msg" style="font-size:12px;margin-top:6px;"></div>
             <button type="button" onclick="openSocialPostComposer()" id="btn-create-social-post" class="btn-primary hidden" style="width:100%;margin-top:10px;">✨ Create Social Post</button>
+        </div>
+        <div id="portfolio-job-card" class="form-card" style="margin-top:14px;">
+            <div class="form-section-label">🖼 Portfolio</div>
+            <div id="portfolio-job-status" style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Show this job off in your portfolio. Nothing goes public until you publish it.</div>
+            <button type="button" onclick="openPortfolioFromJob()" id="btn-add-to-portfolio" class="btn-secondary" style="width:100%;">🖼 Add to Portfolio</button>
         </div>
         <div id="job-quote-status-bar" style="display:none;margin-top:10px;"></div>
         <div id="job-messages-btn-wrap" style="display:none;margin-top:10px;">

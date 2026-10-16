@@ -6267,6 +6267,348 @@ function closeSocialPostComposer() { SocialPost.close(); }
 function generateSocialCaption() { TQA.feature("social_caption"); SocialPost.generate(); }
 function shareSocialPost() { TQA.feature("social_post_shared"); SocialPost.share(); }
 
+// ── Portfolio (phase 1: Add to Portfolio from a job) ─────────────
+// Turns a job into a private draft portfolio project: the tiler picks photos (the
+// job's finished photos, its on-site photos, photos the customer sent with their
+// enquiry, or new ones from the camera/gallery), checks a suggested title, category
+// and description written only from what's recorded on the job, and saves.
+// Each chosen photo is re-encoded here before upload (max 2048px JPEG plus a 600px
+// thumbnail): drawing it onto a canvas drops all EXIF data, including GPS, so the
+// customer's location can never leak from a published photo. The cleaned copies go
+// to the private 'portfolio' bucket under <user id>/; the original job photos are
+// never moved or changed. Rows: portfolio_projects / portfolio_images (owner-only RLS,
+// see supabase_schema.sql). Customer names, addresses, prices and notes never go in.
+const PORTFOLIO_DEFAULT_CATEGORIES = ["Bathrooms", "Kitchens", "Floors", "Walls", "Wet rooms", "Natural stone", "Outdoor tiling", "Other"];
+const PORTFOLIO_STAGES = ["before", "during", "after", "finished"];
+const PORTFOLIO_STAGE_LABELS = { before: "Before", during: "During", after: "After", finished: "Finished" };
+const PORTFOLIO_MAX_PHOTOS = 20;
+function portfolioCategories() {
+    const c = settings?.portfolioCategories;
+    return Array.isArray(c) && c.length ? c : PORTFOLIO_DEFAULT_CATEGORIES;
+}
+function portfolioToken() {
+    try { return JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || ""; } catch (_) { return ""; }
+}
+function portfolioListJoin(items) {
+    return items.length <= 1 ? (items[0] || "") : items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+}
+function portfolioSlugify(s) {
+    return String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "project";
+}
+
+const Portfolio = {
+    jobId: null,
+    items: [],          // { key, url?, blob?, preview, group, stage, selected }
+    saving: false,
+
+    // Title, category, description and general area from the job's own recorded details.
+    suggest(job) {
+        const rooms = Array.isArray(job.rooms) ? job.rooms : [];
+        const surfaces = rooms.flatMap(r => Array.isArray(r.surfaces) ? r.surfaces : []);
+        const names = rooms.map(r => String(r.name || "")).join(" ").toLowerCase();
+        const hasWall = surfaces.some(s => s.type === "wall") || rooms.some(r => r.savedType === "wall" || r.savedType === "shower");
+        const hasFloor = surfaces.some(s => s.type === "floor") || rooms.some(r => r.savedType === "floor");
+        const tileTypes = [...new Set(rooms.map(r => TILE_TYPE_LABELS[r.tileType] || "").filter(Boolean))];
+        const room = /wet ?room/.test(names) ? "wet room"
+            : /en-?suite/.test(names) ? "en-suite"
+            : /bath/.test(names) ? "bathroom"
+            : /shower/.test(names) || rooms.some(r => r.savedType === "shower") ? "shower"
+            : /kitchen/.test(names) ? "kitchen"
+            : /utility/.test(names) ? "utility room"
+            : /cloak|\bwc\b|toilet/.test(names) ? "cloakroom"
+            : /hall/.test(names) ? "hallway"
+            : /patio|outdoor|garden|terrace|porch/.test(names) ? "outdoor" : "";
+        const cats = portfolioCategories();
+        const pick = c => cats.includes(c) ? c : (cats.includes("Other") ? "Other" : cats[0]);
+        const category = pick(room === "wet room" ? "Wet rooms"
+            : ["bathroom", "en-suite", "shower", "cloakroom"].includes(room) ? "Bathrooms"
+            : ["kitchen", "utility room"].includes(room) ? "Kitchens"
+            : room === "outdoor" ? "Outdoor tiling"
+            : rooms.some(r => r.tileType === "natural_stone") ? "Natural stone"
+            : hasFloor && !hasWall ? "Floors" : hasWall && !hasFloor ? "Walls" : "Other");
+        const where = hasWall && hasFloor ? "wall and floor" : hasWall ? "wall" : hasFloor ? "floor" : "";
+        const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+        let title = room === "outdoor" ? "Outdoor tiling"
+            : room ? cap(room) + (where && (where !== "wall and floor" || tileTypes.length !== 1) ? " " + where : "") + " tiling"
+            : where ? cap(where) + " tiling" : "Tiling project";
+        if (tileTypes.length === 1) title = cap(tileTypes[0].toLowerCase()) + " " + title.toLowerCase();
+
+        const full = rooms.some(r => r.savedType === "room");
+        const tileWords = [tileTypes.length ? portfolioListJoin(tileTypes.map(t => t.toLowerCase())) : "", where].filter(Boolean).join(" ");
+        const lead = (full ? "Complete " : "") + (room && room !== "outdoor" ? room + " " : room === "outdoor" ? "outdoor " : "") + "tiling project";
+        const s1 = cap(lead) + (tileWords ? " featuring " + tileWords + " tiles" : "") + ".";
+        const work = [];
+        if (surfaces.some(s => s.prepMatCost > 0 || s.prepLabCost > 0 || s.primer || s.cementBoard || s.cementBoards || s.membrane)) work.push("surface preparation");
+        if (surfaces.some(s => s.tanking)) work.push("waterproofing");
+        if (surfaces.some(s => s.levelling)) work.push("floor levelling");
+        if (surfaces.some(s => s.ufh)) work.push("underfloor heating");
+        if (rooms.some(r => Array.isArray(r.niches) ? r.niches.length : Number(r.niches) > 0)) work.push("built-in niches");
+        if (rooms.some(r => (Array.isArray(r.trimLengths) && r.trimLengths.length) || r.trimCost > 0)) work.push("tile trims");
+        if (rooms.some(r => r.sealantEnabled)) work.push("silicone sealing");
+        const s2 = work.length
+            ? "Work included " + portfolioListJoin([...work, "professional tile installation"]) + ", for a clean, durable finish."
+            : "Professionally installed for a clean, durable finish.";
+        return { title: title.slice(0, 80), category, description: s1 + " " + s2,
+                 location: String(job.city || "").trim().slice(0, 60), tileType: tileTypes.join(", ") || null };
+    },
+
+    openFromJob() {
+        const job = getJob();
+        if (!job) return;
+        if (job.portfolioProjectId && !confirm("This job is already in your portfolio. Add it again as a new project?")) return;
+        this.jobId = job.id;
+        const fromList = (list, group, stage, selected) => (Array.isArray(list) ? list : [])
+            .filter(u => typeof u === "string" && u)
+            .map((url, i) => ({ key: group + i, url, preview: url, group, stage, selected }));
+        this.items = [
+            ...fromList(job.finishedPhotos, "finished", "finished", true),
+            ...fromList(job.sitePhotos, "site", "before", false),
+            ...fromList(job.photos, "customer", "before", false),
+        ];
+        const s = this.suggest(job);
+        document.getElementById("portfolio-title").value = s.title;
+        document.getElementById("portfolio-location").value = s.location;
+        document.getElementById("portfolio-description").value = s.description;
+        const sel = document.getElementById("portfolio-category");
+        sel.innerHTML = portfolioCategories().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+        sel.value = s.category;
+        this._msg("", "");
+        document.getElementById("portfolio-add-overlay")?.classList.remove("hidden");
+        this.render();
+    },
+
+    close() {
+        if (this.saving) return;
+        document.getElementById("portfolio-add-overlay")?.classList.add("hidden");
+        this.items.forEach(it => { if (it.blob && it.preview) URL.revokeObjectURL(it.preview); });
+        this.items = [];
+        this.jobId = null;
+    },
+
+    _job() { return jobs.find(j => j.id === this.jobId); },
+    _msg(err, progress) {
+        const e = document.getElementById("portfolio-add-error"), p = document.getElementById("portfolio-add-progress");
+        if (e) e.textContent = err || "";
+        if (p) p.textContent = progress || "";
+    },
+
+    render() {
+        const wrap = document.getElementById("portfolio-photo-groups");
+        if (!wrap) return;
+        const groups = [
+            ["finished", "Finished photos"],
+            ["site", "Job photos (your on-site photos)"],
+            ["customer", "Sent by the customer with their enquiry: ask before using"],
+            ["new", "New photos"],
+        ];
+        const html = groups.map(([g, label]) => {
+            const list = this.items.filter(it => it.group === g);
+            if (!list.length) return "";
+            return `<div style="font-size:12px;font-weight:700;color:var(--muted);margin:8px 0 6px;">${esc(label)}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;">${list.map(it => `
+                <div style="width:84px;">
+                    <div onclick="Portfolio.toggle('${it.key}')" style="position:relative;width:84px;height:84px;cursor:pointer;">
+                        <img src="${esc(it.preview)}" alt="" style="width:84px;height:84px;object-fit:cover;border-radius:10px;border:2.5px solid ${it.selected ? "#E07A2F" : "transparent"};opacity:${it.selected ? "1" : ".5"};">
+                        ${it.selected ? `<div style="position:absolute;top:-5px;right:-5px;background:#E07A2F;color:#fff;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;">✓</div>` : ""}
+                    </div>
+                    ${it.selected ? `<button type="button" onclick="Portfolio.cycleStage('${it.key}')" style="width:100%;margin-top:4px;padding:4px 0;font-size:11px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--ink);cursor:pointer;">${PORTFOLIO_STAGE_LABELS[it.stage]} ▾</button>` : ""}
+                </div>`).join("")}</div>`;
+        }).join("");
+        wrap.innerHTML = html || `<div class="empty-state-small" style="margin:0;">This job has no photos yet. Take or choose some below.</div>`;
+        const n = this.items.filter(it => it.selected).length;
+        const btn = document.getElementById("portfolio-save-btn");
+        if (btn && !this.saving) { btn.disabled = n === 0; btn.textContent = n ? `💾 Save draft (${n} photo${n === 1 ? "" : "s"})` : "💾 Save draft"; }
+    },
+
+    toggle(key) {
+        const it = this.items.find(x => x.key === key);
+        if (!it || this.saving) return;
+        if (!it.selected && this.items.filter(x => x.selected).length >= PORTFOLIO_MAX_PHOTOS) {
+            this._msg(`Up to ${PORTFOLIO_MAX_PHOTOS} photos per project.`, "");
+            return;
+        }
+        it.selected = !it.selected;
+        this._msg("", "");
+        this.render();
+    },
+    cycleStage(key) {
+        const it = this.items.find(x => x.key === key);
+        if (!it || this.saving) return;
+        it.stage = PORTFOLIO_STAGES[(PORTFOLIO_STAGES.indexOf(it.stage) + 1) % PORTFOLIO_STAGES.length];
+        this.render();
+    },
+
+    _addBlob(blob) {
+        if (!blob || !/^image\//.test(blob.type || "image/")) { this._msg("That file isn't a photo.", ""); return; }
+        if (blob.size > 25 * 1024 * 1024) { this._msg("That photo is too large (over 25 MB).", ""); return; }
+        const selected = this.items.filter(x => x.selected).length < PORTFOLIO_MAX_PHOTOS;
+        this.items.push({ key: "new" + Date.now() + Math.random().toString(36).slice(2, 6), blob, preview: URL.createObjectURL(blob),
+                          group: "new", stage: "finished", selected });
+    },
+    // Native: the OS "Take Photo / Choose from Gallery" prompt (same plugin as job photos).
+    // Web, or if the plugin isn't there: the file picker, which on phones also offers the camera.
+    async addNew() {
+        const cam = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Camera : null;
+        if (!cam) { document.getElementById("portfolio-file-input")?.click(); return; }
+        try {
+            const photo = await cam.getPhoto({ quality: 90, allowEditing: false, resultType: "uri", source: "PROMPT", saveToGallery: false });
+            if (!photo?.webPath) return;
+            const blob = await (await fetch(photo.webPath)).blob();
+            this._addBlob(blob);
+            this.render();
+        } catch (e) {
+            if (/cancel/i.test(e?.message || "")) return;
+            if (/denied|permission/i.test(e?.message || "")) this._msg("TileIQ isn't allowed to use the camera or photos. You can allow it in your phone's Settings.", "");
+            else this._msg("Couldn't open the camera: " + (e?.message || "unknown error"), "");
+        }
+    },
+    filesChosen(input) {
+        [...(input.files || [])].forEach(f => this._addBlob(f));
+        input.value = "";
+        this.render();
+    },
+
+    // Decode (honouring the photo's rotation), scale down and re-encode as JPEG: no metadata survives.
+    async _encode(blob, max, quality) {
+        let src;
+        try { src = await createImageBitmap(blob, { imageOrientation: "from-image" }); }
+        catch (_) {
+            src = await new Promise((resolve, reject) => {
+                const img = new Image(), u = URL.createObjectURL(blob);
+                img.onload = () => { URL.revokeObjectURL(u); resolve(img); };
+                img.onerror = () => { URL.revokeObjectURL(u); reject(new Error("This photo's format can't be read on this device. Please use a JPEG or PNG.")); };
+                img.src = u;
+            });
+        }
+        const w0 = src.width, h0 = src.height, scale = Math.min(1, max / Math.max(w0, h0));
+        const w = Math.max(1, Math.round(w0 * scale)), h = Math.max(1, Math.round(h0 * scale));
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(src, 0, 0, w, h);
+        if (src.close) src.close();
+        const out = await new Promise(r => c.toBlob(r, "image/jpeg", quality));
+        if (!out) throw new Error("Couldn't process a photo.");
+        return { blob: out, w, h };
+    },
+    async _source(it) {
+        if (it.blob) return it.blob;
+        const r = await fetch(it.url, { mode: "cors" });
+        if (!r.ok) throw new Error("Couldn't load one of the job photos.");
+        return await r.blob();
+    },
+    async _rest(method, path, body, prefer) {
+        const tok = portfolioToken();
+        const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+            method, headers: { "apikey": SB_KEY, "Authorization": "Bearer " + tok, "Content-Type": "application/json", ...(prefer ? { "Prefer": prefer } : {}) },
+            body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        if (!r.ok) throw new Error((await r.text().catch(() => "")).slice(0, 160) || ("Error " + r.status));
+        return r.status === 204 ? null : r.json().catch(() => null);
+    },
+    async _upload(path, blob) {
+        const r = await fetch(`${SB_URL}/storage/v1/object/portfolio/${path}`, {
+            method: "POST", headers: { "apikey": SB_KEY, "Authorization": "Bearer " + portfolioToken(), "Content-Type": "image/jpeg", "x-upsert": "false" },
+            body: blob
+        });
+        if (!r.ok) throw new Error("Upload failed (" + r.status + "). " + (await r.text().catch(() => "")).slice(0, 120));
+    },
+    async _uniqueSlug(title) {
+        const base = portfolioSlugify(title);
+        const rows = await this._rest("GET", `portfolio_projects?select=slug&user_id=eq.${currentUser.id}&slug=like.${encodeURIComponent(base)}*`) || [];
+        const taken = new Set(rows.map(r => r.slug));
+        if (!taken.has(base)) return base;
+        for (let n = 2; n < 1000; n++) if (!taken.has(base + "-" + n)) return base + "-" + n;
+        return base + "-" + Date.now().toString(36);
+    },
+
+    async save() {
+        if (this.saving) return;
+        if (demoBlocked("Adding work to your portfolio")) return;
+        if (!currentUser || !portfolioToken()) { this._msg("Please sign in first.", ""); return; }
+        const chosen = this.items.filter(it => it.selected);
+        const title = document.getElementById("portfolio-title").value.trim();
+        if (!chosen.length) { this._msg("Choose at least one photo.", ""); return; }
+        if (!title) { this._msg("Give the project a title.", ""); return; }
+        const job = this._job();
+        const btn = document.getElementById("portfolio-save-btn");
+        this.saving = true;
+        if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+        this._msg("", "Creating the project…");
+        let projectId = null;
+        const uploaded = [];
+        try {
+            const s = job ? this.suggest(job) : {};
+            const [project] = await this._rest("POST", "portfolio_projects", {
+                user_id: currentUser.id, job_id: job?.id || null, slug: await this._uniqueSlug(title), title,
+                category: document.getElementById("portfolio-category").value || null,
+                location: document.getElementById("portfolio-location").value.trim() || null,
+                description: document.getElementById("portfolio-description").value.trim() || null,
+                tile_type: s.tileType || null, status: "draft"
+            }, "return=representation");
+            projectId = project.id;
+            const rows = [];
+            for (let i = 0; i < chosen.length; i++) {
+                const it = chosen[i];
+                this._msg("", `Cleaning and uploading photo ${i + 1} of ${chosen.length}…`);
+                const source = await this._source(it);
+                const full = await this._encode(source, 2048, 0.85);
+                const thumb = await this._encode(full.blob, 600, 0.8);
+                const id = crypto.randomUUID();
+                const path = `${currentUser.id}/${id}.jpg`, thumbPath = `${currentUser.id}/${id}_t.jpg`;
+                await this._upload(path, full.blob); uploaded.push(path);
+                await this._upload(thumbPath, thumb.blob); uploaded.push(thumbPath);
+                rows.push({ id, project_id: projectId, user_id: currentUser.id, path, thumb_path: thumbPath, width: full.w, height: full.h,
+                            stage: it.stage, sort_order: i, source_url: it.url || null });
+            }
+            this._msg("", "Saving…");
+            await this._rest("POST", "portfolio_images", rows, "return=minimal");
+            const cover = rows.find(r => r.stage === "finished") || rows.find(r => r.stage === "after") || rows[0];
+            await this._rest("PATCH", `portfolio_projects?id=eq.${projectId}`, { cover_image_id: cover.id, updated_at: new Date().toISOString() }, "return=minimal");
+            if (job) { job.portfolioProjectId = projectId; saveAll(); }
+            TQA.feature("portfolio_project_saved");
+            this.saving = false;
+            this.close();
+            if (job) renderPortfolioJobCard(job);
+            alert(`Saved to your portfolio as a draft with ${rows.length} photo${rows.length === 1 ? "" : "s"}. It stays private until you publish it.`);
+        } catch (e) {
+            // Leave nothing half-made behind: the project (its image rows go with it) and any uploaded files
+            if (projectId) { try { await this._rest("DELETE", `portfolio_projects?id=eq.${projectId}`, undefined, "return=minimal"); } catch (_) {} }
+            if (uploaded.length) {
+                try { await fetch(`${SB_URL}/storage/v1/object/portfolio`, { method: "DELETE",
+                    headers: { "apikey": SB_KEY, "Authorization": "Bearer " + portfolioToken(), "Content-Type": "application/json" },
+                    body: JSON.stringify({ prefixes: uploaded }) }); } catch (_) {}
+            }
+            this.saving = false;
+            this._msg("Couldn't save to your portfolio: " + (e?.message || "unknown error"), "");
+            this.render();
+        }
+    },
+};
+function renderPortfolioJobCard(job) {
+    const status = document.getElementById("portfolio-job-status");
+    const btn = document.getElementById("btn-add-to-portfolio");
+    if (!status || !btn) return;
+    if (job?.portfolioProjectId) {
+        status.textContent = "✓ This job is in your portfolio (draft until you publish it).";
+        btn.textContent = "🖼 Add to Portfolio again";
+    } else {
+        status.textContent = "Show this job off in your portfolio. Nothing goes public until you publish it.";
+        btn.textContent = "🖼 Add to Portfolio";
+    }
+}
+function openPortfolioFromJob() { TQA.feature("portfolio_add"); Portfolio.openFromJob(); }
+function closePortfolioAdd() { Portfolio.close(); }
+function portfolioAddNewPhotos() { Portfolio.addNew(); }
+function portfolioFilesChosen(input) { Portfolio.filesChosen(input); }
+function portfolioRewriteDescription() {
+    const job = Portfolio._job();
+    if (job) document.getElementById("portfolio-description").value = Portfolio.suggest(job).description;
+}
+function savePortfolioDraft() { Portfolio.save(); }
+
 // Manual escape hatch for jobs already posted outside the in-app Share flow
 // (or from before this tracking existed) — clears the Your Day nudge without
 // needing to go through Share again.
@@ -6375,6 +6717,7 @@ function renderJobView() {
     renderJobQuoteButton(job);
     renderJobPhotos(job);
     renderFinishedPhotos(job);
+    renderPortfolioJobCard(job);
 
     const PIPELINE = [
         { key: "enquiry",     label: "Enquiry" },
