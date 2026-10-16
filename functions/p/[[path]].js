@@ -6,13 +6,35 @@
 // business details they chose to show (never job or customer data). Photos are
 // served by /pimg/. "Request a quote" uses the tiler's existing enquiry form.
 // No analytics or third-party scripts: the page is the tiler's, not ours.
+//
+// Own domains: tile-iq.com/p/<slug>/_d/<path> is the same page rendered for the tiler's own
+// domain (work.example.com, example.com or example.com/portfolio): the tileiq-domains worker,
+// or the tiler's own web host for a folder, fetches it from there. Links then point at their
+// domain, photos and the quote form at tile-iq.com, and once the domain is verified it is the
+// canonical address everywhere (including on the tile-iq.com/p/ pages).
 const WORKER = "https://damp-bread-e0f9.kevin-woodley.workers.dev";
 const SITE = "https://tile-iq.com";
 
 const e = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const paras = s => String(s || "").split(/\n{2,}|\r?\n/).map(x => x.trim()).filter(Boolean).map(x => `<p>${e(x)}</p>`).join("");
 const clip = (s, n) => { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1).replace(/\s+\S*$/, "") + "…" : s; };
-const img = (id, size) => `/pimg/${id}/${size}.jpg`;
+// Where links, photos and the canonical address point, for tile-iq.com/p/<slug> or the tiler's domain
+function links(data, ownDomain) {
+  const d = data.business.domain, slug = data.slug;
+  const canonRoot = d && d.active ? `https://${d.host}${d.base}` : `${SITE}/p/${slug}`;
+  const base = ownDomain ? (d.base || "") : `/p/${slug}`;
+  return {
+    home: base || "/",
+    proj: ps => `${base}/${encodeURIComponent(ps)}`,
+    img: (id, size) => `${ownDomain ? SITE : ""}/pimg/${id}/${size}.jpg`,
+    imgAbs: (id, size) => `${SITE}/pimg/${id}/${size}.jpg`,
+    quote: `${ownDomain ? SITE : ""}/enquire/?t=${encodeURIComponent(slug)}&src=portfolio`,
+    canon: sub => canonRoot + (sub ? "/" + sub : ""),
+    // the own-domain copy is only indexed once that domain is verified (else it's a duplicate)
+    robots: ownDomain && !(d && d.active) ? "noindex" : "index, follow",
+    slug,
+  };
+}
 const monthYear = d => { try { return new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }); } catch (_) { return ""; } };
 
 async function getSite(slug, origin, waitUntil) {
@@ -30,33 +52,36 @@ async function getSite(slug, origin, waitUntil) {
 
 export async function onRequestGet({ request, params, waitUntil }) {
   const url = new URL(request.url);
-  const parts = [].concat(params.path || []).filter(Boolean).map(s => String(s).toLowerCase());
+  let parts = [].concat(params.path || []).filter(Boolean).map(s => String(s).toLowerCase());
+  const ownDomain = parts[1] === "_d";
+  if (ownDomain) parts = [parts[0], ...parts.slice(2)];
   if (!parts.length || parts.length > 2 || !parts.every(p => /^[a-z0-9-]{1,80}$/.test(p))) return notFound();
   const data = await getSite(parts[0], url.origin, waitUntil);
-  if (!data) return notFound();
-  if (parts.length === 1) return page(renderHome(data));
+  if (!data || (ownDomain && !data.business.domain)) return notFound();
+  const L = links(data, ownDomain);
+  if (parts.length === 1) return page(renderHome(data, L));
   const project = data.projects.find(p => p.slug === parts[1]);
-  return project ? page(renderProject(data, project)) : notFound(data);
+  return project ? page(renderProject(data, project, L)) : notFound(data, L);
 }
 
 function page(html, status = 200, extra = {}) {
   return new Response(html, { status, headers: {
     "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60",
     "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' https://*.supabase.co data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' https://tile-iq.com https://*.supabase.co data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     ...extra } });
 }
 
-function notFound(data) {
+function notFound(data, L) {
   const name = data?.business?.name;
-  return page(shell({ title: "Page not found", description: "", canonical: "", robots: "noindex", colour: data?.business?.brandColour, body: `
+  return page(shell({ title: "Page not found", description: "", canonical: "", robots: "noindex", colour: data?.business?.brandColour, slug: data?.slug, body: `
     <main class="wrap" style="padding:80px 20px;text-align:center;">
       <h1>Page not found</h1>
-      <p class="muted">${name ? `This project isn't available. <a href="/p/${e(data.slug)}">See ${e(name)}'s other work</a>.` : "This portfolio isn't available."}</p>
+      <p class="muted">${name && L ? `This project isn't available. <a href="${e(L.home)}">See ${e(name)}'s other work</a>.` : "This portfolio isn't available."}</p>
     </main>` }), 404, { "Cache-Control": "public, max-age=30" });
 }
 
-function shell({ title, description, canonical, robots, colour, ogImage, body, jsonLd, type }) {
+function shell({ title, description, canonical, robots, colour, ogImage, body, jsonLd, type, slug }) {
   const c = /^#[0-9a-f]{6}$/i.test(colour || "") ? colour : "#E07A2F";
   return `<!doctype html>
 <html lang="en-GB">
@@ -66,6 +91,7 @@ function shell({ title, description, canonical, robots, colour, ogImage, body, j
 <title>${e(title)}</title>
 ${description ? `<meta name="description" content="${e(description)}">` : ""}
 <meta name="robots" content="${robots || "index, follow"}">
+${slug ? `<meta name="tileiq-portfolio" content="${e(slug)}">` : ""}
 ${canonical ? `<link rel="canonical" href="${e(canonical)}">
 <meta property="og:url" content="${e(canonical)}">` : ""}
 <meta property="og:type" content="${type || "website"}">
@@ -136,19 +162,18 @@ ${body}
 </html>`;
 }
 
-function topBar(b, slug) {
+function topBar(b, L) {
   return `<header class="top"><div class="wrap">
-    <a class="brand" href="/p/${e(slug)}">${b.logoUrl ? `<img src="${e(b.logoUrl)}" alt="">` : ""}<span>${e(b.name)}</span></a>
-    <a class="btn btn-main" href="${quoteUrl(slug)}">Request a quote</a>
+    <a class="brand" href="${e(L.home)}">${b.logoUrl ? `<img src="${e(b.logoUrl)}" alt="">` : ""}<span>${e(b.name)}</span></a>
+    <a class="btn btn-main" href="${e(L.quote)}">Request a quote</a>
   </div></header>`;
 }
-const quoteUrl = slug => `/enquire/?t=${encodeURIComponent(slug)}&src=portfolio`;
 function footer(slug) {
   return `<footer class="muted"><div class="wrap">
     <a href="${SITE}/?utm_source=portfolio&amp;utm_medium=referral&amp;utm_campaign=powered_by&amp;utm_content=${encodeURIComponent(slug)}">Portfolio powered by TileIQ</a>
   </div></footer>`;
 }
-function contactBlock(b, slug) {
+function contactBlock(b, L) {
   const links = [                                   // (the phone has its own Call button above)
     b.email && `<a href="mailto:${e(b.email)}">✉️ ${e(b.email)}</a>`,
     b.links?.facebook && `<a href="${e(b.links.facebook)}" rel="noopener" target="_blank">Facebook</a>`,
@@ -159,7 +184,7 @@ function contactBlock(b, slug) {
   return `<div class="cta">
     <h2>Planning some tiling?</h2>
     <p>Tell ${e(b.name)} about your project and get a quote. It only takes a minute.</p>
-    <div class="actions" style="justify-content:center;"><a class="btn btn-main" href="${quoteUrl(slug)}">Request a quote</a>
+    <div class="actions" style="justify-content:center;"><a class="btn btn-main" href="${e(L.quote)}">Request a quote</a>
     ${b.phone ? `<a class="btn btn-alt" href="tel:${e(b.phone.replace(/[^\d+]/g, ""))}">Call ${e(b.phone)}</a>` : ""}</div>
     ${links.length ? `<div class="links">${links.join("")}</div>` : ""}
   </div>`;
@@ -177,24 +202,24 @@ function businessLd(data, url) {
   return ld;
 }
 
-function renderHome(data) {
-  const b = data.business, slug = data.slug, url = `${SITE}/p/${slug}`;
+function renderHome(data, L) {
+  const b = data.business, slug = data.slug, url = L.canon(""), img = L.img;
   const cats = [...new Set(data.projects.map(p => p.category).filter(Boolean))];
   const heroId = b.headerImageId || data.projects[0]?.cover_image_id;
   const description = b.intro || clip(`Tiling work by ${b.name}${b.areas ? ` in ${b.areas}` : ""}. See completed projects and request a quote.`, 160);
   const cards = data.projects.map(p => `
-    <a class="card" href="/p/${e(slug)}/${e(p.slug)}" data-cat="${e(p.category || "")}">
+    <a class="card" href="${e(L.proj(p.slug))}" data-cat="${e(p.category || "")}">
       <img src="${img(p.cover_image_id, "t")}" alt="${e(p.title)}" loading="lazy" width="600" height="450">
       <div>${p.featured ? `<span class="badge">Featured</span>` : ""}<h3>${e(p.title)}</h3>
       <span class="muted">${e([p.category, p.location].filter(Boolean).join(" · "))}</span></div>
     </a>`).join("");
   const body = `
-${topBar(b, slug)}
+${topBar(b, L)}
 <div class="hero"${heroId ? ` style="background-image:url('${img(heroId, "f")}')"` : ""}><div class="wrap">
   <h1>${e(b.name)}</h1>
   ${b.intro ? `<p>${e(b.intro)}</p>` : ""}
   ${b.areas ? `<div class="area">📍 ${e(b.areas)}</div>` : ""}
-  <div class="actions"><a class="btn btn-main" href="${quoteUrl(slug)}">Request a quote</a>
+  <div class="actions"><a class="btn btn-main" href="${e(L.quote)}">Request a quote</a>
   ${data.projects.length ? `<a class="btn btn-alt" href="#work">See our work</a>` : ""}</div>
 </div></div>
 <main>
@@ -210,7 +235,7 @@ ${b.about || b.services.length || b.experience || b.areas ? `<section style="bac
   <div>${b.services.length ? `<h3>Services</h3><div class="tags">${b.services.map(s => `<span>${e(s)}</span>`).join("")}</div>` : ""}
   ${b.areas ? `<h3 style="margin-top:20px;">Areas covered</h3><p class="muted" style="margin:0;">${e(b.areas)}</p>` : ""}</div>
 </div></section>` : ""}
-<section id="contact"><div class="wrap">${contactBlock(b, slug)}</div></section>
+<section id="contact"><div class="wrap">${contactBlock(b, L)}</div></section>
 </main>
 ${footer(slug)}
 ${cats.length > 1 ? `<script>
@@ -220,12 +245,12 @@ document.querySelectorAll('.chip').forEach(function (c) { c.addEventListener('cl
   document.querySelectorAll('#grid .card').forEach(function (k) { k.style.display = !f || k.getAttribute('data-cat') === f ? '' : 'none'; });
 }); });
 </script>` : ""}`;
-  return shell({ title: `${b.name} | Tiling portfolio`, description, canonical: url, colour: b.brandColour,
-    ogImage: heroId ? `${SITE}${img(heroId, "f")}` : null, body, jsonLd: businessLd(data, url) });
+  return shell({ title: `${b.name} | Tiling portfolio`, description, canonical: url, colour: b.brandColour, robots: L.robots, slug,
+    ogImage: heroId ? L.imgAbs(heroId, "f") : null, body, jsonLd: businessLd(data, url) });
 }
 
-function renderProject(data, p) {
-  const b = data.business, slug = data.slug, url = `${SITE}/p/${slug}/${p.slug}`;
+function renderProject(data, p, L) {
+  const b = data.business, slug = data.slug, url = L.canon(p.slug), img = L.img;
   const before = p.images.find(i => i.stage === "before");
   const after = p.images.find(i => i.stage === "after") || p.images.find(i => i.stage === "finished");
   const showBA = before && after && before.id !== after.id;
@@ -234,9 +259,9 @@ function renderProject(data, p) {
   const description = clip(p.description || `${p.title} by ${b.name}${p.location ? ` in ${p.location}` : ""}.`, 160);
   const ratio = i => i.width && i.height ? ` width="${i.width}" height="${i.height}"` : "";
   const body = `
-${topBar(b, slug)}
+${topBar(b, L)}
 <main class="wrap">
-  <a class="crumb" href="/p/${e(slug)}">← All projects</a>
+  <a class="crumb" href="${e(L.home)}">← All projects</a>
   <h1>${e(p.title)}</h1>
   <div class="meta">${[p.category, p.location && `📍 ${p.location}`, when && `Completed ${when}`].filter(Boolean).map(x => `<span>${e(x)}</span>`).join("")}</div>
   ${showBA ? `<div class="ba" id="ba">
@@ -253,16 +278,16 @@ ${topBar(b, slug)}
       </dl></div>` : ""}
     </div>
     <div class="panel"><h3>Like this work?</h3><p class="muted">Ask ${e(b.name)} for a quote for your own project.</p>
-      <a class="btn btn-main" style="width:100%;" href="${quoteUrl(slug)}">Request a quote</a></div>
+      <a class="btn btn-main" style="width:100%;" href="${e(L.quote)}">Request a quote</a></div>
   </div>
   <h2 style="margin-top:36px;">Photos</h2>
   <div class="gal">${p.images.map((i, n) => `<figure style="margin:0;"><button type="button" data-full="${img(i.id, "f")}" data-cap="${e(i.caption || "")}" aria-label="Open photo ${n + 1}">
     <img src="${img(i.id, "t")}" alt="${e(i.caption || `${p.title}, photo ${n + 1}`)}" loading="lazy" width="600" height="600"></button>
     ${i.caption ? `<figcaption>${e(i.caption)}</figcaption>` : ""}</figure>`).join("")}</div>
   ${others.length ? `<h2 style="margin-top:44px;">More work</h2><div class="grid">${others.map(o => `
-    <a class="card" href="/p/${e(slug)}/${e(o.slug)}"><img src="${img(o.cover_image_id, "t")}" alt="${e(o.title)}" loading="lazy" width="600" height="450">
+    <a class="card" href="${e(L.proj(o.slug))}"><img src="${img(o.cover_image_id, "t")}" alt="${e(o.title)}" loading="lazy" width="600" height="450">
     <div><h3>${e(o.title)}</h3><span class="muted">${e([o.category, o.location].filter(Boolean).join(" · "))}</span></div></a>`).join("")}</div>` : ""}
-  <section>${contactBlock(b, slug)}</section>
+  <section>${contactBlock(b, L)}</section>
 </main>
 ${footer(slug)}
 <div id="lb" role="dialog" aria-modal="true" aria-label="Photo"><button type="button" aria-label="Close">✕</button><img alt=""><p></p></div>
@@ -282,11 +307,11 @@ ${footer(slug)}
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') close(); });
 })();
 </script>`;
-  const ld = [businessLd(data, `${SITE}/p/${slug}`), {
+  const ld = [businessLd(data, L.canon("")), {
     "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
-      { "@type": "ListItem", position: 1, name: b.name, item: `${SITE}/p/${slug}` },
+      { "@type": "ListItem", position: 1, name: b.name, item: L.canon("") },
       { "@type": "ListItem", position: 2, name: p.title, item: url }] }];
   const cover = p.cover_image_id || p.images[0]?.id;
-  return shell({ title: `${p.title} | ${b.name}`, description, canonical: url, colour: b.brandColour, type: "article",
-    ogImage: cover ? `${SITE}${img(cover, "f")}` : null, body, jsonLd: ld });
+  return shell({ title: `${p.title} | ${b.name}`, description, canonical: url, colour: b.brandColour, type: "article", robots: L.robots, slug,
+    ogImage: cover ? L.imgAbs(cover, "f") : null, body, jsonLd: ld });
 }

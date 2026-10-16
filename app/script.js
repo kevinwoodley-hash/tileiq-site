@@ -7211,6 +7211,7 @@ const PortfolioSite = {
         this._msg("", "");
         show("screen-portfolio-site");
         this.renderStatus(); this.renderBusiness(); this.renderSwatches(); this.renderHeaderPhotos();
+        PortfolioDomain.load();
     },
     renderStatus() {
         const el = document.getElementById("pfs-status");
@@ -7321,6 +7322,117 @@ function portfolioSiteEnable(on) { PortfolioSite.enable(on); }
 function portfolioSiteReserve() { PortfolioSite.reserve(); }
 function portfolioSiteCopy(btn) { PortfolioSite.copy(btn); }
 function portfolioSiteUseProfile() { PortfolioSite.useProfile(); }
+
+// ── Portfolio: the tiler's own domain ────────────────────────────
+// Three ways, all handled by the worker (/api/portfolio/domain) which registers and checks them:
+//   subdomain  work.example.com: one CNAME to domains.tile-iq.com
+//   apex       example.com: ALIAS/ANAME/flattened CNAME to domains.tile-iq.com (no other website there)
+//   folder     example.com/portfolio: their web host forwards the folder to tile-iq.com/p/<slug>/_d/
+const PortfolioDomain = {
+    state: null, mode: "subdomain", busy: false,
+    async _api(method, body) {
+        const r = await fetch(TILEIQ_WORKER_URL + "/api/portfolio/domain", {
+            method, headers: { "Content-Type": "application/json", "Authorization": "Bearer " + portfolioToken() },
+            body: body ? JSON.stringify(body) : undefined
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || ("Error " + r.status));
+        return j;
+    },
+    async load() {
+        const el = document.getElementById("pfs-domain");
+        if (!el) return;
+        if (isDemoAccount() || !settings.slug) { this.state = null; this.render(); return; }
+        el.innerHTML = `<div style="font-size:12.5px;color:var(--muted);">Checking…</div>`;
+        try { this.state = (await this._api("GET")).domain; } catch (e) { this.state = null; this.error = e.message; }
+        this.render();
+    },
+    render(msg) {
+        const el = document.getElementById("pfs-domain");
+        if (!el) return;
+        if (isDemoAccount()) { el.innerHTML = `<div style="font-size:12.5px;color:var(--muted);">In your own account you can show your portfolio on your own web address.</div>`; return; }
+        if (!settings.slug) { el.innerHTML = `<div style="font-size:12.5px;color:var(--muted);">Choose your website address above first.</div>`; return; }
+        const d = this.state;
+        const note = msg ? `<div style="font-size:12.5px;margin-top:8px;color:${/^✓/.test(msg) ? "#16a34a" : "var(--red)"};">${esc(msg)}</div>` : "";
+        if (!d) {
+            const opt = (key, title, sub) => `<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1.5px solid ${this.mode === key ? "#E07A2F" : "var(--border)"};border-radius:10px;margin-bottom:8px;cursor:pointer;">
+                <input type="radio" name="pfs-dmode" ${this.mode === key ? "checked" : ""} onchange="PortfolioDomain.setMode('${key}')" style="margin-top:3px;">
+                <span><b style="color:var(--ink);font-size:14px;">${title}</b><br><span style="font-size:12px;color:var(--muted);">${sub}</span></span></label>`;
+            const ph = this.mode === "subdomain" ? "work.yourbusiness.co.uk" : "yourbusiness.co.uk";
+            el.innerHTML = `<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Already have a domain, like <b>yourbusiness.co.uk</b>? Show this website on it instead of tile-iq.com/p/${esc(settings.slug)}. It's free; you just add a setting where your domain is managed.</div>
+                ${opt("subdomain", "A subdomain <span style=\"color:#16a34a;font-size:11px;\">RECOMMENDED</span>", "e.g. work.yourbusiness.co.uk. Works even if you already have a website.")}
+                ${opt("apex", "My whole domain", "e.g. yourbusiness.co.uk. Only if you don't have another website on it.")}
+                ${opt("folder", "A folder on my existing website", "e.g. yourbusiness.co.uk/portfolio. Needs a host that can forward a folder (Netlify, Vercel, your own server). Not Wix, Squarespace or GoDaddy's builder.")}
+                <label for="pfs-dhost" style="font-size:12px;color:var(--muted);">${this.mode === "subdomain" ? "Subdomain" : "Your domain"}</label>
+                <input type="text" id="pfs-dhost" placeholder="${ph}" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+                ${this.mode === "folder" ? `<label for="pfs-dbase" style="font-size:12px;color:var(--muted);">Folder name</label>
+                <div style="display:flex;align-items:center;gap:4px;margin:4px 0 10px;"><span style="color:var(--muted);">/</span><input type="text" id="pfs-dbase" value="portfolio" autocapitalize="off" style="flex:1;"></div>` : ""}
+                <button type="button" onclick="PortfolioDomain.connect()" class="btn-primary" style="width:100%;" ${this.busy ? "disabled" : ""}>${this.busy ? "Connecting…" : "Connect domain"}</button>${note}`;
+            return;
+        }
+        const addr = d.host + (d.base || "");
+        const badge = d.status === "active" ? ["#16a34a", "#fff", "Connected"] : d.status === "failed" ? ["#dc2626", "#fff", "Problem"] : ["#f59e0b", "#1c1400", "Waiting for your settings"];
+        const code = s => `<code style="display:block;white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;margin:4px 0 8px;user-select:all;">${esc(s)}</code>`;
+        const row = (k, v) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--muted);">${k}</span><b style="word-break:break-all;text-align:right;user-select:all;">${esc(v)}</b></div>`;
+        const label = d.host.split(".")[0];
+        let how = "";
+        if (d.mode === "subdomain") {
+            how = `<div style="font-size:12.5px;margin-bottom:6px;">Where your domain is managed (e.g. 123-reg, GoDaddy, IONOS, Cloudflare), add this DNS record:</div>
+                ${row("Type", "CNAME")}${row("Name / Host", label)}${row("Value / Points to", d.target)}
+                <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Some providers want the full name (${esc(d.host)}) instead of just “${esc(label)}”. On Cloudflare, set it to “DNS only” (grey cloud).</div>`;
+        } else if (d.mode === "apex") {
+            how = `<div style="font-size:12.5px;margin-bottom:6px;">Where your domain is managed, add this record for the bare domain:</div>
+                ${row("Type", "ALIAS, ANAME or CNAME")}${row("Name / Host", "@")}${row("Value / Points to", d.target)}
+                <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Not every provider allows this for a bare domain (Cloudflare does, using “CNAME flattening”; 123-reg and some others don't). If yours doesn't, tap Remove and use the subdomain option with <b>www.${esc(d.host)}</b> instead, then set your provider to forward ${esc(d.host)} to www. Also forward www.${esc(d.host)} to ${esc(d.host)} so both work.</div>`;
+        } else {
+            const to = d.proxyTo || "";
+            how = `<div style="font-size:12.5px;margin-bottom:6px;">Ask your web host (or whoever looks after your website) to forward <b>/${esc(d.base.slice(1))}</b> to TileIQ. Ready-made settings:</div>
+                <details style="margin-bottom:6px;"><summary style="cursor:pointer;font-size:13px;font-weight:700;">Netlify (_redirects file)</summary>${code(`${d.base}/*  ${to}:splat  200\n${d.base}   ${to}  200`)}</details>
+                <details style="margin-bottom:6px;"><summary style="cursor:pointer;font-size:13px;font-weight:700;">Vercel (vercel.json)</summary>${code(JSON.stringify({ rewrites: [{ source: d.base, destination: to }, { source: d.base + "/:path*", destination: to + ":path*" }] }, null, 2))}</details>
+                <details style="margin-bottom:6px;"><summary style="cursor:pointer;font-size:13px;font-weight:700;">nginx</summary>${code(`location = ${d.base} { return 301 ${d.base}/; }\nlocation ${d.base}/ {\n    proxy_pass ${to};\n    proxy_set_header Host tile-iq.com;\n    proxy_ssl_server_name on;\n}`)}</details>
+                <details style="margin-bottom:6px;"><summary style="cursor:pointer;font-size:13px;font-weight:700;">Apache</summary>${code(`SSLProxyEngine on\nProxyPass ${d.base}/ ${to}\nProxyPassReverse ${d.base}/ ${to}`)}</details>
+                <div style="font-size:11.5px;color:var(--muted);">Website builders such as Wix, Squarespace and GoDaddy's builder can't do this. Use the subdomain option instead.</div>`;
+        }
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                <span style="font-size:11.5px;font-weight:800;padding:3px 9px;border-radius:99px;background:${badge[0]};color:${badge[1]};">${badge[2]}</span>
+                <b style="font-size:14px;color:var(--ink);word-break:break-all;">${esc(addr)}</b></div>
+            ${d.status === "active" ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Your website is showing at this address${settings.portfolioSite?.enabled ? "" : " once you switch it on"}. tile-iq.com/p/${esc(settings.slug)} still works too, and search engines are told to use your domain.</div>`
+                : `${d.detail ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">${esc(d.detail)}</div>` : ""}${how}<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Changes can take from a few minutes to a few hours to work. Tap Check once you've added it.</div>`}
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+                ${d.status === "active" ? `<button type="button" onclick="portfolioOpenUrl('https://${esc(addr)}')" class="btn-secondary" style="flex:1;min-width:100px;">👁 View</button>`
+                    : `<button type="button" onclick="PortfolioDomain.check()" class="btn-primary" style="flex:1;min-width:100px;" ${this.busy ? "disabled" : ""}>${this.busy ? "Checking…" : "🔄 Check"}</button>`}
+                <button type="button" onclick="PortfolioDomain.remove()" class="btn-secondary" style="flex:1;min-width:100px;">Remove</button>
+            </div>${note}`;
+    },
+    setMode(m) { this.mode = m; this.render(); },
+    async connect() {
+        if (this.busy || demoBlocked("Using your own domain")) return;
+        const host = (document.getElementById("pfs-dhost")?.value || "").trim();
+        const base = (document.getElementById("pfs-dbase")?.value || "").trim();
+        if (!host) { this.render("Type your domain first."); return; }
+        this.busy = true; this.render();
+        try {
+            this.state = (await this._api("POST", { mode: this.mode, host, base })).domain;
+            TQA.feature("portfolio_domain_" + this.mode);
+            this.busy = false; this.render("✓ Now add the setting shown above where your domain is managed.");
+        } catch (e) { this.busy = false; this.render(e.message); }
+    },
+    async check() {
+        if (this.busy) return;
+        this.busy = true; this.render();
+        try {
+            this.state = (await this._api("GET")).domain;
+            this.busy = false;
+            this.render(this.state?.status === "active" ? "✓ Connected! Your portfolio is on your domain." : "Not working yet. Check the setting, or try again a bit later.");
+        } catch (e) { this.busy = false; this.render(e.message); }
+    },
+    async remove() {
+        if (this.busy || !confirm("Stop using this domain for your portfolio? Your website stays at tile-iq.com/p/" + settings.slug + ".")) return;
+        this.busy = true;
+        try { await this._api("DELETE"); this.state = null; this.busy = false; this.render("✓ Removed. You can also remove the DNS record you added."); }
+        catch (e) { this.busy = false; this.render(e.message); }
+    },
+};
 
 // Manual escape hatch for jobs already posted outside the in-app Share flow
 // (or from before this tracking existed) — clears the Your Day nudge without
