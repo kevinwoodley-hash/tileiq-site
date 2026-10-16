@@ -10,6 +10,9 @@
  * - Internal testing: open any page once with ?tileiq_internal=1 (…=0 turns it off).
  *   From then on this browser's events carry traffic_type=internal and debug_mode, so a
  *   GA4 data filter can exclude them and they show in DebugView. No IP addresses involved.
+ * - Traffic sources: an anonymous, cookieless beacon to the worker (/api/site-visit) for every
+ *   visitor counts where they came from and which source leads to store taps (admin Traffic page),
+ *   and Google Play links get that source as an install referrer.
  * - Store links: one listener sends app_download_clicked for any Google Play / App Store
  *   link (plus the demo's existing demo_google_play_click / demo_app_store_click names).
  */
@@ -196,5 +199,82 @@
     window.gtag('event', 'app_download_clicked', params);
     // The demo's existing event names, kept so current reports carry on working
     if (isDemo) window.gtag('event', store === 'google_play' ? 'demo_google_play_click' : 'demo_app_store_click', { link_url: href, transport_type: 'beacon' });
+  }, true);
+
+  // ── Where visitors come from: anonymous, for every visitor ───
+  // Separate from Google Analytics and needs no consent: nothing is stored in
+  // the browser and nothing identifies the person. One beacon to our worker when
+  // someone arrives from outside the site, one when they tap a store link, each
+  // carrying only source / medium / campaign, landing page and mobile-or-desktop.
+  // The admin Traffic page adds them up. Google Play links also get the source
+  // as an install referrer, so Play Console and Firebase can credit the install.
+  var WORKER_URL = 'https://damp-bread-e0f9.kevin-woodley.workers.dev';
+  var SITE_HOST = /(^|\.)tile-iq\.com$/;
+  var SOCIAL = [[/(^|\.)facebook\.com$|^fb\.me$/, 'facebook'], [/(^|\.)instagram\.com$/, 'instagram'],
+    [/(^|\.)tiktok\.com$/, 'tiktok'], [/(^|\.)youtube\.com$|^youtu\.be$/, 'youtube'], [/(^|\.)linkedin\.com$|^lnkd\.in$/, 'linkedin'],
+    [/^(t\.co|x\.com|twitter\.com|mobile\.twitter\.com)$/, 'x'], [/(^|\.)pinterest\./, 'pinterest'], [/(^|\.)reddit\.com$/, 'reddit'],
+    [/(^|\.)whatsapp\.com$/, 'whatsapp']];
+  function hostOf(u) { try { return new URL(u).hostname.toLowerCase(); } catch (e) { return ''; } }
+  // The page the visit is about: the demo wrapper when we're the app inside it
+  var topWin = window;
+  try { if (framed && window.top.location.href) topWin = window.top; } catch (e) {}
+  var landingPath = topWin.location.pathname;
+  var device = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '') ? 'mobile' : 'desktop';
+
+  // Source of this visit, in order: UTM tags on the link, ad click ids, the
+  // referring site, then the in-app browser (Facebook, Instagram and TikTok's
+  // built-in browsers usually hide the referrer). null = came from another page
+  // of this site, so the original source isn't known here.
+  function visitSource() {
+    var q = new URLSearchParams(topWin.location.search);
+    var camp = q.get('utm_campaign');
+    if (q.get('utm_source')) return { s: q.get('utm_source'), m: q.get('utm_medium') || '(not set)', c: camp };
+    if (q.get('gclid') || q.get('gbraid') || q.get('wbraid')) return { s: 'google', m: 'cpc', c: camp };
+    if (q.get('ttclid')) return { s: 'tiktok', m: 'paid_social', c: camp };
+    if (q.get('msclkid')) return { s: 'bing', m: 'cpc', c: camp };
+    var ref = hostOf(topWin.document.referrer);
+    if (ref && SITE_HOST.test(ref)) return null;
+    if (ref) {
+      for (var i = 0; i < SOCIAL.length; i++) if (SOCIAL[i][0].test(ref)) return { s: SOCIAL[i][1], m: 'social' };
+      var se = ref.match(/(^|\.)(google|bing|duckduckgo|yahoo|ecosia|yandex|baidu)\./);
+      if (se) return { s: se[2], m: 'organic' };
+      return { s: ref.replace(/^(www|m|l|lm)\./, ''), m: 'referral' };
+    }
+    var ua = navigator.userAgent || '';
+    if (/FBAN|FBAV|FB_IAB/.test(ua) || q.get('fbclid')) return { s: /Instagram/.test(ua) ? 'instagram' : 'facebook', m: 'social' };
+    if (/Instagram/.test(ua)) return { s: 'instagram', m: 'social' };
+    if (/musical_ly|BytedanceWebview|TikTok|trill_/i.test(ua)) return { s: 'tiktok', m: 'social' };
+    return { s: '(direct)', m: '(none)' };
+  }
+  var source = visitSource();
+
+  function beacon(data) {
+    if (isInternal()) return;                            // our own testing stays out of the numbers
+    var src = source || { s: '(moved between pages)', m: '(not known)' };
+    data.s = src.s; data.m = src.m; data.c = src.c || null; data.p = landingPath; data.d = device;
+    try { navigator.sendBeacon(WORKER_URL + '/api/site-visit', JSON.stringify(data)); } catch (e) {}
+  }
+
+  // A visit = arriving on a website page (or the demo) from outside the site.
+  // Reloads and back/forward don't count again; the signed-in web app and admin never count.
+  var nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
+  if (!framed && source && nav.type !== 'reload' && nav.type !== 'back_forward' &&
+      !/^\/admin(\/|$)/.test(location.pathname) && (!inApp || isDemo)) {
+    beacon({ k: 'visit' });
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    var href = a.href || '';
+    var store = /play\.google\.com\/store\/apps\/details/.test(href) ? 'google_play' : /apps\.apple\.com\//.test(href) ? 'app_store' : '';
+    if (!store) return;
+    beacon({ k: 'store_click', st: store });
+    if (store === 'google_play' && !/[?&]referrer=/.test(href)) {
+      var src = source && source.s !== '(direct)' ? source : { s: 'tile-iq.com', m: 'website' };
+      var ref = 'utm_source=' + encodeURIComponent(src.s) + '&utm_medium=' + encodeURIComponent(src.m) +
+        '&utm_campaign=' + encodeURIComponent(src.c || 'website') + '&utm_content=' + encodeURIComponent(landingPath);
+      a.href = href + (href.indexOf('?') >= 0 ? '&' : '?') + 'referrer=' + encodeURIComponent(ref);
+    }
   }, true);
 })();

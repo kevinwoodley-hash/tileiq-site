@@ -474,6 +474,9 @@ body {
       <button class="nav-item" onclick="showPage('journeys')" id="nav-journeys">
         <span class="nav-icon">🧭</span> Journeys
       </button>
+      <button class="nav-item" onclick="showPage('traffic')" id="nav-traffic">
+        <span class="nav-icon">📈</span> Traffic
+      </button>
       <button class="nav-item" onclick="showPage('backups')" id="nav-backups">
         <span class="nav-icon">💾</span> Backups
       </button>
@@ -724,6 +727,25 @@ body {
       </div>
     </div>
 
+    <!-- Traffic Page: where website visitors come from and which sources lead to store clicks -->
+    <div class="page" id="page-traffic">
+      <div class="page-header">
+        <h1>Website traffic</h1>
+        <p>Where tile-iq.com visitors come from, and which sources lead to App Store / Google Play taps. Every visitor is counted anonymously (no cookies, nothing that identifies anyone). Your own browser is left out once you've opened the site with ?tileiq_internal=1.</p>
+      </div>
+      <div style="flex:1;overflow:auto;padding:0 24px 24px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+          <label for="tr-days" style="font-size:13px;">Show the last</label>
+          <select id="tr-days" onchange="loadTraffic()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;">
+            <option value="1">24 hours</option><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="365">12 months</option>
+          </select>
+          <button class="btn-primary" onclick="loadTraffic()" style="padding:8px 14px;">Refresh</button>
+          <span id="tr-status" style="font-size:13px;color:var(--text-muted);"></span>
+        </div>
+        <div id="tr-body" style="max-width:900px;"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
     <!-- Auto Test Page -->
     <div class="page" id="page-autotest">
       <div class="page-header">
@@ -911,9 +933,47 @@ function showPage(name) {
   if (name === 'stats' && !statsLoaded) { loadStats(); statsLoaded = true; }
   if (name === 'users') loadUsersPage();
   if (name === 'journeys') loadJourneys();
+  if (name === 'traffic') loadTraffic();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
   if (name === 'checklist') loadChecklist();
   if (name === 'autotest') clearTestResults();
+}
+
+// ── Website traffic ────────────────────────────────────────────
+// Data from GET /api/admin/sources (worker): anonymous visit and store-click
+// counts grouped by source / medium, campaign, landing page and day.
+async function loadTraffic() {
+  const status = document.getElementById('tr-status'), body = document.getElementById('tr-body');
+  status.textContent = 'Loading…';
+  try {
+    const d = await api('/api/admin/sources?days=' + document.getElementById('tr-days').value);
+    status.textContent = '';
+    const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
+    const th = 'text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:1px solid var(--border);';
+    const td = 'padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);';
+    const table = (title, note, rows, label) => `<div class="card" style="margin-bottom:16px;">
+      <h2>${title}</h2>${note ? `<p>${note}</p>` : ''}
+      ${rows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+        <tr><th style="${th}">${label}</th><th style="${th}text-align:right;">Visits</th><th style="${th}text-align:right;">On mobile</th><th style="${th}text-align:right;">Store taps</th><th style="${th}text-align:right;">Play / Apple</th><th style="${th}text-align:right;">Tap rate</th></tr>
+        ${rows.map(r => `<tr><td style="${td}font-weight:600;">${jrEsc(r.key)}</td><td style="${td}text-align:right;">${r.visits}</td><td style="${td}text-align:right;">${pct(r.mobile, r.visits)}</td><td style="${td}text-align:right;font-weight:600;">${r.store_clicks}</td><td style="${td}text-align:right;">${r.google_play} / ${r.app_store}</td><td style="${td}text-align:right;">${pct(r.store_clicks, r.visits)}</td></tr>`).join('')}
+      </table></div>` : '<div style="font-size:13px;color:var(--text-muted);">Nothing in this period yet.</div>'}
+    </div>`;
+    const t = d.totals, max = Math.max(1, ...d.daily.map(x => x.visits));
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
+        <div class="card"><div style="font-size:12px;color:var(--text-muted);">Visits</div><div style="font-size:28px;font-weight:800;">${t.visits}</div></div>
+        <div class="card"><div style="font-size:12px;color:var(--text-muted);">Store taps</div><div style="font-size:28px;font-weight:800;">${t.store_clicks}</div><div style="font-size:12px;color:var(--text-muted);">${t.google_play} Google Play · ${t.app_store} App Store</div></div>
+        <div class="card"><div style="font-size:12px;color:var(--text-muted);">Visits that tapped a store</div><div style="font-size:28px;font-weight:800;">${pct(t.store_clicks, t.visits)}</div></div>
+      </div>
+      ${d.daily.length > 1 ? `<div class="card" style="margin-bottom:16px;"><h2>Visits per day</h2>
+        <div style="display:flex;align-items:flex-end;gap:2px;height:90px;margin-top:8px;">${d.daily.map(x => `<div title="${x.key}: ${x.visits} visits, ${x.store_clicks} store taps" style="flex:1;background:var(--amber);border-radius:3px 3px 0 0;height:${Math.max(2, Math.round(x.visits / max * 100))}%;"></div>`).join('')}</div></div>` : ''}
+      ${table('Where visitors come from', 'Source / medium. Untagged Facebook, Instagram and TikTok visits are recognised from their in-app browsers where possible; tag your links with utm_source so every post and ad is counted correctly. "(moved between pages)" = a store tap on a page after the first one, where the original source is no longer known.', d.sources, 'Source / medium')}
+      ${table('Campaigns', 'From utm_campaign on your links (e.g. one name per ad or post).', d.campaigns, 'Source · campaign')}
+      ${table('Landing pages', 'The page people arrived on.', d.landings, 'Page')}`;
+  } catch (e) {
+    status.textContent = '';
+    body.innerHTML = `<div class="card" style="color:#b91c1c;font-size:13px;">Couldn't load traffic (${jrEsc(e.message)}). If this is new, check the site_source_events table exists in Supabase and the worker is deployed.</div>`;
+  }
 }
 
 // ── User journeys ──────────────────────────────────────────────
