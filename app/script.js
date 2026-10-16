@@ -895,7 +895,7 @@ const TQA = (() => {
             if (!phStarted) {
                 if (!want) return;
                 p.init(PH_KEY, {
-                    api_host: "https://eu.i.posthog.com", ui_host: "https://eu.posthog.com",
+                    api_host: "https://tile-iq.com/ingest", ui_host: "https://eu.posthog.com",   // our reverse proxy (tileiq-site functions/ingest) so ad/DNS blockers don't drop it
                     person_profiles: "identified_only", persistence: "localStorage",
                     capture_pageview: false, capture_pageleave: false,
                     autocapture: true, mask_all_text: true, mask_all_element_attributes: true,
