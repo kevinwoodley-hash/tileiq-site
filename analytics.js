@@ -21,6 +21,7 @@
   if (window.tileiqConsent) return;                      // only ever set up once per page
 
   var GA_ID = 'G-274KES4P2G';
+  var PH_CONVERSIONS = ['book_demo_submit', 'contact_form_submit', 'sign_up', 'training_centre_register'];
   var CONSENT_KEY = 'tileiq-analytics-consent';          // 'granted' | 'denied' (unset = not asked yet)
   var INTERNAL_KEY = 'tileiq-internal';                  // '1' = this browser is internal testing
 
@@ -51,7 +52,15 @@
 
   function grant() {
     window['ga-disable-' + GA_ID] = false;
-    window.gtag = push;                                  // events can flow from here on
+    // Events can flow from here on. The site's conversion events (forms, sign-up, demo
+    // start) also go to PostHog, so they can be Goals in its Web analytics.
+    window.gtag = function () {
+      push.apply(null, arguments);
+      if (arguments[0] === 'event' && PH_CONVERSIONS.indexOf(arguments[1]) >= 0 && !framed &&
+          window.posthog && window.posthog.__loaded) {
+        try { window.posthog.capture(arguments[1], { link_location: location.pathname }); } catch (e) {}
+      }
+    };
     push('consent', 'update', { analytics_storage: 'granted' });
     if (libraryLoaded) return;
     libraryLoaded = true;
