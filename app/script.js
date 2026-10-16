@@ -6653,11 +6653,16 @@ async function portfolioDeleteFiles(paths) {
         });
     } catch (_) {}
 }
-function portfolioSaveSettings() {
+// Saves the whole settings blob locally and to Supabase; resolves to an error message or null
+async function portfolioSaveSettings() {
     saveSettingsLocal();
-    if (currentUser && !isDemoAccount()) sb.from("settings").upsert(
-        { user_id: currentUser.id, data: settings, updated_at: new Date().toISOString() }, { onConflict: "user_id" }
-    ).then(({ error }) => { if (error) console.error("portfolio settings save:", error.message); });
+    if (!currentUser || isDemoAccount()) return null;
+    try {
+        const { error } = await sb.from("settings").upsert(
+            { user_id: currentUser.id, data: settings, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+        if (error) { console.error("portfolio settings save:", error.message); return error.message; }
+        return null;
+    } catch (e) { return e?.message || "Couldn't save"; }
 }
 
 const PortfolioUI = {
@@ -6710,11 +6715,17 @@ const PortfolioUI = {
 
         const site = document.getElementById("pf-site");
         if (site) {
-            const slug = settings?.slug || "";
-            site.innerHTML = `<div class="form-section-label" style="margin-bottom:6px;">🌐 Your portfolio website</div>
-                ${slug ? `<div style="font-size:14px;font-weight:700;color:var(--ink);word-break:break-all;">tile-iq.com/p/${esc(slug)}</div>
-                    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Coming in the next update: a free mini website at this address showing your published projects, with a Request a Quote button.</div>`
-                : `<div style="font-size:12.5px;color:var(--muted);">Set your enquiry link name in Settings to reserve your website address (tile-iq.com/p/your-name).</div>`}`;
+            const slug = settings?.slug || "", on = !!settings?.portfolioSite?.enabled;
+            site.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <div class="form-section-label" style="margin:0;flex:1;">🌐 Your website</div>
+                    <span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:99px;background:${on ? "#16a34a" : "var(--border)"};color:${on ? "#fff" : "var(--ink)"};">${on ? "ON" : "OFF"}</span>
+                </div>
+                ${slug ? `<div style="font-size:14px;font-weight:700;color:var(--ink);word-break:break-all;">tile-iq.com/p/${esc(slug)}</div>`
+                    : `<div style="font-size:12.5px;color:var(--muted);">A free mini website showing your published projects, with a Request a Quote button.</div>`}
+                <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+                    <button type="button" onclick="goPortfolioSite()" class="btn-primary" style="flex:1;min-width:140px;">${slug ? "⚙ Manage website" : "Set up my website"}</button>
+                    ${slug && on ? `<button type="button" onclick="portfolioOpenUrl(portfolioSiteUrl())" class="btn-secondary" style="flex:1;min-width:100px;">👁 View</button>` : ""}
+                </div>`;
         }
 
         const cats = portfolioCategories();
@@ -7111,6 +7122,176 @@ function portfolioEditorRewrite() { PortfolioEditor.rewrite(); }
 function portfolioJobPickerOpen() { PortfolioEditor.jobPickerOpen(); }
 function portfolioJobPickerClose() { PortfolioEditor.jobPickerClose(); }
 function portfolioJobPickerAdd() { PortfolioEditor.jobPickerAdd(); }
+
+// ── Portfolio (phase 3: the tiler's public mini website) ─────────
+// settings.portfolioSite holds the website choices: on/off, intro, about, experience,
+// services, areas, brand colour, header photo, whether to show phone/email, and social
+// links. The site lives at tile-iq.com/p/<settings.slug> (the enquiry link name, which
+// is unique across TileIQ), rendered by the website's Pages Function from the worker's
+// /api/portfolio/site, which only ever returns these fields plus published projects.
+const PORTFOLIO_COLOURS = ["#E07A2F", "#1B2A3C", "#0F766E", "#2563EB", "#7C3AED", "#B91C1C", "#15803D", "#111827"];
+function portfolioSiteUrl() { return settings?.slug ? `https://tile-iq.com/p/${settings.slug}` : ""; }
+async function portfolioOpenUrl(url) {
+    const { Browser } = window.Capacitor?.Plugins || {};
+    if (Browser?.open) await Browser.open({ url, presentationStyle: "popover" });
+    else window.open(url, "_blank", "noopener");
+}
+// Reserves/changes the slug (enquiry link + website address). The settings row must exist
+// first; a unique index on settings.slug makes a taken name fail with 409.
+async function portfolioReserveSlug(raw) {
+    const slug = String(raw || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+    if (slug.length < 3) return { error: "Use at least 3 letters or numbers." };
+    if (["admin", "api", "app", "www", "tileiq", "tile-iq", "demo", "test"].includes(slug)) return { error: "That name isn't available. Try your business name." };
+    const err = await portfolioSaveSettings();
+    if (err) return { error: err };
+    const r = await fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
+        method: "PATCH",
+        headers: { "apikey": SB_KEY, "Authorization": "Bearer " + portfolioToken(), "Content-Type": "application/json", "Prefer": "return=representation" },
+        body: JSON.stringify({ slug })
+    });
+    if (r.status === 409) return { error: `"${slug}" is already taken by another TileIQ business. Try adding your town, e.g. ${slug}-oxford.` };
+    if (!r.ok) return { error: "Couldn't save the name (" + r.status + ")." };
+    settings.slug = slug;
+    await portfolioSaveSettings();
+    return { slug };
+}
+
+const PortfolioSite = {
+    headerImageId: null, saving: false,
+    cfg() { return settings.portfolioSite || {}; },
+    _msg(err, progress) {
+        const e = document.getElementById("pfs-error"), p = document.getElementById("pfs-progress");
+        if (e) e.textContent = err || "";
+        if (p) p.textContent = progress || "";
+    },
+    async open() {
+        if (!PortfolioUI.loaded) { try { await PortfolioUI.load(); } catch (_) {} }
+        const c = this.cfg();
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
+        set("pfs-intro", c.intro); set("pfs-about", c.about); set("pfs-experience", c.experience);
+        set("pfs-services", Array.isArray(c.services) ? c.services.join("\n") : c.services);
+        set("pfs-areas", c.areas); set("pfs-facebook", c.facebook); set("pfs-instagram", c.instagram);
+        set("pfs-tiktok", c.tiktok); set("pfs-website", c.website || settings.businessWebsite || "");
+        document.getElementById("pfs-colour").value = /^#[0-9a-f]{6}$/i.test(c.brandColour || "") ? c.brandColour : "#E07A2F";
+        document.getElementById("pfs-show-phone").checked = !!c.showPhone;
+        document.getElementById("pfs-show-email").checked = !!c.showEmail;
+        document.getElementById("pfs-phone-val").textContent = settings.companyPhone ? `(${settings.companyPhone})` : "(add it in Settings)";
+        document.getElementById("pfs-email-val").textContent = settings.companyEmail ? `(${settings.companyEmail})` : "(add it in Settings)";
+        document.getElementById("pfs-use-profile").style.display = settings.businessProfileSummary ? "" : "none";
+        this.headerImageId = c.headerImageId || null;
+        this._msg("", "");
+        show("screen-portfolio-site");
+        this.renderStatus(); this.renderBusiness(); this.renderSwatches(); this.renderHeaderPhotos();
+    },
+    renderStatus() {
+        const el = document.getElementById("pfs-status");
+        if (!el) return;
+        const on = !!this.cfg().enabled, url = portfolioSiteUrl();
+        const published = PortfolioUI.projects.filter(p => p.status === "published").length;
+        if (!settings.slug) {
+            el.innerHTML = `<div class="form-section-label" style="margin-bottom:6px;">🌐 Choose your website address</div>
+                <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">This is also your enquiry link name. Usually your business name.</div>
+                <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:14px;color:var(--muted);white-space:nowrap;">tile-iq.com/p/</span>
+                <input type="text" id="pfs-slug" maxlength="60" placeholder="your-business" value="${esc(portfolioSlugify(settings.companyName || "").replace(/^project$/, ""))}" style="flex:1;min-width:0;"></div>
+                <button type="button" onclick="portfolioSiteReserve()" class="btn-primary" style="width:100%;margin-top:10px;">Reserve this address</button>`;
+            return;
+        }
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;background:${on ? "#16a34a" : "var(--border)"};color:${on ? "#fff" : "var(--ink)"};">${on ? "Website is ON" : "Website is OFF"}</span>
+            </div>
+            <div style="font-size:15px;font-weight:800;color:var(--ink);word-break:break-all;">tile-iq.com/p/${esc(settings.slug)}</div>
+            <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">${on ? `Live, showing ${published} published project${published === 1 ? "" : "s"}.` : "Switch it on when you're ready. Only published projects are shown."}
+                ${on && !published ? ` <b>Publish a project so visitors have something to see.</b>` : ""}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" onclick="portfolioSiteEnable(${on ? "false" : "true"})" class="${on ? "btn-secondary" : "btn-primary"}" style="flex:1;min-width:130px;">${on ? "Switch off" : "🌐 Switch website on"}</button>
+                ${on ? `<button type="button" onclick="portfolioOpenUrl('${esc(url)}')" class="btn-secondary" style="flex:1;min-width:100px;">👁 View</button>
+                <button type="button" onclick="portfolioSiteCopy(this)" class="btn-secondary" style="flex:1;min-width:100px;">📋 Copy link</button>` : ""}
+            </div>`;
+    },
+    renderBusiness() {
+        const el = document.getElementById("pfs-business");
+        if (!el) return;
+        el.innerHTML = `${settings.logoUrl ? `<img src="${esc(settings.logoUrl)}" alt="" style="width:44px;height:44px;object-fit:contain;border-radius:8px;border:1px solid var(--border);">` : `<div style="width:44px;height:44px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;">🏢</div>`}
+            <div style="flex:1;min-width:0;"><div style="font-weight:800;color:var(--ink);">${esc(settings.companyName || "Your business name")}</div>
+            <div style="font-size:12px;color:var(--muted);">Name and logo come from Settings.</div></div>
+            <button type="button" onclick="goSettings()" class="btn-secondary" style="padding:8px 12px;">Change</button>`;
+    },
+    renderSwatches() {
+        const wrap = document.getElementById("pfs-swatches");
+        if (!wrap) return;
+        wrap.innerHTML = PORTFOLIO_COLOURS.map(c => `<button type="button" aria-label="Colour ${c}" onclick="document.getElementById('pfs-colour').value='${c}'" style="width:30px;height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--border);background:${c};cursor:pointer;"></button>`).join("");
+    },
+    async renderHeaderPhotos() {
+        const wrap = document.getElementById("pfs-header-photos");
+        if (!wrap) return;
+        const pub = new Set(PortfolioUI.projects.filter(p => p.status === "published").map(p => p.id));
+        const imgs = PortfolioUI.images.filter(i => pub.has(i.project_id) && !i.hidden).slice(0, 40);
+        const urls = await portfolioSignedUrls(imgs.map(i => i.thumb_path));
+        const tile = (sel, inner, onclick) => `<div onclick="${onclick}" style="width:76px;height:76px;border-radius:10px;overflow:hidden;cursor:pointer;border:2.5px solid ${sel ? "#E07A2F" : "transparent"};background:var(--border);display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;font-weight:700;color:var(--ink);">${inner}</div>`;
+        wrap.innerHTML = tile(!this.headerImageId, "Automatic", "PortfolioSite.pickHeader(null)")
+            + imgs.map(i => tile(this.headerImageId === i.id, urls[i.thumb_path] ? `<img src="${esc(urls[i.thumb_path])}" alt="" style="width:100%;height:100%;object-fit:cover;">` : "🖼", `PortfolioSite.pickHeader('${i.id}')`)).join("")
+            + (imgs.length ? "" : `<div style="font-size:12px;color:var(--muted);align-self:center;">Publish a project to choose from its photos.</div>`);
+    },
+    pickHeader(id) { this.headerImageId = id; this.renderHeaderPhotos(); },
+    useProfile() { if (settings.businessProfileSummary) document.getElementById("pfs-about").value = String(settings.businessProfileSummary).slice(0, 2000); },
+    collect() {
+        const v = id => (document.getElementById(id)?.value || "").trim();
+        const colour = v("pfs-colour");
+        return {
+            enabled: !!this.cfg().enabled,
+            intro: v("pfs-intro").slice(0, 160), about: v("pfs-about").slice(0, 2000), experience: v("pfs-experience").slice(0, 300),
+            services: v("pfs-services").split("\n").map(s => s.trim().slice(0, 60)).filter(Boolean).slice(0, 20),
+            areas: v("pfs-areas").slice(0, 200),
+            brandColour: /^#[0-9a-f]{6}$/i.test(colour) ? colour : "#E07A2F",
+            headerImageId: this.headerImageId,
+            showPhone: document.getElementById("pfs-show-phone").checked,
+            showEmail: document.getElementById("pfs-show-email").checked,
+            facebook: v("pfs-facebook"), instagram: v("pfs-instagram"), tiktok: v("pfs-tiktok"), website: v("pfs-website"),
+        };
+    },
+    async save(overrides, okText) {
+        if (this.saving) return;
+        if (demoBlocked("Setting up your website")) return;
+        const data = { ...this.collect(), ...(overrides || {}), updatedAt: new Date().toISOString() };
+        const bad = ["facebook", "instagram", "tiktok", "website"].find(k => data[k] && !/^(https?:\/\/)?[^\s/]+\.[^\s]+$/i.test(data[k]));
+        if (bad) { this._msg(`The ${bad} link doesn't look like a web address.`, ""); return; }
+        this.saving = true;
+        this._msg("", "Saving…");
+        const prev = settings.portfolioSite;
+        settings.portfolioSite = data;
+        const err = await portfolioSaveSettings();
+        this.saving = false;
+        if (err) { settings.portfolioSite = prev; this._msg("Couldn't save: " + err, ""); return; }
+        TQA.feature(overrides?.enabled === true ? "portfolio_site_on" : overrides?.enabled === false ? "portfolio_site_off" : "portfolio_site_saved");
+        this._msg("", okText || "✓ Saved. Changes show on your website within a minute.");
+        this.renderStatus();
+        PortfolioUI.render();
+    },
+    async enable(on) {
+        if (on && !confirm("Switch your website on? Your published projects, business name and the details you've chosen to show will be public at " + portfolioSiteUrl().replace("https://", "") + ".")) return;
+        await this.save({ enabled: !!on }, on ? "✓ Your website is live." : "✓ Your website is switched off. Visitors now see “not available”.");
+    },
+    async reserve() {
+        if (demoBlocked("Setting up your website")) return;
+        const input = document.getElementById("pfs-slug");
+        this._msg("", "Reserving…");
+        const res = await portfolioReserveSlug(input?.value);
+        if (res.error) { this._msg(res.error, ""); return; }
+        this._msg("", `✓ tile-iq.com/p/${res.slug} is yours. It's also your enquiry link now.`);
+        this.renderStatus();
+        PortfolioUI.render();
+    },
+    async copy(btn) {
+        try { await navigator.clipboard.writeText(portfolioSiteUrl()); if (btn) { btn.textContent = "✓ Copied"; setTimeout(() => { btn.textContent = "📋 Copy link"; }, 2000); } }
+        catch (_) { prompt("Copy your website link:", portfolioSiteUrl()); }
+    },
+};
+function goPortfolioSite() { TQA.feature("portfolio_site"); PortfolioSite.open(); }
+function portfolioSiteSave() { PortfolioSite.save(); }
+function portfolioSiteEnable(on) { PortfolioSite.enable(on); }
+function portfolioSiteReserve() { PortfolioSite.reserve(); }
+function portfolioSiteCopy(btn) { PortfolioSite.copy(btn); }
+function portfolioSiteUseProfile() { PortfolioSite.useProfile(); }
 
 // Manual escape hatch for jobs already posted outside the in-app Share flow
 // (or from before this tracking existed) — clears the Your Day nudge without
@@ -12291,10 +12472,12 @@ function saveSlug() {
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
 
     // Update settings object
+    const prevSlug = settings.slug;
     settings.slug = slug;
     saveSettingsLocal();
 
-    // Sync to Supabase settings column
+    // Sync to Supabase settings column. Names are unique across TileIQ (they're also the
+    // tiler's website address), so a name someone else has comes back as 409.
     const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
     fetch(SB_URL + "/rest/v1/settings?user_id=eq." + currentUser.id, {
         method: "PATCH",
@@ -12302,6 +12485,15 @@ function saveSlug() {
         body: JSON.stringify({ slug })
     }).then(r => {
         if (btn) { btn.disabled = false; btn.textContent = "💾 Save"; }
+        if (!r.ok) {
+            settings.slug = prevSlug;
+            saveSettingsLocal();
+            const el = document.getElementById("set-enquiry-slug");
+            if (el) el.value = prevSlug || "";
+            updateEnquiryLinkPreview();
+            alert(r.status === 409 ? `"${slug}" is already taken by another TileIQ business. Try adding your town, e.g. ${slug}-oxford.` : "Failed to save — please try again.");
+            return;
+        }
         if (msg) { msg.style.display = "block"; setTimeout(() => { if (msg) msg.style.display = "none"; }, 3000); }
         updateEnquiryLinkPreview();
     }).catch(e => {

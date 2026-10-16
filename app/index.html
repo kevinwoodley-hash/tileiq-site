@@ -692,6 +692,66 @@
     </div>
 </div>
 
+<!-- MY WEBSITE — the tiler's public mini website settings (PortfolioSite in script.js) -->
+<div id="screen-portfolio-site" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goPortfolio()" class="btn-back">← Portfolio</button>
+        <h2 class="header-title">My Website</h2>
+        <button onclick="portfolioSiteSave()" id="pfs-save-top" class="btn-primary">Save</button>
+    </div></header>
+    <div class="page-body">
+        <div id="pfs-status" class="form-card" style="margin-bottom:12px;"></div>
+
+        <div class="form-card" style="margin-bottom:12px;">
+            <div class="form-section-label" style="margin-bottom:6px;">🖼 Header photo</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">The big photo at the top of your website. Choose one from your published projects, or leave it on Automatic (your top project's cover).</div>
+            <div id="pfs-header-photos" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+
+        <div class="form-card" style="margin-bottom:12px;">
+            <div class="form-section-label" style="margin-bottom:10px;">🏢 Your business</div>
+            <div id="pfs-business" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;"></div>
+            <label for="pfs-intro" style="font-size:12px;color:var(--muted);">Short introduction <span style="font-weight:400;">(one line under your name)</span></label>
+            <input type="text" id="pfs-intro" maxlength="160" placeholder="e.g. Bathroom and kitchen tiling across Oxfordshire" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                <label for="pfs-about" style="font-size:12px;color:var(--muted);">About your business</label>
+                <span id="pfs-use-profile" onclick="portfolioSiteUseProfile()" style="display:none;font-size:12px;color:var(--amber);cursor:pointer;text-decoration:underline;">Use my business profile</span>
+            </div>
+            <textarea id="pfs-about" rows="5" maxlength="2000" style="width:100%;box-sizing:border-box;margin:4px 0 10px;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;font-family:inherit;resize:vertical;"></textarea>
+            <label for="pfs-experience" style="font-size:12px;color:var(--muted);">Experience or specialisms <span style="font-weight:400;">(optional)</span></label>
+            <input type="text" id="pfs-experience" maxlength="300" placeholder="e.g. 15 years' experience · large-format porcelain specialist" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="pfs-services" style="font-size:12px;color:var(--muted);">Services <span style="font-weight:400;">(one per line)</span></label>
+            <textarea id="pfs-services" rows="4" maxlength="1200" placeholder="Bathroom tiling&#10;Kitchen splashbacks&#10;Wet rooms&#10;Floor tiling" style="width:100%;box-sizing:border-box;margin:4px 0 10px;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;font-family:inherit;resize:vertical;"></textarea>
+            <label for="pfs-areas" style="font-size:12px;color:var(--muted);">Areas covered</label>
+            <input type="text" id="pfs-areas" maxlength="200" placeholder="e.g. Oxford, Witney, Abingdon and surrounding villages" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label style="font-size:12px;color:var(--muted);">Brand colour</label>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
+                <input type="color" id="pfs-colour" value="#E07A2F" style="width:48px;height:40px;padding:0;border:1px solid var(--border);border-radius:8px;background:none;">
+                <div id="pfs-swatches" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+            </div>
+        </div>
+
+        <div class="form-card" style="margin-bottom:12px;">
+            <div class="form-section-label" style="margin-bottom:10px;">📞 Contact and links</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Every website has a Request a Quote button that sends the enquiry straight into TileIQ as a new job. Choose what else to show:</div>
+            <label style="display:flex;gap:10px;align-items:center;font-size:14px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="pfs-show-phone" style="width:20px;height:20px;"> <span>Show my phone number <span id="pfs-phone-val" style="color:var(--muted);"></span></span></label>
+            <label style="display:flex;gap:10px;align-items:center;font-size:14px;cursor:pointer;margin-bottom:12px;"><input type="checkbox" id="pfs-show-email" style="width:20px;height:20px;"> <span>Show my email address <span id="pfs-email-val" style="color:var(--muted);"></span></span></label>
+            <label for="pfs-facebook" style="font-size:12px;color:var(--muted);">Facebook page</label>
+            <input type="url" id="pfs-facebook" maxlength="300" placeholder="https://facebook.com/yourpage" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="pfs-instagram" style="font-size:12px;color:var(--muted);">Instagram</label>
+            <input type="url" id="pfs-instagram" maxlength="300" placeholder="https://instagram.com/yourname" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="pfs-tiktok" style="font-size:12px;color:var(--muted);">TikTok</label>
+            <input type="url" id="pfs-tiktok" maxlength="300" placeholder="https://tiktok.com/@yourname" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="pfs-website" style="font-size:12px;color:var(--muted);">Your other website <span style="font-weight:400;">(optional)</span></label>
+            <input type="url" id="pfs-website" maxlength="300" placeholder="https://www.yourbusiness.co.uk" style="width:100%;box-sizing:border-box;margin:4px 0 4px;">
+        </div>
+
+        <div id="pfs-error" style="font-size:13px;color:var(--red);margin:6px 0;"></div>
+        <div id="pfs-progress" style="font-size:13px;color:var(--muted);margin:6px 0;"></div>
+        <button type="button" onclick="portfolioSiteSave()" id="pfs-save" class="btn-primary" style="width:100%;padding:13px;font-size:15px;margin-bottom:24px;">💾 Save website</button>
+    </div>
+</div>
+
 <!-- Pick photos from any job for a portfolio project (PortfolioEditor.jobPicker*) -->
 <div id="pf-jobpicker-overlay" class="hidden" style="position:fixed;inset:0;z-index:9750;background:var(--bg);display:flex;flex-direction:column;">
     <div style="background:linear-gradient(135deg,#1B2A3C,#2B3D54);padding:calc(env(safe-area-inset-top,0px) + 18px) 14px 18px;flex-shrink:0;display:flex;align-items:center;gap:12px;">
