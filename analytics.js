@@ -122,10 +122,10 @@
     var btn = 'border:0;border-radius:10px;padding:11px 16px;font:700 14px system-ui,-apple-system,"Segoe UI",Arial,sans-serif;cursor:pointer;flex:1;min-width:96px;';
     el.innerHTML =
       '<div style="font-weight:800;font-size:15px;margin-bottom:6px">Cookies on TileIQ</div>' +
-      '<div style="color:#b9c2c8;margin-bottom:12px">We\'d like to use analytics to see which pages and demo features people use, so we can improve TileIQ: Google Analytics cookies and, in the demo, an anonymous record of the steps you take and a screen recording with all text hidden. Nothing is collected unless you accept. <a href="/privacy" style="color:#e6af2e">Privacy policy</a></div>' +
+      '<div style="color:#b9c2c8;margin-bottom:12px">We\'d like to use analytics to see which pages and demo features people use, so we can improve TileIQ: Google Analytics and PostHog, which record the pages you visit, where you came from and how you use them (including screen recordings with anything you type hidden), and in the demo an anonymous record of the steps you take. Nothing is collected unless you accept. <a href="/privacy" style="color:#e6af2e">Privacy policy</a></div>' +
       '<div id="tileiq-consent-settings" style="display:' + (showSettings ? 'block' : 'none') + ';margin-bottom:12px;border-top:1px solid #2a3138;padding-top:10px">' +
         '<label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;color:#8b959b"><input type="checkbox" checked disabled style="margin-top:3px"><span><b style="color:#f4f7f8">Essential</b><br>Needed for the site and app to work (signing in, saving your work). Always on.</span></label>' +
-        '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="tileiq-consent-analytics"' + (current === 'granted' ? ' checked' : '') + ' style="margin-top:3px"><span><b>Analytics</b><br><span style="color:#b9c2c8">Google Analytics usage statistics, plus in the demo an anonymous step-by-step record and a screen recording (PostHog) with all text and typing hidden. No names, emails, customer details or quote contents.</span></span></label>' +
+        '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="tileiq-consent-analytics"' + (current === 'granted' ? ' checked' : '') + ' style="margin-top:3px"><span><b>Analytics</b><br><span style="color:#b9c2c8">Google Analytics and PostHog: pages visited, where you came from, clicks and screen recordings with anything you type hidden, plus in the demo an anonymous step-by-step record. No names, emails, customer details or quote contents.</span></span></label>' +
       '</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
         '<button type="button" data-act="accept" style="' + btn + 'background:#e6af2e;color:#111418">Accept</button>' +
@@ -271,6 +271,9 @@
     var store = /play\.google\.com\/store\/apps\/details/.test(href) ? 'google_play' : /apps\.apple\.com\//.test(href) ? 'app_store' : '';
     if (!store) return;
     beacon({ k: 'store_click', st: store });
+    if (!framed && window.posthog && window.posthog.__loaded) {
+      try { window.posthog.capture('app_download_clicked', { store: store, link_location: landingPath }); } catch (err) {}
+    }
     if (store === 'google_play' && !/[?&]referrer=/.test(href)) {
       var src = source && source.s !== '(direct)' ? source : { s: 'tile-iq.com', m: 'website' };
       var ref = 'utm_source=' + encodeURIComponent(src.s) + '&utm_medium=' + encodeURIComponent(src.m) +
@@ -278,4 +281,59 @@
       a.href = href + (href.indexOf('?') >= 0 ? '&' : '?') + 'referrer=' + encodeURIComponent(ref);
     }
   }, true);
+
+  // ── PostHog on the website: only with consent ────────────────
+  // Same choice as Google Analytics: nothing loads until the visitor accepts, and
+  // rejecting later stops it and clears PostHog's stored id. Page views, where the
+  // visit came from, clicks and screen recordings; anything typed into a form is
+  // hidden. Sent through our /ingest reverse proxy. Same project and same browser
+  // storage as the demo app (which runs its own PostHog inside the /app/demo frame),
+  // so one visitor's ad → landing page → demo shows as one person in PostHog.
+  // Not on the signed-in web app or admin; the demo wrapper sends its page view but
+  // leaves clicks and the recording to the app inside the frame.
+  var PH_KEY = 'phc_vd8ipzxvGhNkZkFdH3puH4do7hJiSNn4wTBxfPgqA55T';
+  var phPage = !framed && !/^\/admin(\/|$)/.test(location.pathname) && (!inApp || isDemo);
+  var phLoading = false;
+  function startPostHog() {
+    if (!phPage) return;
+    var p = window.posthog;
+    if (p && p.__loaded) { if (p.has_opted_out_capturing()) p.opt_in_capturing(); return; }
+    if (phLoading) return;
+    phLoading = true;
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = '/app/vendor/posthog.full.js';
+    s.onload = function () { try { initPostHog(); } catch (e) {} };
+    document.head.appendChild(s);
+  }
+  function initPostHog() {
+    var p = window.posthog;
+    if (!p || typeof p.init !== 'function' || lsGet(CONSENT_KEY) !== 'granted') return;
+    p.init(PH_KEY, {
+      api_host: 'https://tile-iq.com/ingest', ui_host: 'https://eu.posthog.com',
+      person_profiles: 'identified_only', persistence: 'localStorage',
+      capture_pageview: true, capture_pageleave: true,
+      autocapture: !isDemo, rageclick: true, capture_dead_clicks: !isDemo,
+      capture_exceptions: true, capture_performance: { web_vitals: true, network_timing: false },
+      disable_session_recording: isDemo,                       // the app inside the frame records the demo
+      enable_recording_console_log: false,
+      session_recording: { maskAllInputs: true, recordHeaders: false, recordBody: false },
+      loaded: function (ph) {
+        var props = { platform_type: 'web', site_area: isDemo ? 'demo' : 'website', is_internal_test: isInternal() ? 'true' : 'false' };
+        // The visit's own source (UTM tags, ad ids, referrer or in-app browser), kept for the
+        // rest of the visit's pages; PostHog's $referrer misses Facebook/TikTok in-app browsers
+        if (source) { props.traffic_source = source.s; props.traffic_medium = source.m; if (source.c) props.traffic_campaign = source.c; }
+        ph.register(props);
+      }
+    });
+  }
+  function stopPostHog() {
+    var p = window.posthog;
+    if (p && p.__loaded) { try { p.reset(); p.opt_out_capturing(); p.set_config({ disable_persistence: true }); } catch (e) {} }
+    // Remove PostHog's stored id (ph_…); its opt-out marker (__ph_opt_in_out_…) holds no id and stays
+    try { Object.keys(localStorage).forEach(function (k) { if (/^ph_/.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+  }
+  if (lsGet(CONSENT_KEY) === 'granted') whenReady(startPostHog);
+  else if (lsGet(CONSENT_KEY) === 'denied' && !framed) stopPostHog();
+  window.tileiqConsent.onChange(function (state) { if (state === 'granted') startPostHog(); else stopPostHog(); });
 })();
