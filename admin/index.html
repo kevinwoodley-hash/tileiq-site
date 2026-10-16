@@ -714,7 +714,7 @@ body {
           <select id="jr-days" onchange="loadJourneys()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;">
             <option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="90">90 days</option>
           </select>
-          <label style="font-size:13px;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="jr-hide-internal" checked onchange="renderJourneys()"> Hide my test devices</label>
+          <label style="font-size:13px;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="jr-hide-internal" checked onchange="renderJourneys()"> Hide test devices &amp; reviewer accounts</label>
           <button class="btn-primary" onclick="loadJourneys()" style="padding:8px 14px;">Refresh</button>
           <span id="jr-status" style="font-size:13px;color:var(--text-muted);"></span>
         </div>
@@ -1042,7 +1042,10 @@ async function loadJourneys() {
 function renderJourneys() {
   if (!journeysData) return;
   const hideInternal = document.getElementById('jr-hide-internal').checked;
-  const users = journeysData.users.filter(u => !hideInternal || !u.events.some(e => e.params?.is_internal_test === 'true'));
+  // Test devices, plus the accounts we gave app-store reviewers (same list as TEST_ACCOUNT_EMAILS in the app)
+  const testAccounts = ['google@tile-iq.com'];
+  const users = journeysData.users.filter(u => !hideInternal ||
+    !(testAccounts.includes((u.email || '').toLowerCase()) || u.events.some(e => e.params?.is_internal_test === 'true')));
   // Where people leave: each person's most recent exit
   const exits = {};
   users.forEach(u => {
