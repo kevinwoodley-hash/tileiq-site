@@ -6301,6 +6301,48 @@ function portfolioSlugify(s) {
         .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "project";
 }
 
+// Native apps: asks "Take a photo" or "Choose from gallery" and returns { blobs } (the gallery
+// allows picking several at once, up to `room`), { blobs: [] } if cancelled, { error } on failure,
+// or null when there's no native camera (web), so the caller uses its file input instead.
+async function portfolioPickNative(room) {
+    const cam = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Camera : null;
+    if (!cam) return null;
+    if (room <= 0) return { error: `Up to ${PORTFOLIO_MAX_PHOTOS} photos per project.` };
+    const choice = await new Promise(resolve => {
+        document.getElementById("portfolio-pick-sheet")?.remove();
+        const sheet = document.createElement("div");
+        sheet.id = "portfolio-pick-sheet";
+        sheet.style.cssText = "position:fixed;inset:0;z-index:9900;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;";
+        sheet.innerHTML = `<div style="width:100%;background:var(--surface);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:8px;">
+            <button type="button" data-c="gallery" class="btn-primary" style="width:100%;padding:14px;">🖼 Choose from gallery <span style="font-weight:400;">(pick several)</span></button>
+            <button type="button" data-c="camera" class="btn-secondary" style="width:100%;padding:14px;">📷 Take a photo</button>
+            <button type="button" data-c="" class="btn-secondary" style="width:100%;padding:12px;">Cancel</button></div>`;
+        sheet.addEventListener("click", ev => {
+            const c = ev.target.closest("[data-c]")?.getAttribute("data-c");
+            if (c === null || c === undefined) { if (ev.target === sheet) { sheet.remove(); resolve(""); } return; }
+            sheet.remove(); resolve(c);
+        });
+        document.body.appendChild(sheet);
+    });
+    if (!choice) return { blobs: [] };
+    try {
+        let paths = [];
+        if (choice === "gallery" && cam.pickImages) {
+            const res = await cam.pickImages({ quality: 90, limit: Math.min(room, 20) });
+            paths = (res?.photos || []).map(p => p.webPath).filter(Boolean).slice(0, room);
+        } else {
+            const photo = await cam.getPhoto({ quality: 90, allowEditing: false, resultType: "uri", source: choice === "gallery" ? "PHOTOS" : "CAMERA", saveToGallery: false });
+            if (photo?.webPath) paths = [photo.webPath];
+        }
+        const blobs = [];
+        for (const p of paths) blobs.push(await (await fetch(p)).blob());
+        return { blobs };
+    } catch (e) {
+        if (/cancel/i.test(e?.message || "")) return { blobs: [] };
+        return { error: /denied|permission/i.test(e?.message || "") ? "TileIQ isn't allowed to use the camera or photos. You can allow it in your phone's Settings." : "Couldn't open the camera or gallery: " + (e?.message || "unknown error") };
+    }
+}
+
 const Portfolio = {
     jobId: null,
     items: [],          // { key, url?, blob?, preview, group, stage, selected }
@@ -6450,22 +6492,15 @@ const Portfolio = {
         this.items.push({ key: "new" + Date.now() + Math.random().toString(36).slice(2, 6), blob, preview: URL.createObjectURL(blob),
                           group: "new", stage: "finished", selected });
     },
-    // Native: the OS "Take Photo / Choose from Gallery" prompt (same plugin as job photos).
-    // Web, or if the plugin isn't there: the file picker, which on phones also offers the camera.
+    // Native: Take a photo, or choose several at once from the gallery (portfolioPickNative).
+    // Web, or if the plugin isn't there: the file picker (multi-select; on phones it also offers the camera).
     async addNew() {
-        const cam = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Camera : null;
-        if (!cam) { document.getElementById("portfolio-file-input")?.click(); return; }
-        try {
-            const photo = await cam.getPhoto({ quality: 90, allowEditing: false, resultType: "uri", source: "PROMPT", saveToGallery: false });
-            if (!photo?.webPath) return;
-            const blob = await (await fetch(photo.webPath)).blob();
-            this._addBlob(blob);
-            this.render();
-        } catch (e) {
-            if (/cancel/i.test(e?.message || "")) return;
-            if (/denied|permission/i.test(e?.message || "")) this._msg("TileIQ isn't allowed to use the camera or photos. You can allow it in your phone's Settings.", "");
-            else this._msg("Couldn't open the camera: " + (e?.message || "unknown error"), "");
-        }
+        const room = PORTFOLIO_MAX_PHOTOS - this.items.filter(x => x.selected).length;
+        const res = await portfolioPickNative(room);
+        if (res === null) { document.getElementById("portfolio-file-input")?.click(); return; }
+        if (res.error) { this._msg(res.error, ""); return; }
+        res.blobs.forEach(b => this._addBlob(b));
+        this.render();
     },
     filesChosen(input) {
         [...(input.files || [])].forEach(f => this._addBlob(f));
@@ -6915,17 +6950,11 @@ const PortfolioEditor = {
         this._push({ blob, preview: URL.createObjectURL(blob), stage: "finished" });
     },
     async addNew() {
-        const cam = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Camera : null;
-        if (!cam) { document.getElementById("pfe-file-input")?.click(); return; }
-        try {
-            const photo = await cam.getPhoto({ quality: 90, allowEditing: false, resultType: "uri", source: "PROMPT", saveToGallery: false });
-            if (!photo?.webPath) return;
-            this._addBlob(await (await fetch(photo.webPath)).blob());
-            this.renderPhotos();
-        } catch (e) {
-            if (/cancel/i.test(e?.message || "")) return;
-            this._msg(/denied|permission/i.test(e?.message || "") ? "TileIQ isn't allowed to use the camera or photos. You can allow it in your phone's Settings." : "Couldn't open the camera: " + (e?.message || "unknown error"), "");
-        }
+        const res = await portfolioPickNative(PORTFOLIO_MAX_PHOTOS - this._liveCount());
+        if (res === null) { document.getElementById("pfe-file-input")?.click(); return; }
+        if (res.error) { this._msg(res.error, ""); return; }
+        res.blobs.forEach(b => this._addBlob(b));
+        this.renderPhotos();
     },
     filesChosen(input) { [...(input.files || [])].forEach(f => this._addBlob(f)); input.value = ""; this.renderPhotos(); },
 
