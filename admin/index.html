@@ -477,6 +477,9 @@ body {
       <button class="nav-item" onclick="showPage('traffic')" id="nav-traffic">
         <span class="nav-icon">📈</span> Traffic
       </button>
+      <button class="nav-item" onclick="showPage('demovisits')" id="nav-demovisits">
+        <span class="nav-icon">🎮</span> Demo visits
+      </button>
       <button class="nav-item" onclick="showPage('backups')" id="nav-backups">
         <span class="nav-icon">💾</span> Backups
       </button>
@@ -746,6 +749,27 @@ body {
       </div>
     </div>
 
+    <!-- Demo visits Page: what website visitors do in the demo -->
+    <div class="page" id="page-demovisits">
+      <div class="page-header">
+        <h1>Demo visits</h1>
+        <p>What website visitors do in the demo, step by step, and where they stop. Anonymous visits from people who accepted analytics on the site (each visit is a new random id, nothing about who they are); kept 90 days. How many people reach the demo in total is on the Traffic page.</p>
+      </div>
+      <div style="flex:1;overflow:auto;padding:0 24px 24px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+          <label for="dv-days" style="font-size:13px;">Show the last</label>
+          <select id="dv-days" onchange="loadDemoVisits()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;">
+            <option value="1">24 hours</option><option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="90">90 days</option>
+          </select>
+          <label style="font-size:13px;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="dv-hide-internal" checked onchange="renderDemoVisits()"> Hide my test browsers</label>
+          <button class="btn-primary" onclick="loadDemoVisits()" style="padding:8px 14px;">Refresh</button>
+          <span id="dv-status" style="font-size:13px;color:var(--text-muted);"></span>
+        </div>
+        <div id="dv-summary" style="max-width:820px;"><div class="loading">Loading…</div></div>
+        <div id="dv-visits" style="max-width:820px;"></div>
+      </div>
+    </div>
+
     <!-- Auto Test Page -->
     <div class="page" id="page-autotest">
       <div class="page-header">
@@ -934,9 +958,81 @@ function showPage(name) {
   if (name === 'users') loadUsersPage();
   if (name === 'journeys') loadJourneys();
   if (name === 'traffic') loadTraffic();
+  if (name === 'demovisits') loadDemoVisits();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
   if (name === 'checklist') loadChecklist();
   if (name === 'autotest') clearTestResults();
+}
+
+// ── Demo visits ────────────────────────────────────────────────
+// Data from GET /api/admin/demo-journeys (worker): anonymous web-demo visits with their
+// events oldest-first. Uses the Journeys page's labels (jrDescribe / jrWhere).
+let demoVisitsData = null;
+const DV_STEPS = [
+  ['Followed the Start here guide', v => v.events.some(e => e.name === 'demo_tour_step')],
+  ['Started a room', v => v.events.some(e => e.name === 'estimate_started')],
+  ['Saved a room', v => v.events.some(e => e.name === 'estimate_completed')],
+  ['Opened a quote', v => v.events.some(e => e.name === 'quote_generated' || e.screen === 'quote-preview')],
+  ['Hit a demo limit', v => v.events.some(e => e.name === 'demo_action_blocked')],
+  ['Tapped App Store / Google Play', v => v.events.some(e => e.name === 'store_tapped')],
+];
+async function loadDemoVisits() {
+  const status = document.getElementById('dv-status');
+  status.textContent = 'Loading…';
+  try {
+    demoVisitsData = await api('/api/admin/demo-journeys?days=' + document.getElementById('dv-days').value);
+    status.textContent = '';
+    renderDemoVisits();
+  } catch (e) {
+    status.textContent = '';
+    document.getElementById('dv-summary').innerHTML = `<div class="card" style="color:#b91c1c;font-size:13px;">Couldn't load demo visits (${jrEsc(e.message)}). If this is new, check the demo_journey_events table exists in Supabase and the worker is deployed.</div>`;
+    document.getElementById('dv-visits').innerHTML = '';
+  }
+}
+function renderDemoVisits() {
+  if (!demoVisitsData) return;
+  const hide = document.getElementById('dv-hide-internal').checked;
+  const visits = demoVisitsData.visits.filter(v => !hide || !v.is_internal);
+  const n = visits.length;
+  const pct = k => n ? Math.round(k / n * 100) : 0;
+  const bar = (label, k) => `<div style="display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px;">
+      <div style="width:42%;">${jrEsc(label)}</div>
+      <div style="flex:1;background:var(--border);border-radius:99px;height:10px;overflow:hidden;"><div style="height:100%;width:${pct(k)}%;background:var(--amber);"></div></div>
+      <div style="width:90px;text-align:right;font-weight:600;">${k} (${pct(k)}%)</div></div>`;
+  const leftAt = {};
+  visits.forEach(v => { const last = [...v.events].reverse().find(e => e.name !== 'app_left') || v.events[v.events.length - 1]; const k = jrWhere(last); leftAt[k] = (leftAt[k] || 0) + 1; });
+  const byTrack = {};
+  visits.forEach(v => { const t = (v.demo_track || 'tour') + (v.source ? ' · from ' + v.source : ''); (byTrack[t] = byTrack[t] || []).push(v); });
+  const store = DV_STEPS[DV_STEPS.length - 1][1];
+  document.getElementById('dv-summary').innerHTML = `
+    <div class="card" style="margin-bottom:16px;"><h2>${n} demo ${n === 1 ? 'visit' : 'visits'}</h2>
+      <p>How far visitors got. Percentages are of all visits shown.</p>
+      ${DV_STEPS.map(([label, test]) => bar(label, visits.filter(test).length)).join('')}</div>
+    <div class="card" style="margin-bottom:16px;"><h2>Where they stopped</h2>
+      <p>The screen each visit was on at its last step.</p>
+      ${Object.entries(leftAt).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, c]) => bar(k, c)).join('') || '<div style="font-size:13px;color:var(--text-muted);">Nothing yet.</div>'}</div>
+    <div class="card" style="margin-bottom:16px;"><h2>By landing page and source</h2>
+      <p>Which landing page (?try=) sent them to the demo, and where the visit came from.</p>
+      ${Object.entries(byTrack).sort((a, b) => b[1].length - a[1].length).map(([k, vs]) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);"><span>${jrEsc(k)}</span><span>${vs.length} ${vs.length === 1 ? 'visit' : 'visits'} · ${vs.filter(store).length} store taps</span></div>`).join('') || '<div style="font-size:13px;color:var(--text-muted);">Nothing yet.</div>'}</div>`;
+  document.getElementById('dv-visits').innerHTML = n ? visits.map(v => {
+    const ev = v.events, first = ev[0], last = ev[ev.length - 1];
+    const mins = Math.max(0, Math.round((new Date(last.occurred_at) - new Date(first.occurred_at)) / 60000));
+    const badges = DV_STEPS.filter(([, t]) => t(v)).map(([l]) => `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:#dcfce7;color:#166534;">✓ ${jrEsc(l)}</span>`).join('');
+    return `<details class="card" style="margin-bottom:10px;padding:16px 18px;">
+      <summary style="cursor:pointer;list-style:none;">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div><div style="font-weight:700;">${new Date(first.occurred_at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${v.device === 'mobile' ? '📱 phone' : '💻 computer'}</div>
+            <div style="font-size:12px;color:var(--text-muted);">Landing: ${jrEsc(v.demo_track || 'tour')}${v.source ? ' · from ' + jrEsc(v.source + (v.medium ? ' / ' + v.medium : '') + (v.campaign ? ' · ' + v.campaign : '')) : ''}</div></div>
+          <div style="font-size:12px;color:var(--text-muted);text-align:right;">${mins < 1 ? 'under a minute' : mins + ' min'}<br>${ev.length} steps</div>
+        </div>
+        ${badges ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${badges}</div>` : ''}
+        <div style="font-size:13px;margin-top:8px;">Stopped on <b>${jrEsc(jrWhere(last))}</b></div>
+      </summary>
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:4px;">
+        ${ev.map(e => `<div style="display:flex;gap:10px;font-size:13px;padding:2px 0;"><span style="color:var(--text-muted);width:62px;flex-shrink:0;">${new Date(e.occurred_at).toLocaleTimeString('en-GB')}</span><span>${jrDescribe(e)}</span></div>`).join('')}
+      </div>
+    </details>`;
+  }).join('') : '<div class="card" style="font-size:13px;color:var(--text-muted);">No demo visits recorded in this period yet.</div>';
 }
 
 // ── Website traffic ────────────────────────────────────────────
@@ -999,7 +1095,9 @@ const JR_EVENTS = { job_created: 'Created a job', estimate_started: 'Started a r
   invoice_sent: 'Sent an invoice', invoice_paid: 'Invoice paid', job_scheduled: 'Scheduled a job', job_status_changed: 'Job moved',
   feature_used: 'Used', paywall_viewed: 'Saw the paywall', checkout_started: 'Started checkout', trial_started: 'Started trial',
   purchase_restored: 'Restored purchase', onboarding_permissions: 'Permissions', sign_up: 'Signed up', login: 'Signed in',
-  first_job_created: 'First job ever', first_quote_sent: 'First quote ever', first_invoice_sent: 'First invoice ever' };
+  first_job_created: 'First job ever', first_quote_sent: 'First quote ever', first_invoice_sent: 'First invoice ever',
+  store_tapped: 'Tapped a store link', demo_tour_step: 'Start here guide step', demo_tour_completed: 'Finished the Start here guide',
+  demo_tour_dismissed: 'Closed the Start here guide', demo_action_blocked: 'Hit a demo limit' };
 const jrEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const jrScreen = s => JR_SCREENS[s] || (s ? s.replace(/-/g, ' ') : 'unknown');
 function jrWhere(e) {
@@ -1019,7 +1117,7 @@ function jrDescribe(e) {
     const s = p.away_seconds || 0;
     return '<b>Came back</b> after ' + (s < 90 ? s + ' sec' : s < 5400 ? Math.round(s / 60) + ' min' : Math.round(s / 3600) + ' h');
   }
-  const extra = p.feature_name || p.method || p.status || p.estimate_type || '';
+  const extra = p.feature_name || p.method || p.status || p.estimate_type || p.store || (p.step_number ? 'step ' + p.step_number : '') || '';
   return '<b>' + jrEsc(JR_EVENTS[e.name] || e.name.replace(/_/g, ' ')) + '</b>' + (extra ? ' · ' + jrEsc(String(extra).replace(/_/g, ' ')) : '');
 }
 function jrAgo(iso) {

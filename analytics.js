@@ -122,10 +122,10 @@
     var btn = 'border:0;border-radius:10px;padding:11px 16px;font:700 14px system-ui,-apple-system,"Segoe UI",Arial,sans-serif;cursor:pointer;flex:1;min-width:96px;';
     el.innerHTML =
       '<div style="font-weight:800;font-size:15px;margin-bottom:6px">Cookies on TileIQ</div>' +
-      '<div style="color:#b9c2c8;margin-bottom:12px">We\'d like to use Google Analytics cookies to see which pages and demo features people use, so we can improve TileIQ. Nothing is collected unless you accept. <a href="/privacy" style="color:#e6af2e">Privacy policy</a></div>' +
+      '<div style="color:#b9c2c8;margin-bottom:12px">We\'d like to use analytics to see which pages and demo features people use, so we can improve TileIQ: Google Analytics cookies and, in the demo, an anonymous record of the steps you take and a screen recording with all text hidden. Nothing is collected unless you accept. <a href="/privacy" style="color:#e6af2e">Privacy policy</a></div>' +
       '<div id="tileiq-consent-settings" style="display:' + (showSettings ? 'block' : 'none') + ';margin-bottom:12px;border-top:1px solid #2a3138;padding-top:10px">' +
         '<label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;color:#8b959b"><input type="checkbox" checked disabled style="margin-top:3px"><span><b style="color:#f4f7f8">Essential</b><br>Needed for the site and app to work (signing in, saving your work). Always on.</span></label>' +
-        '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="tileiq-consent-analytics"' + (current === 'granted' ? ' checked' : '') + ' style="margin-top:3px"><span><b>Analytics</b><br><span style="color:#b9c2c8">Google Analytics: anonymous usage statistics. No names, emails, customer details or quote contents.</span></span></label>' +
+        '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="tileiq-consent-analytics"' + (current === 'granted' ? ' checked' : '') + ' style="margin-top:3px"><span><b>Analytics</b><br><span style="color:#b9c2c8">Google Analytics usage statistics, plus in the demo an anonymous step-by-step record and a screen recording (PostHog) with all text and typing hidden. No names, emails, customer details or quote contents.</span></span></label>' +
       '</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
         '<button type="button" data-act="accept" style="' + btn + 'background:#e6af2e;color:#111418">Accept</button>' +
@@ -153,6 +153,7 @@
     open: function () { openBanner(true); },
     onChange: function (cb) { listeners.push(cb); },
     isInternal: isInternal,
+    source: function () { return source; },                          // where this visit came from (see below), or null
     setInternal: function (on) { if (on) lsSet(INTERNAL_KEY, '1'); else lsDel(INTERNAL_KEY); }
   };
 

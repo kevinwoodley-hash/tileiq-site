@@ -513,6 +513,10 @@ function trackDemoFeature(feature) {
 const TQA = (() => {
     const CONSENT_KEY  = "tileiq-analytics-consent";   // "granted" | "denied" — same key /analytics.js uses on web
     const INTERNAL_KEY = "tileiq-internal";            // "1" = internal testing on this device/browser
+    // Which wording the person answered. v2 says usage is linked to the account (the user-journey
+    // log below); anyone who answered the older "anonymous" wording is asked once more.
+    const CONSENT_V_KEY = "tileiq-analytics-consent-v";
+    const CONSENT_VERSION = "2";
     const ALLOWED = new Set(["app_mode", "platform_type", "currency", "estimate_type", "feature_name", "feature",
                              "method", "store", "plan", "traffic_type", "is_internal_test", "debug_mode", "link_location",
                              "status", "trigger", "tour", "step_number", "days_since_signup"]);
@@ -526,7 +530,7 @@ const TQA = (() => {
     const isNativeApp = () => platform() !== "web";
     const firebase = () => window.Capacitor?.Plugins?.FirebaseAnalytics || null;
     const consent  = () => lsGet(CONSENT_KEY);
-    const internal = () => lsGet(INTERNAL_KEY) === "1";
+    const internal = () => lsGet(INTERNAL_KEY) === "1" || isTestAccount();
     const appMode  = () => (isDemoAccount() || new URLSearchParams(location.search).get("demo") === "1") ? "demo" : "live";
     const currency = () => regionOf() === "us" ? "USD" : "GBP";
 
@@ -557,6 +561,8 @@ const TQA = (() => {
             });
             if (isNativeApp()) { const fa = firebase(); if (fa) fa.logEvent({ name, params: out }).catch(() => {}); }
             else if (typeof window.gtag === "function") window.gtag("event", name, out);
+            jlog(name, out);
+            ph()?.capture(name, out);
         } catch (_) { /* analytics must never break the app */ }
     }
 
@@ -590,7 +596,7 @@ const TQA = (() => {
     function setConsent(state) {
         state = state === "granted" ? "granted" : "denied";
         if (!isNativeApp() && window.tileiqConsent) window.tileiqConsent.set(state);   // web: /analytics.js owns the Google tag (its onChange sends/drops held events)
-        else { lsSet(CONSENT_KEY, state); applyNative().then(consentChanged, consentChanged); }
+        else { lsSet(CONSENT_KEY, state); lsSet(CONSENT_V_KEY, CONSENT_VERSION); if (state !== "granted") lsSet(JQ_KEY, null); applyNative().then(consentChanged, consentChanged); }
         renderSettings();
     }
     function setInternal(on) {
@@ -602,12 +608,12 @@ const TQA = (() => {
     // Native apps ask once, the first time the Home screen shows (the website's banner does this on web).
     // Called from show("screen-home"), so sign-in, a restored session and the Home tab all trigger it.
     function maybeAsk() {
-        if (!isNativeApp() || consent() || document.getElementById("tqa-consent")) return;
+        if (!isNativeApp() || (consent() && lsGet(CONSENT_V_KEY) === CONSENT_VERSION) || document.getElementById("tqa-consent")) return;
         const el = document.createElement("div");
         el.id = "tqa-consent";
         el.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:99990;background:#111418;color:#f4f7f8;border:1px solid #2a3138;border-radius:16px;padding:16px;box-shadow:0 18px 50px rgba(0,0,0,.5);font-size:14px;line-height:1.5;";
-        el.innerHTML = `<div style="font-weight:800;font-size:15px;margin-bottom:6px;">Help improve TileIQ?</div>
-            <div style="color:#b9c2c8;margin-bottom:12px;">Share anonymous usage statistics (which features get used) through Google Analytics. Never your customers, quotes or prices. You can change this any time in Settings.</div>
+        el.innerHTML = `<div style="font-weight:800;font-size:15px;margin-bottom:6px;">Help make TileIQ easier to use?</div>
+            <div style="color:#b9c2c8;margin-bottom:12px;">Share how you use the app with TileIQ: which screens and features you use, where you stop, and screen recordings with all text, typing and photos hidden (via PostHog and Google Analytics). It's linked to your account so we can see what's confusing. Never your customers, quotes or prices. You can change this any time in Settings.</div>
             <div style="display:flex;gap:8px;">
                 <button type="button" data-v="granted" style="flex:1;border:0;border-radius:10px;padding:12px;font-size:14px;font-weight:700;background:#e6af2e;color:#111418;">Allow</button>
                 <button type="button" data-v="denied" style="flex:1;border:0;border-radius:10px;padding:12px;font-size:14px;font-weight:700;background:#e6af2e;color:#111418;">No thanks</button>
@@ -689,6 +695,8 @@ const TQA = (() => {
     function screen(id) {
         if (!id || id === lastScreen) return;
         lastScreen = id;
+        jlog("screen");
+        ph()?.capture("$screen", { $screen_name: id.replace(/^screen-/, "") });
         if (SCREEN_FEATURES[id]) feature(SCREEN_FEATURES[id]);       // held until the choice, like other events
         if (consent() !== "granted") return;
         if (isNativeApp()) { const fa = firebase(); if (fa?.setScreenName) fa.setScreenName({ screenName: id.replace(/^screen-/, "") }).catch(() => {}); }
@@ -758,6 +766,194 @@ const TQA = (() => {
         } catch (_) {}
     }
 
+    // ── User journey (first-party) ────────────────────────────
+    // Each signed-in person's steps (screens, the events above, leaving and coming back) go to
+    // our own server so we can see where people get stuck: /api/journey → Supabase
+    // user_journey_events, shown on the website admin's Journeys page. Native apps only, only with
+    // consent to the v2 wording (which says it's linked to the account), never the demo account,
+    // and never customer details: event names, the app's own screen/section ids and allow-listed
+    // parameters. Queued on the device and sent in batches, including as the app goes to the
+    // background, so the last thing someone did before leaving isn't lost.
+    const JQ_KEY = "tqa-journey-q";
+    const jSession = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    let jOpened = false, jHiddenAt = 0, jTimer = null, jVersion = null, jSending = false;
+    // The website demo (?demo=1) is logged too, as anonymous visits: only for visitors who accepted
+    // analytics in the site's cookie banner, keyed by a random id made fresh on each page load (never
+    // the shared demo account), sent to /api/demo-journey → demo_journey_events (admin "Demo visits").
+    const webDemo = () => !isNativeApp() && new URLSearchParams(location.search).get("demo") === "1";
+    function journeyOn() {
+        try {
+            if (webDemo()) return consent() === "granted";
+            return isNativeApp() && consent() === "granted" && lsGet(CONSENT_V_KEY) === CONSENT_VERSION
+                && !!currentUser && !isDemoAccount();
+        } catch (_) { return false; }
+    }
+    const jLoad = () => { try { return JSON.parse(lsGet(JQ_KEY) || "[]"); } catch (_) { return []; } };
+    const jSave = q => lsSet(JQ_KEY, q.length ? JSON.stringify(q.slice(-300)) : null);
+    function jlog(name, params) {
+        try {
+            phSync();
+            if (!journeyOn()) return;
+            if (!jOpened) { jOpened = true; if (name !== "app_opened") jlog("app_opened"); }
+            const q = jLoad();
+            q.push({ n: name, p: params || {}, t: new Date().toISOString(), s: jSession, sc: (lastScreen || "").replace(/^screen-/, "") });
+            jSave(q);
+            if (!jTimer) jTimer = setTimeout(() => { jTimer = null; jFlush(); }, 15000);
+        } catch (_) {}
+    }
+    async function jFlush() {
+        if (jSending) return;
+        const q = jLoad();
+        if (!q.length || !journeyOn()) return;
+        if (webDemo()) return jFlushDemo(q);
+        let token = "";
+        try { token = JSON.parse(lsGet("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || ""; } catch (_) {}
+        if (!token) return;
+        const batch = q.slice(0, 100);
+        jSending = true;
+        try {
+            if (!jVersion) { try { jVersion = (await window.Capacitor?.Plugins?.App?.getInfo?.())?.version || "?"; } catch (_) { jVersion = "?"; } }
+            const res = await fetch(TILEIQ_WORKER_URL + "/api/journey", {
+                method: "POST", keepalive: true,
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+                body: JSON.stringify({ platform: platform(), version: jVersion, events: batch })
+            });
+            if (res.ok) {
+                const rest = jLoad().slice(batch.length);
+                jSave(rest);
+                if (rest.length) setTimeout(jFlush, 1000);
+            }
+        } catch (_) { /* offline: stays queued and goes next time */ }
+        finally { jSending = false; }
+    }
+    // Web demo: no sign-in token; the visit's source (from /analytics.js), which landing page sent
+    // them (?try=) and phone/computer go with the batch. text/plain keeps it a simple request.
+    async function jFlushDemo(q) {
+        const batch = q.slice(0, 100);
+        jSending = true;
+        try {
+            const src = window.tileiqConsent?.source?.() || null;
+            const res = await fetch(TILEIQ_WORKER_URL + "/api/demo-journey", {
+                method: "POST", keepalive: true, headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify({ track: new URLSearchParams(location.search).get("try") || "tour",
+                    src, device: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "") ? "mobile" : "desktop",
+                    internal: internal(), events: batch })
+            });
+            if (res.ok) {
+                const rest = jLoad().slice(batch.length);
+                jSave(rest);
+                if (rest.length) setTimeout(jFlush, 1000);
+            }
+        } catch (_) {}
+        finally { jSending = false; }
+    }
+    // Leaving and coming back. app_left records where they were: the screen, the Add Room section
+    // that was open, and any sheet/modal on top (all the app's own ids).
+    document.addEventListener("visibilitychange", () => {
+        try {
+            if (document.visibilityState === "hidden") {
+                jHiddenAt = Date.now();
+                const onRoom = lastScreen === "screen-room";
+                const sheet = [...document.querySelectorAll("[id$='-sheet'],[id$='-modal'],#tqa-consent,#demo-download-sheet")]
+                    .find(el => el.getClientRects().length > 0)?.id || "";
+                jlog("app_left", { section: onRoom ? (rmActiveSection || "") : "", room_type: onRoom ? (currentSurfType || "") : "", sheet });
+                jFlush();
+            } else if (jHiddenAt) {
+                const away = Math.round((Date.now() - jHiddenAt) / 1000);
+                jHiddenAt = 0;
+                jlog("app_returned", { away_seconds: away });
+            }
+        } catch (_) {}
+    });
+    setTimeout(jFlush, 8000);   // anything left queued from last time, once signed in
+    // Web demo: tapping an App Store / Google Play link is the step we most want to see
+    document.addEventListener("click", e => {
+        try {
+            if (!webDemo()) return;
+            const href = e.target?.closest?.("a[href]")?.href || "";
+            const store = /play\.google\.com\//.test(href) ? "google_play" : /apps\.apple\.com\//.test(href) ? "app_store" : "";
+            if (!store) return;
+            jlog("store_tapped", { store });
+            jFlush();
+        } catch (_) {}
+    }, true);
+
+    // ── PostHog (product analytics + session replay, EU cloud) ─
+    // Same rules as the user journey: native apps, consent to the v2 wording (which names screen
+    // recordings), never the demo account. Recordings mask every input and ALL text and block images
+    // and the sketch canvas (job photos), and autocapture masks element text and attributes, so we
+    // see screens, taps and scrolling but never customer names, addresses, photos or prices.
+    // vendor/posthog.full.js (posthog-js array build) puts the instance on window.posthog.
+    const PH_KEY = "phc_vd8ipzxvGhNkZkFdH3puH4do7hJiSNn4wTBxfPgqA55T";
+    let phStarted = false, phUser = null;
+    const ph = () => (phStarted ? window.posthog : null);
+    function phSync() {
+        try {
+            const p = window.posthog;
+            if (!p || typeof p.init !== "function") return;
+            const want = journeyOn();
+            if (!phStarted) {
+                if (!want) return;
+                p.init(PH_KEY, {
+                    api_host: "https://eu.i.posthog.com", ui_host: "https://eu.posthog.com",
+                    person_profiles: "identified_only", persistence: "localStorage",
+                    capture_pageview: false, capture_pageleave: false,
+                    autocapture: true, mask_all_text: true, mask_all_element_attributes: true,
+                    rageclick: true, capture_dead_clicks: true,             // taps that get repeated / do nothing
+                    capture_exceptions: true,                               // JS errors, linked to the recording
+                    capture_performance: { web_vitals: true, network_timing: true },
+                    disable_surveys: false,                                 // in-app surveys set up in PostHog
+                    enable_recording_console_log: false,                    // app logs can contain customer details
+                    session_recording: { maskAllInputs: true, maskTextSelector: "*", blockSelector: "img, canvas, video",
+                                         recordHeaders: false, recordBody: false },   // request timing only, never contents
+                });
+                phStarted = true;
+            }
+            if (!want) { if (!p.has_opted_out_capturing()) p.opt_out_capturing(); return; }
+            if (p.has_opted_out_capturing()) p.opt_in_capturing();
+            if (webDemo()) {
+                // Demo visitors stay anonymous: never identified (everyone shares the demo account)
+                p.register({ platform_type: "web", app_mode: "demo", demo_track: new URLSearchParams(location.search).get("try") || "tour",
+                    traffic_source: window.tileiqConsent?.source?.()?.s || undefined, is_internal_test: internal() ? "true" : "false" });
+                return;
+            }
+            if (currentUser && phUser !== currentUser.id) {
+                p.identify(currentUser.id, { email: currentUser.email || undefined });
+                phUser = currentUser.id;
+            }
+            p.register({ platform_type: platform(), is_internal_test: internal() ? "true" : "false" });
+            phPerson(p);
+        } catch (_) {}
+    }
+    // Person properties for comparing groups (e.g. people who sent a quote vs people who quit, trial vs
+    // paying). Counts and plan status only, never job or customer details. Sent only when they change.
+    let phPersonSent = "";
+    function phPerson(p) {
+        try {
+            if (!currentUser) return;
+            const real = getRealJobs();
+            const plan = isPaidPro() ? "paid" : isPro() ? "store_trial" : isTrialActive() ? "trial" : "trial_ended";
+            const props = {
+                plan, trial_days_left: trialDaysLeft(), region: regionOf(), platform_type: platform(),
+                app_version: jVersion || undefined, sign_in_method: currentUser.app_metadata?.provider || undefined,
+                signed_up_at: currentUser.created_at || undefined,
+                real_jobs: real.length, quotes_sent: real.filter(j => j.quoteSentAt).length,
+                invoices_sent: real.filter(j => j.invoicedAt).length,
+            };
+            const sig = JSON.stringify(props);
+            if (sig === phPersonSent) return;
+            phPersonSent = sig;
+            p.setPersonProperties(props);
+        } catch (_) {}
+    }
+    // Signing out: nothing queued or identified for this person may carry over to the next account
+    function signedOut() {
+        lsSet(JQ_KEY, null);
+        jOpened = false;
+        phPersonSent = "";
+        try { if (phStarted) { window.posthog.reset(); phUser = null; } } catch (_) {}
+    }
+
     // Guided tours: the web demo's "Start here" card (tour = its track) and the sample-job tour in the app
     function tourStep(tour, step) { if (once("tqa-tour-" + tour + "-" + step)) track("demo_tour_step", { tour, step_number: step }); }
     function tourDone(tour)       { if (once("tqa-tour-" + tour + "-done")) track("demo_tour_completed", { tour }); }
@@ -771,6 +967,7 @@ const TQA = (() => {
     return { track, consent, internal, platform, setConsent, setInternal, applyNative, linkBilling, maybeAsk, titleTap, renderSettings,
              estimateStarted, estimateCompleted, quoteGenerated, feature, screen, jobCreated, quoteSent, onboarding, consentChanged, jobStatus, jobScheduled,
              invoiceCreated, invoiceSent, invoicePaid, quoteResponse, quoteViews, tourStep, tourDone, tourDismissed, demoBlockedAction,
+             flushJourney: jFlush, signedOut,
              suppressLogin: false, loginMethod: "password" };
 })();
 document.addEventListener("DOMContentLoaded", () => {
@@ -922,6 +1119,9 @@ function emailAuthHeaders() {
     return h;
 }
 function isDemoAccount() { return !!currentUser && currentUser.email === DEMO_EMAIL; }
+// Accounts we gave to app-store reviewers: their use is testing, so analytics marks it internal on any device
+const TEST_ACCOUNT_EMAILS = ["google@tile-iq.com"];
+function isTestAccount() { return !!currentUser && TEST_ACCOUNT_EMAILS.includes(String(currentUser.email || "").toLowerCase()); }
 function demoBlocked(what) {
     if (!isDemoAccount()) return false;
     TQA.demoBlockedAction(what);
@@ -1540,6 +1740,22 @@ async function completeOAuthSignIn(accessToken, refreshToken, expiresIn) {
 
         currentUser = user;
         TQA.track("login", { method: "social" });
+
+        // Google/Apple sign-ups never go through authSignUp(), so they never got the
+        // welcome email (nor the BCC copy to info@). Treat an account created in the
+        // last 10 minutes as brand new and send it, once per account on this device.
+        try {
+            const createdMs  = Date.parse(user.created_at || "");
+            const welcomeKey = "tileiq-welcome-sent-" + user.id;
+            if (user.email && createdMs && Date.now() - createdMs < 10 * 60 * 1000 && !localStorage.getItem(welcomeKey)) {
+                localStorage.setItem(welcomeKey, "1");
+                fetch(TILEIQ_WORKER_URL + "/api/welcome-email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: user.email, name: user.user_metadata?.full_name || user.user_metadata?.name || "" })
+                }).catch(() => {});
+            }
+        } catch(e) { console.warn("Welcome email (social sign-up) failed:", e.message); }
         if (currentUser?.id) { initPushNotifications().catch(e => console.warn('OneSignal init error:', e)); }
         const adminBtn = document.getElementById("btn-admin");
         if (adminBtn) adminBtn.style.display = isAppAdmin(currentUser) ? "flex" : "none";
@@ -1719,6 +1935,10 @@ async function authSignOut() {
             await _syncToCloud();
         } catch(e) { console.warn("Pre-signout sync failed:", e.message); }
     }
+    // Send this person's last usage steps under their own account, then clear them and reset
+    // PostHog so nothing carries over to whoever signs in next on this device
+    try { await TQA.flushJourney(); } catch(e) {}
+    TQA.signedOut();
 
     localStorage.setItem("tileiq-signed-out", "1");
     // Keep session token + caches so offline re-login works
