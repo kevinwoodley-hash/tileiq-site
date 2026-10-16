@@ -566,6 +566,17 @@
                 <span style="color:var(--muted);">→</span>
             </div>
 
+            <div onclick="goPortfolio()" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:16px;">🖼</span>
+                    <div>
+                        <div style="font-size:13px;font-weight:800;color:var(--ink);">My Portfolio</div>
+                        <div id="home-portfolio-sub" style="font-size:11px;color:var(--muted);margin-top:1px;">Show off your finished work</div>
+                    </div>
+                </div>
+                <span style="color:var(--muted);">→</span>
+            </div>
+
             <div onclick="goVoicemails()" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;justify-content:space-between;align-items:center;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span style="font-size:16px;">📞</span>
@@ -609,6 +620,87 @@
                 style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:12px 14px;font-size:14px;box-sizing:border-box;outline:none;">
         </div>
         <div id="customers-list"></div>
+    </div>
+</div>
+
+<!-- MY PORTFOLIO — the tiler's showcase projects (PortfolioUI in script.js) -->
+<div id="screen-portfolio" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goHome()" class="btn-back">← Home</button>
+        <h2 class="header-title">My Portfolio</h2>
+        <button onclick="portfolioNewProject()" class="btn-primary">+ Add</button>
+    </div></header>
+    <div class="page-body">
+        <div id="pf-stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;"></div>
+        <div id="pf-site" class="form-card" style="margin-bottom:12px;"></div>
+        <div id="pf-filters" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;"></div>
+        <div id="pf-status" style="font-size:13px;color:var(--muted);margin-bottom:8px;"></div>
+        <div id="pf-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
+    </div>
+</div>
+
+<!-- PORTFOLIO PROJECT — create or edit one project (PortfolioEditor in script.js) -->
+<div id="screen-portfolio-project" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="portfolioEditorBack()" class="btn-back">← Portfolio</button>
+        <h2 class="header-title" id="pfe-heading">Project</h2>
+        <button onclick="portfolioEditorSave()" id="pfe-save-top" class="btn-primary">Save</button>
+    </div></header>
+    <div class="page-body">
+        <div id="pfe-status-card" class="form-card" style="margin-bottom:12px;"></div>
+
+        <div class="form-card" style="margin-bottom:12px;">
+            <div class="form-section-label" style="margin-bottom:4px;">📷 Photos</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">★ sets the cover photo. Use ↑ ↓ to change the order. Hidden photos stay in the project but won't be shown publicly.</div>
+            <div id="pfe-photos"></div>
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+                <button type="button" onclick="portfolioEditorAddNew()" class="btn-secondary" style="flex:1;min-width:140px;">📷 Take or choose photos</button>
+                <button type="button" onclick="portfolioJobPickerOpen()" class="btn-secondary" style="flex:1;min-width:140px;">🗂 From your jobs</button>
+            </div>
+            <input type="file" id="pfe-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple class="hidden" onchange="portfolioEditorFiles(this)">
+            <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">🔒 Only use photos your customer is happy for you to show. Location data is removed from every photo.</div>
+        </div>
+
+        <div class="form-card" style="margin-bottom:12px;">
+            <div class="form-section-label" style="margin-bottom:10px;">✏️ Project details</div>
+            <label for="pfe-title" style="font-size:12px;color:var(--muted);">Project title</label>
+            <input type="text" id="pfe-title" maxlength="80" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="pfe-category" style="font-size:12px;color:var(--muted);">Category</label>
+            <select id="pfe-category" style="width:100%;box-sizing:border-box;margin:4px 0 10px;"></select>
+            <label for="pfe-location" style="font-size:12px;color:var(--muted);">General area <span style="font-weight:400;">(optional, e.g. a town or county, never the address)</span></label>
+            <input type="text" id="pfe-location" maxlength="60" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                <label for="pfe-description" style="font-size:12px;color:var(--muted);">Description</label>
+                <span id="pfe-rewrite" onclick="portfolioEditorRewrite()" style="display:none;font-size:12px;color:var(--amber);cursor:pointer;text-decoration:underline;">↺ Rewrite from job details</span>
+            </div>
+            <textarea id="pfe-description" rows="6" maxlength="1500" style="width:100%;box-sizing:border-box;margin:4px 0 10px;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;font-family:inherit;resize:vertical;"></textarea>
+            <label for="pfe-materials" style="font-size:12px;color:var(--muted);">Materials used <span style="font-weight:400;">(optional)</span></label>
+            <input type="text" id="pfe-materials" maxlength="200" placeholder="e.g. Ultra Tile Fix, Mapei Ultracolor grout" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="pfe-tiletype" style="font-size:12px;color:var(--muted);">Tile type <span style="font-weight:400;">(optional)</span></label>
+            <input type="text" id="pfe-tiletype" maxlength="80" placeholder="e.g. 1200×600 porcelain" style="width:100%;box-sizing:border-box;margin:4px 0 10px;">
+            <label for="pfe-completed" style="font-size:12px;color:var(--muted);">Completed <span style="font-weight:400;">(optional)</span></label>
+            <input type="date" id="pfe-completed" style="width:100%;box-sizing:border-box;margin:4px 0 12px;">
+            <label style="display:flex;gap:10px;align-items:center;font-size:14px;cursor:pointer;">
+                <input type="checkbox" id="pfe-featured" style="width:20px;height:20px;"> ⭐ Featured project <span style="font-size:12px;color:var(--muted);">(shown first)</span>
+            </label>
+        </div>
+
+        <div id="pfe-error" style="font-size:13px;color:var(--red);margin:6px 0;"></div>
+        <div id="pfe-progress" style="font-size:13px;color:var(--muted);margin:6px 0;"></div>
+        <button type="button" onclick="portfolioEditorSave()" id="pfe-save" class="btn-primary" style="width:100%;padding:13px;font-size:15px;">💾 Save</button>
+        <button type="button" onclick="portfolioEditorDelete()" id="pfe-delete" class="btn-danger" style="margin-top:14px;">🗑 Delete project</button>
+    </div>
+</div>
+
+<!-- Pick photos from any job for a portfolio project (PortfolioEditor.jobPicker*) -->
+<div id="pf-jobpicker-overlay" class="hidden" style="position:fixed;inset:0;z-index:9750;background:var(--bg);display:flex;flex-direction:column;">
+    <div style="background:linear-gradient(135deg,#1B2A3C,#2B3D54);padding:calc(env(safe-area-inset-top,0px) + 18px) 14px 18px;flex-shrink:0;display:flex;align-items:center;gap:12px;">
+        <button type="button" onclick="portfolioJobPickerClose()" aria-label="Close" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:38px;height:38px;border-radius:10px;font-size:19px;cursor:pointer;">✕</button>
+        <div style="flex:1;font-family:'Syne',sans-serif;font-weight:800;color:#fff;font-size:18px;">🗂 Photos from your jobs</div>
+    </div>
+    <div id="pf-jobpicker-list" style="flex:1;min-height:0;overflow-y:auto;padding:14px;"></div>
+    <div style="padding:12px 14px calc(env(safe-area-inset-bottom,0px) + 12px);border-top:1px solid var(--border);background:var(--surface);">
+        <button type="button" id="pf-jobpicker-add" onclick="portfolioJobPickerAdd()" class="btn-primary" style="width:100%;padding:13px;" disabled>Add photos</button>
     </div>
 </div>
 
@@ -850,6 +942,7 @@
         <div id="portfolio-job-card" class="form-card" style="margin-top:14px;">
             <div class="form-section-label">🖼 Portfolio</div>
             <div id="portfolio-job-status" style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Show this job off in your portfolio. Nothing goes public until you publish it.</div>
+            <button type="button" onclick="openPortfolioProjectForJob()" id="btn-open-portfolio" class="btn-primary hidden" style="width:100%;margin-bottom:8px;">🖼 Open in My Portfolio</button>
             <button type="button" onclick="openPortfolioFromJob()" id="btn-add-to-portfolio" class="btn-secondary" style="width:100%;">🖼 Add to Portfolio</button>
         </div>
         <div id="job-quote-status-bar" style="display:none;margin-top:10px;"></div>

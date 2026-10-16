@@ -192,7 +192,11 @@ function show(id) {
     const el = document.getElementById(id);
     // Native apps ask for the analytics choice the first time Home is shown, however it was reached:
     // signing in and restoring a saved session call show("screen-home") directly, not goHome().
-    if (id === "screen-home") { try { TQA.maybeAsk(); } catch (_) {} }
+    if (id === "screen-home") {
+        try { TQA.maybeAsk(); } catch (_) {}
+        // Portfolio counts for the Home link: fetched once, then kept up to date by the portfolio screens
+        setTimeout(() => { try { if (!PortfolioUI.loaded) PortfolioUI.load().then(() => PortfolioUI.homeSubtitle()).catch(() => {}); } catch (_) {} }, 1500);
+    }
     try { TQA.screen(id); } catch (_) {}
     if (el) {
         el.classList.remove("hidden");
@@ -6568,6 +6572,7 @@ const Portfolio = {
             const cover = rows.find(r => r.stage === "finished") || rows.find(r => r.stage === "after") || rows[0];
             await this._rest("PATCH", `portfolio_projects?id=eq.${projectId}`, { cover_image_id: cover.id, updated_at: new Date().toISOString() }, "return=minimal");
             if (job) { job.portfolioProjectId = projectId; saveAll(); }
+            PortfolioUI.loaded = false;
             TQA.feature("portfolio_project_saved");
             this.saving = false;
             this.close();
@@ -6591,12 +6596,15 @@ function renderPortfolioJobCard(job) {
     const status = document.getElementById("portfolio-job-status");
     const btn = document.getElementById("btn-add-to-portfolio");
     if (!status || !btn) return;
+    const openBtn = document.getElementById("btn-open-portfolio");
     if (job?.portfolioProjectId) {
-        status.textContent = "✓ This job is in your portfolio (draft until you publish it).";
+        status.textContent = "✓ This job is in your portfolio.";
         btn.textContent = "🖼 Add to Portfolio again";
+        openBtn?.classList.remove("hidden");
     } else {
         status.textContent = "Show this job off in your portfolio. Nothing goes public until you publish it.";
         btn.textContent = "🖼 Add to Portfolio";
+        openBtn?.classList.add("hidden");
     }
 }
 function openPortfolioFromJob() { TQA.feature("portfolio_add"); Portfolio.openFromJob(); }
@@ -6608,6 +6616,501 @@ function portfolioRewriteDescription() {
     if (job) document.getElementById("portfolio-description").value = Portfolio.suggest(job).description;
 }
 function savePortfolioDraft() { Portfolio.save(); }
+
+// ── Portfolio (phase 2: My Portfolio screen and project editor) ──
+// The list of projects (cover, category, draft/published, featured), filters by
+// category (the list is the tiler's own, settings.portfolioCategories), and an editor
+// for new or existing projects: details, publish/unpublish, delete, and the photos
+// (cover, stage, caption, hide, order, remove, add from camera/gallery/any job).
+// Photos are in a private bucket, so the app shows them through short-lived signed
+// links. Publishing only sets the project's status here; the public website that
+// shows published projects reads them through the worker (later phase).
+async function portfolioSignedUrls(paths) {
+    const cache = portfolioSignedUrls.cache || (portfolioSignedUrls.cache = {});
+    const now = Date.now();
+    const need = [...new Set(paths.filter(p => p && !(cache[p] && cache[p].exp > now)))];
+    for (let i = 0; i < need.length; i += 100) {
+        try {
+            const r = await fetch(`${SB_URL}/storage/v1/object/sign/portfolio`, {
+                method: "POST", headers: { "apikey": SB_KEY, "Authorization": "Bearer " + portfolioToken(), "Content-Type": "application/json" },
+                body: JSON.stringify({ expiresIn: 3600, paths: need.slice(i, i + 100) })
+            });
+            if (!r.ok) continue;
+            (await r.json()).forEach(x => { if (x && x.path && x.signedURL) cache[x.path] = { url: SB_URL + "/storage/v1" + x.signedURL, exp: now + 50 * 60e3 }; });
+        } catch (_) {}
+    }
+    const out = {};
+    paths.forEach(p => { if (p && cache[p]) out[p] = cache[p].url; });
+    return out;
+}
+async function portfolioDeleteFiles(paths) {
+    const list = paths.filter(Boolean);
+    if (!list.length) return;
+    try {
+        await fetch(`${SB_URL}/storage/v1/object/portfolio`, {
+            method: "DELETE", headers: { "apikey": SB_KEY, "Authorization": "Bearer " + portfolioToken(), "Content-Type": "application/json" },
+            body: JSON.stringify({ prefixes: list })
+        });
+    } catch (_) {}
+}
+function portfolioSaveSettings() {
+    saveSettingsLocal();
+    if (currentUser && !isDemoAccount()) sb.from("settings").upsert(
+        { user_id: currentUser.id, data: settings, updated_at: new Date().toISOString() }, { onConflict: "user_id" }
+    ).then(({ error }) => { if (error) console.error("portfolio settings save:", error.message); });
+}
+
+const PortfolioUI = {
+    projects: [], images: [], loaded: false, loading: null, filter: "All",
+
+    async load(force) {
+        if (!currentUser || isDemoAccount()) { this.projects = []; this.images = []; this.loaded = true; return; }
+        if (this.loading) return this.loading;
+        if (this.loaded && !force) return;
+        this.loading = (async () => {
+            const [p, im] = await Promise.all([
+                Portfolio._rest("GET", "portfolio_projects?select=*&order=featured.desc,sort_order.asc,created_at.desc"),
+                Portfolio._rest("GET", "portfolio_images?select=id,project_id,path,thumb_path,width,height,stage,caption,hidden,sort_order,source_url&order=sort_order.asc")
+            ]);
+            this.projects = Array.isArray(p) ? p : [];
+            this.images = Array.isArray(im) ? im : [];
+            this.loaded = true;
+        })().finally(() => { this.loading = null; });
+        return this.loading;
+    },
+    imagesOf(id) { return this.images.filter(i => i.project_id === id).sort((a, b) => a.sort_order - b.sort_order); },
+    counts() {
+        return { published: this.projects.filter(p => p.status === "published").length,
+                 drafts: this.projects.filter(p => p.status !== "published").length,
+                 photos: this.images.length };
+    },
+    homeSubtitle() {
+        const el = document.getElementById("home-portfolio-sub");
+        if (!el) return;
+        const c = this.counts();
+        el.textContent = this.projects.length ? `${c.published} published · ${c.drafts} draft${c.drafts === 1 ? "" : "s"} · ${c.photos} photo${c.photos === 1 ? "" : "s"}` : "Show off your finished work";
+    },
+
+    async open() {
+        show("screen-portfolio");
+        const status = document.getElementById("pf-status");
+        if (status) status.textContent = this.loaded ? "" : "Loading…";
+        this.render();
+        try { await this.load(true); if (status) status.textContent = ""; }
+        catch (e) { if (status) status.textContent = "Couldn't load your portfolio: " + (e?.message || "check your connection"); }
+        this.render();
+    },
+
+    async render() {
+        const c = this.counts();
+        const stat = (n, label) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:var(--ink);">${n}</div><div style="font-size:11px;color:var(--muted);font-weight:700;">${label}</div></div>`;
+        const stats = document.getElementById("pf-stats");
+        if (stats) stats.innerHTML = stat(c.published, "Published") + stat(c.drafts, "Drafts") + stat(c.photos, "Photos");
+
+        const site = document.getElementById("pf-site");
+        if (site) {
+            const slug = settings?.slug || "";
+            site.innerHTML = `<div class="form-section-label" style="margin-bottom:6px;">🌐 Your portfolio website</div>
+                ${slug ? `<div style="font-size:14px;font-weight:700;color:var(--ink);word-break:break-all;">tile-iq.com/p/${esc(slug)}</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Coming in the next update: a free mini website at this address showing your published projects, with a Request a Quote button.</div>`
+                : `<div style="font-size:12.5px;color:var(--muted);">Set your enquiry link name in Settings to reserve your website address (tile-iq.com/p/your-name).</div>`}`;
+        }
+
+        const cats = portfolioCategories();
+        const used = [...new Set(this.projects.map(p => p.category).filter(Boolean))].filter(x => !cats.includes(x));
+        const chips = ["All", ...cats, ...used];
+        if (!chips.includes(this.filter)) this.filter = "All";
+        const chip = (label, active, onclick) => `<button type="button" onclick="${onclick}" style="flex-shrink:0;padding:7px 12px;border-radius:99px;font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid ${active ? "#E07A2F" : "var(--border)"};background:${active ? "#E07A2F" : "var(--surface)"};color:${active ? "#fff" : "var(--ink)"};">${esc(label)}</button>`;
+        const filters = document.getElementById("pf-filters");
+        if (filters) filters.innerHTML = chips.map((k, i) => chip(k === "All" ? `All (${this.projects.length})` : k, k === this.filter, `PortfolioUI.setFilter(${i})`)).join("")
+            + chip("✎ Categories", false, "PortfolioUI.editCategories()");
+        this._chips = chips;
+
+        const list = document.getElementById("pf-list");
+        if (!list) return;
+        const shown = this.projects.filter(p => this.filter === "All" || p.category === this.filter);
+        if (isDemoAccount()) {
+            list.innerHTML = `<div class="empty-state-small" style="grid-column:1/-1;">In your own account, this is where your finished work lives: pick photos from a job, publish it to your free mini website and share it.</div>`;
+            return;
+        }
+        if (!shown.length) {
+            list.innerHTML = this.loaded ? `<div class="empty-state-small" style="grid-column:1/-1;">${this.projects.length ? "No projects in this category." : "No projects yet. Open a finished job and tap 🖼 Add to Portfolio, or tap + Add to start one from scratch."}</div>` : "";
+            return;
+        }
+        const coverPath = p => {
+            const imgs = this.imagesOf(p.id);
+            return (imgs.find(i => i.id === p.cover_image_id) || imgs.find(i => !i.hidden) || imgs[0])?.thumb_path || null;
+        };
+        const urls = await portfolioSignedUrls(shown.map(coverPath).filter(Boolean));
+        list.innerHTML = shown.map(p => {
+            const n = this.imagesOf(p.id).length, cp = coverPath(p);
+            const pub = p.status === "published";
+            return `<div onclick="PortfolioEditor.open('${p.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow);">
+                <div style="position:relative;aspect-ratio:4/3;background:var(--border);">
+                    ${cp && urls[cp] ? `<img src="${esc(urls[cp])}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:28px;">🖼</div>`}
+                    <span style="position:absolute;top:6px;left:6px;font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:99px;background:${pub ? "#16a34a" : "rgba(17,24,39,.75)"};color:#fff;">${pub ? "Published" : "Draft"}</span>
+                    ${p.featured ? `<span style="position:absolute;top:6px;right:6px;font-size:13px;">⭐</span>` : ""}
+                </div>
+                <div style="padding:8px 10px 10px;">
+                    <div style="font-size:13px;font-weight:800;color:var(--ink);line-height:1.3;">${esc(p.title || "Untitled project")}</div>
+                    <div style="font-size:11px;color:var(--muted);margin-top:2px;">${esc(p.category || "No category")} · ${n} photo${n === 1 ? "" : "s"}</div>
+                </div>
+            </div>`;
+        }).join("");
+        this.homeSubtitle();
+    },
+    setFilter(i) { this.filter = (this._chips || [])[i] || "All"; this.render(); },
+    editCategories() {
+        if (demoBlocked("Changing portfolio categories")) return;
+        const current = portfolioCategories().join(", ");
+        const answer = prompt("Your portfolio categories, separated by commas:", current);
+        if (answer === null) return;
+        const list = [...new Set(answer.split(",").map(s => s.trim().slice(0, 40)).filter(Boolean))].slice(0, 30);
+        settings.portfolioCategories = list.length ? list : PORTFOLIO_DEFAULT_CATEGORIES.slice();
+        portfolioSaveSettings();
+        this.render();
+    },
+};
+
+const PortfolioEditor = {
+    id: null, jobId: null, status: "draft", items: [], coverKey: null, saving: false, picker: { selected: new Set(), photos: [] },
+
+    _fillCategories(value) {
+        const sel = document.getElementById("pfe-category");
+        const cats = portfolioCategories();
+        const list = value && !cats.includes(value) ? [...cats, value] : cats;
+        sel.innerHTML = list.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+        sel.value = value || cats[0];
+    },
+    _msg(err, progress) {
+        const e = document.getElementById("pfe-error"), p = document.getElementById("pfe-progress");
+        if (e) e.textContent = err || "";
+        if (p) p.textContent = progress || "";
+    },
+
+    async open(id) {
+        const p = PortfolioUI.projects.find(x => x.id === id);
+        if (!p) return;
+        this.id = p.id; this.jobId = p.job_id || null; this.status = p.status || "draft";
+        const imgs = PortfolioUI.imagesOf(p.id);
+        const urls = await portfolioSignedUrls(imgs.map(i => i.thumb_path));
+        this.items = imgs.map(i => ({ key: i.id, id: i.id, path: i.path, thumb_path: i.thumb_path, w: i.width, h: i.height,
+            preview: urls[i.thumb_path] || "", stage: i.stage, caption: i.caption || "", hidden: !!i.hidden, source_url: i.source_url, removed: false }));
+        this.coverKey = p.cover_image_id || null;
+        document.getElementById("pfe-heading").textContent = "Edit project";
+        document.getElementById("pfe-title").value = p.title || "";
+        this._fillCategories(p.category);
+        document.getElementById("pfe-location").value = p.location || "";
+        document.getElementById("pfe-description").value = p.description || "";
+        document.getElementById("pfe-materials").value = p.materials || "";
+        document.getElementById("pfe-tiletype").value = p.tile_type || "";
+        document.getElementById("pfe-completed").value = p.completed_on || "";
+        document.getElementById("pfe-featured").checked = !!p.featured;
+        document.getElementById("pfe-delete").style.display = "";
+        this._afterOpen();
+    },
+    openNew() {
+        if (demoBlocked("Adding work to your portfolio")) return;
+        this.id = null; this.jobId = null; this.status = "draft"; this.items = []; this.coverKey = null;
+        document.getElementById("pfe-heading").textContent = "New project";
+        ["pfe-title", "pfe-location", "pfe-description", "pfe-materials", "pfe-tiletype", "pfe-completed"].forEach(k => { document.getElementById(k).value = ""; });
+        this._fillCategories(null);
+        document.getElementById("pfe-featured").checked = false;
+        document.getElementById("pfe-delete").style.display = "none";
+        this._afterOpen();
+    },
+    _afterOpen() {
+        this._msg("", "");
+        document.getElementById("pfe-rewrite").style.display = this.jobId && jobs.some(j => j.id === this.jobId) ? "" : "none";
+        show("screen-portfolio-project");
+        this.renderStatus();
+        this.renderPhotos();
+    },
+    back() {
+        if (this.saving) return;
+        this.items.forEach(it => { if (it.blob && it.preview) URL.revokeObjectURL(it.preview); });
+        PortfolioUI.open();
+    },
+
+    renderStatus() {
+        const el = document.getElementById("pfe-status-card");
+        if (!el) return;
+        const pub = this.status === "published";
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;background:${pub ? "#16a34a" : "var(--border)"};color:${pub ? "#fff" : "var(--ink)"};">${pub ? "Published" : this.id ? "Draft" : "New, not saved yet"}</span>
+            <span style="flex:1;font-size:12.5px;color:var(--muted);min-width:160px;">${pub ? "Shown on your portfolio website once it's switched on." : "Private. Only you can see it."}</span>
+            ${this.id ? `<button type="button" onclick="portfolioEditorPublish(${pub ? "false" : "true"})" class="${pub ? "btn-secondary" : "btn-primary"}" style="padding:8px 14px;">${pub ? "Unpublish" : "🌐 Publish"}</button>` : ""}
+        </div>`;
+    },
+
+    renderPhotos() {
+        const wrap = document.getElementById("pfe-photos");
+        if (!wrap) return;
+        const live = this.items.filter(i => !i.removed);
+        if (!live.length) { wrap.innerHTML = `<div class="empty-state-small" style="margin:0;">No photos yet. Add some below.</div>`; return; }
+        const cover = this._cover();
+        const btn = (label, onclick, title, on) => `<button type="button" onclick="${onclick}" title="${title}" aria-label="${title}" style="min-width:38px;height:38px;border-radius:9px;border:1px solid ${on ? "#E07A2F" : "var(--border)"};background:${on ? "#fff4ec" : "var(--bg)"};color:var(--ink);font-size:15px;cursor:pointer;">${label}</button>`;
+        wrap.innerHTML = live.map((it, idx) => `
+            <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+                <img src="${esc(it.preview)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:9px;flex-shrink:0;opacity:${it.hidden ? ".35" : "1"};border:2.5px solid ${cover === it ? "#E07A2F" : "transparent"};" onclick="${it.preview ? `viewPhoto('${esc(it.preview)}')` : ""}">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                        <button type="button" onclick="PortfolioEditor.cycleStage('${it.key}')" style="height:38px;padding:0 10px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:12.5px;font-weight:700;cursor:pointer;">${PORTFOLIO_STAGE_LABELS[it.stage]} ▾</button>
+                        ${btn("★", `PortfolioEditor.setCover('${it.key}')`, "Use as cover photo", cover === it)}
+                        ${btn("↑", `PortfolioEditor.move('${it.key}',-1)`, "Move up", false)}
+                        ${btn("↓", `PortfolioEditor.move('${it.key}',1)`, "Move down", false)}
+                        ${btn(it.hidden ? "🙈" : "👁", `PortfolioEditor.toggleHidden('${it.key}')`, it.hidden ? "Hidden: tap to show" : "Shown: tap to hide", it.hidden)}
+                        ${btn("🗑", `PortfolioEditor.remove('${it.key}')`, "Remove from project", false)}
+                    </div>
+                    <input type="text" value="${esc(it.caption || "")}" maxlength="140" placeholder="Caption (optional)" oninput="PortfolioEditor.setCaption('${it.key}', this.value)" style="width:100%;box-sizing:border-box;margin-top:6px;font-size:13px;">
+                    ${it.hidden ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">Hidden from your public portfolio</div>` : ""}
+                </div>
+            </div>`).join("");
+    },
+    _item(key) { return this.items.find(i => i.key === key); },
+    _cover() {
+        const live = this.items.filter(i => !i.removed && !i.hidden);
+        return live.find(i => i.key === this.coverKey) || live.find(i => i.stage === "finished") || live.find(i => i.stage === "after") || live[0] || null;
+    },
+    cycleStage(key) { const it = this._item(key); if (!it) return; it.stage = PORTFOLIO_STAGES[(PORTFOLIO_STAGES.indexOf(it.stage) + 1) % PORTFOLIO_STAGES.length]; this.renderPhotos(); },
+    setCover(key) { const it = this._item(key); if (!it) return; this.coverKey = key; if (it.hidden) it.hidden = false; this.renderPhotos(); },
+    toggleHidden(key) { const it = this._item(key); if (!it) return; it.hidden = !it.hidden; this.renderPhotos(); },
+    setCaption(key, v) { const it = this._item(key); if (it) it.caption = v; },
+    move(key, dir) {
+        const live = this.items.filter(i => !i.removed);
+        const i = live.findIndex(x => x.key === key), j = i + dir;
+        if (i < 0 || j < 0 || j >= live.length) return;
+        [live[i], live[j]] = [live[j], live[i]];
+        this.items = [...live, ...this.items.filter(x => x.removed)];
+        this.renderPhotos();
+    },
+    remove(key) {
+        const it = this._item(key);
+        if (!it) return;
+        if (it.id) { if (!confirm("Remove this photo from the project? (Your original job photo isn't affected.)")) return; it.removed = true; }
+        else { if (it.blob && it.preview) URL.revokeObjectURL(it.preview); this.items = this.items.filter(x => x !== it); }
+        this.renderPhotos();
+    },
+    _liveCount() { return this.items.filter(i => !i.removed).length; },
+    _push(item) {
+        if (this._liveCount() >= PORTFOLIO_MAX_PHOTOS) { this._msg(`Up to ${PORTFOLIO_MAX_PHOTOS} photos per project.`, ""); return false; }
+        this.items.push({ key: "n" + Date.now() + Math.random().toString(36).slice(2, 7), caption: "", hidden: false, removed: false, ...item });
+        return true;
+    },
+    _addBlob(blob) {
+        if (!blob || !/^image\//.test(blob.type || "image/")) { this._msg("That file isn't a photo.", ""); return; }
+        if (blob.size > 25 * 1024 * 1024) { this._msg("That photo is too large (over 25 MB).", ""); return; }
+        this._push({ blob, preview: URL.createObjectURL(blob), stage: "finished" });
+    },
+    async addNew() {
+        const cam = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Camera : null;
+        if (!cam) { document.getElementById("pfe-file-input")?.click(); return; }
+        try {
+            const photo = await cam.getPhoto({ quality: 90, allowEditing: false, resultType: "uri", source: "PROMPT", saveToGallery: false });
+            if (!photo?.webPath) return;
+            this._addBlob(await (await fetch(photo.webPath)).blob());
+            this.renderPhotos();
+        } catch (e) {
+            if (/cancel/i.test(e?.message || "")) return;
+            this._msg(/denied|permission/i.test(e?.message || "") ? "TileIQ isn't allowed to use the camera or photos. You can allow it in your phone's Settings." : "Couldn't open the camera: " + (e?.message || "unknown error"), "");
+        }
+    },
+    filesChosen(input) { [...(input.files || [])].forEach(f => this._addBlob(f)); input.value = ""; this.renderPhotos(); },
+
+    // Any job's photos: finished photos, on-site photos, and photos the customer sent
+    jobPickerOpen() {
+        const already = new Set(this.items.filter(i => !i.removed).map(i => i.source_url || i.url).filter(Boolean));
+        const groups = getRealJobs().filter(j => !j.isDemo).map(j => {
+            const list = (arr, stage, from) => (Array.isArray(arr) ? arr : []).filter(u => typeof u === "string" && u && !already.has(u)).map(url => ({ url, stage, from }));
+            return { job: j, photos: [...list(j.finishedPhotos, "finished", "Finished"), ...list(j.sitePhotos, "before", "On-site"), ...list(j.photos, "before", "From the customer")] };
+        }).filter(g => g.photos.length)
+          .sort((a, b) => String(b.job.updatedAt || b.job.createdAt || "").localeCompare(String(a.job.updatedAt || a.job.createdAt || "")));
+        this.picker = { selected: new Set(), photos: groups.flatMap(g => g.photos) };
+        const list = document.getElementById("pf-jobpicker-list");
+        list.innerHTML = groups.length ? groups.map(g => {
+            const j = g.job;
+            const when = j.completedAt || j.jobStartDate || j.createdAt;
+            return `<div class="form-card" style="margin-bottom:12px;">
+                <div style="font-size:13px;font-weight:800;color:var(--ink);">${esc(j.customerName || "Job")}${j.status === "complete" ? ` <span style="font-size:11px;color:#16a34a;">✓ complete</span>` : ""}</div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">${when ? esc(new Date(when).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })) : ""} · only you see this list</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">${g.photos.map(ph => {
+                    const i = this.picker.photos.indexOf(ph);
+                    return `<div onclick="PortfolioEditor.jobPickerToggle(${i})" id="pfjp-${i}" title="${esc(ph.from)}" style="position:relative;width:76px;height:76px;cursor:pointer;">
+                        <img src="${esc(ph.url)}" alt="" loading="lazy" style="width:76px;height:76px;object-fit:cover;border-radius:9px;border:2.5px solid transparent;opacity:.6;">
+                        <span style="position:absolute;bottom:3px;left:3px;font-size:9px;font-weight:800;background:rgba(0,0,0,.6);color:#fff;padding:1px 5px;border-radius:5px;">${esc(ph.from)}</span></div>`;
+                }).join("")}</div></div>`;
+        }).join("") : `<div class="empty-state-small">None of your jobs have photos that aren't already in this project.</div>`;
+        this._pickerButton();
+        document.getElementById("pf-jobpicker-overlay")?.classList.remove("hidden");
+    },
+    jobPickerToggle(i) {
+        const s = this.picker.selected;
+        if (s.has(i)) s.delete(i);
+        else if (this._liveCount() + s.size < PORTFOLIO_MAX_PHOTOS) s.add(i);
+        const img = document.querySelector(`#pfjp-${i} img`);
+        if (img) { img.style.borderColor = s.has(i) ? "#E07A2F" : "transparent"; img.style.opacity = s.has(i) ? "1" : ".6"; }
+        this._pickerButton();
+    },
+    _pickerButton() {
+        const b = document.getElementById("pf-jobpicker-add"), n = this.picker.selected.size;
+        if (b) { b.disabled = !n; b.textContent = n ? `Add ${n} photo${n === 1 ? "" : "s"}` : "Choose photos to add"; }
+    },
+    jobPickerAdd() {
+        [...this.picker.selected].sort((a, b) => a - b).forEach(i => {
+            const ph = this.picker.photos[i];
+            if (ph) this._push({ url: ph.url, preview: ph.url, stage: ph.stage, source_url: ph.url });
+        });
+        this.jobPickerClose();
+        this.renderPhotos();
+    },
+    jobPickerClose() { document.getElementById("pf-jobpicker-overlay")?.classList.add("hidden"); },
+
+    rewrite() {
+        const job = jobs.find(j => j.id === this.jobId);
+        if (job) document.getElementById("pfe-description").value = Portfolio.suggest(job).description;
+    },
+
+    // Saves everything: the project's details, new photos (cleaned and uploaded), each photo's
+    // stage/caption/hidden/order, removed photos (rows and files), and the cover.
+    async save(newStatus) {
+        if (this.saving) return;
+        if (demoBlocked("Saving portfolio projects")) return;
+        if (!currentUser || !portfolioToken()) { this._msg("Please sign in first.", ""); return; }
+        const title = document.getElementById("pfe-title").value.trim();
+        const live = this.items.filter(i => !i.removed);
+        const status = newStatus || this.status;
+        if (!title) { this._msg("Give the project a title.", ""); return; }
+        if (!live.length) { this._msg("Add at least one photo.", ""); return; }
+        if (status === "published" && !live.some(i => !i.hidden)) { this._msg("Show at least one photo before publishing.", ""); return; }
+        this.saving = true;
+        const saveBtns = ["pfe-save", "pfe-save-top"].map(k => document.getElementById(k));
+        saveBtns.forEach(b => { if (b) b.disabled = true; });
+        this._msg("", "Saving…");
+        try {
+            const now = new Date().toISOString();
+            const fields = {
+                title, category: document.getElementById("pfe-category").value || null,
+                location: document.getElementById("pfe-location").value.trim() || null,
+                description: document.getElementById("pfe-description").value.trim() || null,
+                materials: document.getElementById("pfe-materials").value.trim() || null,
+                tile_type: document.getElementById("pfe-tiletype").value.trim() || null,
+                completed_on: document.getElementById("pfe-completed").value || null,
+                featured: document.getElementById("pfe-featured").checked,
+                status, updated_at: now
+            };
+            if (status === "published" && this.status !== "published") fields.published_at = now;
+            if (!this.id) {
+                const [p] = await Portfolio._rest("POST", "portfolio_projects",
+                    { user_id: currentUser.id, job_id: this.jobId, slug: await Portfolio._uniqueSlug(title), ...fields }, "return=representation");
+                this.id = p.id;
+            }
+            const pending = live.filter(i => !i.id);
+            for (let n = 0; n < pending.length; n++) {
+                const it = pending[n];
+                this._msg("", `Cleaning and uploading photo ${n + 1} of ${pending.length}…`);
+                const full = await Portfolio._encode(await Portfolio._source(it), 2048, 0.85);
+                const thumb = await Portfolio._encode(full.blob, 600, 0.8);
+                const id = crypto.randomUUID();
+                const path = `${currentUser.id}/${id}.jpg`, thumbPath = `${currentUser.id}/${id}_t.jpg`;
+                await Portfolio._upload(path, full.blob);
+                await Portfolio._upload(thumbPath, thumb.blob);
+                Object.assign(it, { id, path, thumb_path: thumbPath, w: full.w, h: full.h });
+                if (this.coverKey === it.key) this.coverKey = id;
+                it.key = id;
+            }
+            this._msg("", "Saving…");
+            await Portfolio._rest("POST", "portfolio_images?on_conflict=id", live.map((it, i) => ({
+                id: it.id, project_id: this.id, user_id: currentUser.id, path: it.path, thumb_path: it.thumb_path, width: it.w || null, height: it.h || null,
+                stage: it.stage, caption: (it.caption || "").trim().slice(0, 140) || null, hidden: !!it.hidden, sort_order: i, source_url: it.source_url || null
+            })), "resolution=merge-duplicates,return=minimal");
+            const gone = this.items.filter(i => i.removed && i.id);
+            if (gone.length) {
+                await Portfolio._rest("DELETE", `portfolio_images?id=in.(${gone.map(g => g.id).join(",")})`, undefined, "return=minimal");
+                await portfolioDeleteFiles(gone.flatMap(g => [g.path, g.thumb_path]));
+                this.items = this.items.filter(i => !i.removed);
+            }
+            const cover = this._cover();
+            this.coverKey = cover?.id || null;
+            await Portfolio._rest("PATCH", `portfolio_projects?id=eq.${this.id}`, { ...fields, cover_image_id: this.coverKey }, "return=minimal");
+            this.status = status;
+            await PortfolioUI.load(true);
+            document.getElementById("pfe-heading").textContent = "Edit project";
+            document.getElementById("pfe-delete").style.display = "";
+            this.renderStatus();
+            this.renderPhotos();
+            TQA.feature(newStatus === "published" ? "portfolio_published" : "portfolio_project_saved");
+            this._msg("", newStatus === "published" ? "✓ Published." : newStatus === "draft" ? "✓ Unpublished. It's private again." : "✓ Saved.");
+        } catch (e) {
+            this._msg("Couldn't save: " + (e?.message || "unknown error"), "");
+        } finally {
+            this.saving = false;
+            saveBtns.forEach(b => { if (b) b.disabled = false; });
+        }
+    },
+    async publish(on) {
+        if (on && !confirm("Publish this project? Its title, description, general area and shown photos will be visible on your public portfolio website.")) return;
+        await this.save(on ? "published" : "draft");
+    },
+    async del() {
+        if (!this.id || this.saving) return;
+        if (!confirm("Delete this project from your portfolio? Its portfolio photos are deleted too. Your jobs and their original photos aren't affected.")) return;
+        this.saving = true;
+        this._msg("", "Deleting…");
+        try {
+            const files = PortfolioUI.imagesOf(this.id).flatMap(i => [i.path, i.thumb_path]);
+            await Portfolio._rest("DELETE", `portfolio_projects?id=eq.${this.id}`, undefined, "return=minimal");
+            await portfolioDeleteFiles(files);
+            const job = jobs.find(j => j.portfolioProjectId === this.id);
+            if (job) { delete job.portfolioProjectId; saveAll(); }
+            TQA.feature("portfolio_project_deleted");
+            this.saving = false;
+            await PortfolioUI.load(true);
+            PortfolioUI.open();
+        } catch (e) {
+            this.saving = false;
+            this._msg("Couldn't delete: " + (e?.message || "unknown error"), "");
+        }
+    },
+};
+
+// Marking a job Complete offers (once) to add it to the portfolio. Dismissible, never blocks.
+function maybePromptPortfolio(job) {
+    if (!job || job.isDemo || isDemoAccount() || job.portfolioProjectId || job.portfolioPromptDismissed) return;
+    document.getElementById("portfolio-prompt-sheet")?.remove();
+    const sheet = document.createElement("div");
+    sheet.id = "portfolio-prompt-sheet";
+    sheet.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:9800;background:var(--surface);border-top:1px solid var(--border);border-radius:18px 18px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.25);padding:18px 18px calc(env(safe-area-inset-bottom,0px) + 18px);";
+    sheet.innerHTML = `<div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:4px;">Job completed 🎉</div>
+        <div style="font-size:13.5px;color:var(--muted);margin-bottom:14px;">Would you like to add this work to your portfolio? It stays private until you publish it.</div>
+        <div style="display:flex;gap:8px;">
+            <button type="button" id="pps-no" class="btn-secondary" style="flex:1;">Not now</button>
+            <button type="button" id="pps-yes" class="btn-primary" style="flex:1;">🖼 Add to Portfolio</button>
+        </div>`;
+    document.body.appendChild(sheet);
+    sheet.querySelector("#pps-no").onclick = () => { job.portfolioPromptDismissed = true; saveAll(); sheet.remove(); };
+    sheet.querySelector("#pps-yes").onclick = () => { sheet.remove(); openPortfolioFromJob(); };
+}
+
+function goPortfolio() { trackDemoFeature('portfolio'); TQA.feature("portfolio"); PortfolioUI.open(); }
+function portfolioNewProject() { PortfolioEditor.openNew(); }
+async function openPortfolioProjectForJob() {
+    const job = getJob();
+    if (!job?.portfolioProjectId) return;
+    try { await PortfolioUI.load(true); } catch (_) {}
+    if (PortfolioUI.projects.some(p => p.id === job.portfolioProjectId)) PortfolioEditor.open(job.portfolioProjectId);
+    else { delete job.portfolioProjectId; saveAll(); renderPortfolioJobCard(job); alert("That portfolio project has been deleted."); }
+}
+function portfolioEditorBack() { PortfolioEditor.back(); }
+function portfolioEditorSave() { PortfolioEditor.save(); }
+function portfolioEditorPublish(on) { PortfolioEditor.publish(on); }
+function portfolioEditorDelete() { PortfolioEditor.del(); }
+function portfolioEditorAddNew() { PortfolioEditor.addNew(); }
+function portfolioEditorFiles(input) { PortfolioEditor.filesChosen(input); }
+function portfolioEditorRewrite() { PortfolioEditor.rewrite(); }
+function portfolioJobPickerOpen() { PortfolioEditor.jobPickerOpen(); }
+function portfolioJobPickerClose() { PortfolioEditor.jobPickerClose(); }
+function portfolioJobPickerAdd() { PortfolioEditor.jobPickerAdd(); }
 
 // Manual escape hatch for jobs already posted outside the in-app Share flow
 // (or from before this tracking existed) — clears the Your Day nudge without
@@ -7035,6 +7538,7 @@ function setJobStatus(status) {
     TQA.jobStatus(job, prevStatus);
     renderJobView();
     renderDashboard();
+    if (status === "complete" && prevStatus !== "complete") maybePromptPortfolio(job);
 }
 
 // ── Google review request ─────────────────────────────────────────────
