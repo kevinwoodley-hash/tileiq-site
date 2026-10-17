@@ -936,7 +936,7 @@ const TQA = (() => {
         try {
             if (!currentUser) return;
             const real = getRealJobs();
-            const plan = isPaidPro() ? "paid" : isPro() ? "store_trial" : isTrialActive() ? "trial" : "trial_ended";
+            const plan = isPaidPro() ? "paid" : isPro() ? "store_trial" : isGuest() ? "guest" : freeSendsLeft() > 0 ? "free" : "free_used";
             const props = {
                 plan, trial_days_left: trialDaysLeft(), region: regionOf(), platform_type: platform(),
                 app_version: jVersion || undefined, sign_in_method: currentUser.app_metadata?.provider || undefined,
@@ -1754,7 +1754,7 @@ async function completeOAuthSignIn(accessToken, refreshToken, expiresIn) {
         // created in the last 10 minutes as brand new, once per account on this device.
         const createdMs = Date.parse(user.created_at || "");
         const brandNew  = !!createdMs && Date.now() - createdMs < 10 * 60 * 1000;
-        const provider  = user.app_metadata?.provider === "apple" ? "apple" : user.app_metadata?.provider === "google" ? "google" : "social";
+        const provider  = user.is_anonymous ? "guest" : user.app_metadata?.provider === "apple" ? "apple" : user.app_metadata?.provider === "google" ? "google" : "social";
         if (brandNew && !localStorage.getItem("tqa-signup-" + user.id)) {
             localStorage.setItem("tqa-signup-" + user.id, "1");
             TQA.track("sign_up", { method: provider });
@@ -1944,6 +1944,7 @@ async function authSignUp() {
 }
 
 async function authSignOut() {
+    if (isGuest() && !confirm("You're using TileIQ as a guest.\n\nIf you sign out now you won't be able to get back to your jobs and quotes. Create a free account first to keep them (Home → Create your free account).\n\nSign out anyway?")) return;
     // Force sync any pending changes before clearing state
     if (currentUser && jobs.length) {
         clearTimeout(_syncTimer);
@@ -3936,18 +3937,21 @@ function renderHomeScreen() {
             tierEl.innerHTML = isAccessCode
                 ? `<span style="background:#7c3aed;color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">✨ PRO (Access Code)</span>`
                 : `<span style="background:#f59e0b;color:#000;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">⭐ PRO</span>`;
-        } else if (isTrialActive()) {
-            const daysLeft = trialDaysLeft();
-            const showCountdown = daysLeft <= TRIAL_REMINDER_DAYS;
-            // No badge at all for most of the trial — the app just works
-            // normally. Only the last week shows a quiet countdown.
-            tierEl.innerHTML = showCountdown
-                ? `<div style="font-size:12px;color:${daysLeft <= 2 ? "#f59e0b" : "var(--text-muted)"};font-weight:${daysLeft <= 2 ? "700" : "400"};">⏳ ${daysLeft} day${daysLeft !== 1 ? "s" : ""} left in your trial</div>`
-                : "";
+        } else if (isDemoAccount()) {
+            tierEl.innerHTML = "";
         } else {
-            // Trial's run out — soft nag only, nothing is actually blocked.
-            tierEl.innerHTML = `<span style="background:#7f1d1d;color:#fca5a5;font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;letter-spacing:0.05em;">Trial ended</span>
-                <div onclick="showPaywall('trial_ended')" style="font-size:12px;color:#f59e0b;font-weight:700;margin-top:6px;text-decoration:underline;cursor:pointer;">Subscribe to keep using TileIQ →</div>`;
+            // Free plan: everything works; one job's quote/invoice can be sent free (see FREE PLAN)
+            const left = freeSendsLeft();
+            const grace = inFreePlanGrace();
+            const guestLine = isGuest() ? `<div onclick="showCreateAccountSheet(false)" style="font-size:12px;color:var(--text-muted);margin-top:6px;cursor:pointer;">👤 Using TileIQ as a guest · <span style="color:#f59e0b;font-weight:700;text-decoration:underline;">Create your free account</span> to keep your work safe</div>` : "";
+            tierEl.innerHTML = grace
+                ? `<div style="font-size:12px;color:#f59e0b;font-weight:700;">From 31 October, sending more than one quote needs a subscription (30 days free to start).</div>
+                   <div onclick="showPaywall('free_plan_notice')" style="font-size:12px;color:#f59e0b;margin-top:4px;text-decoration:underline;cursor:pointer;">Start your free trial now →</div>`
+                : (left > 0
+                    ? `<span style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;">🎁 Your first quote is free</span>`
+                    : `<span style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;">Free plan</span>
+                       <div onclick="isGuest() ? showCreateAccountSheet(true) : showPaywall('free_limit')" style="font-size:12px;color:#f59e0b;font-weight:700;margin-top:6px;text-decoration:underline;cursor:pointer;">Start your 30-day free trial to send more quotes →</div>`)
+                + guestLine;
         }
     }
 
@@ -14201,6 +14205,7 @@ function buildPDFBase64() {
 
 /* ─── Share via native share sheet ─── */
 async function shareQuote() {
+    if (!(await requireSend(getJob(), docTypeNow() === "invoice" ? "invoice" : "quote"))) return;
     const pdf = buildPDFBase64();
     if (!pdf) { alert("PDF generator not loaded."); return; }
     if (docTypeNow() !== "invoice") TQA.quoteGenerated(getJob(), "pdf");
@@ -14923,6 +14928,7 @@ function renderInvoiceStatusBar() {
 async function copyQuoteLink() {
     const j = getJob();
     if (!j || !j.quoteToken) return;
+    if (!(await requireSend(j, "quote"))) return;
     const url = `https://tileiq.app/quote/${j.quoteToken}`;
     try { await navigator.clipboard.writeText(url); alert("Link copied!"); } catch(e) { alert(url); }
 }
@@ -14940,9 +14946,10 @@ async function convertToInvoice(skipConfirm) {
 }
 
 // Send the invoice for the current job: build its PDF and open the send options
-function sendInvoice() {
+async function sendInvoice() {
     const j = getJob();
     if (!j) return;
+    if (!(await requireSend(j, "invoice"))) return;
     if (!settings.bankAccountNumber && !settings.bankSortCode) {
         alert("⚠️ No bank details saved.\n\nGo to Settings → Profile → Bank Details to add your account details so customers know how to pay.");
     }
@@ -15031,6 +15038,7 @@ function markJobInvoiced(jobId, method) {
     if (!j || j.invoicedAt) return;
     j.invoicedAt = new Date().toISOString();
     saveAll();
+    recordFreeSend(j);
     TQA.invoiceSent(j, method);
     renderInvoiceStatusBar();
     renderHomeDashboard();
@@ -15099,6 +15107,7 @@ function closeQuotePreview() {
 async function sendQuote() {
     const j = getJob();
     if (!j) return;
+    if (!(await requireSend(j, "quote"))) return;
     getQuoteToken(j);
     const url = await buildQuoteUrl(j);
     if (url) TQA.quoteGenerated(j, "link");
@@ -15234,6 +15243,7 @@ async function sendQuoteShare() {
 }
 
 function _markQuoteSent(j, method) {
+    recordFreeSend(j);
     TQA.track("quote_sent", { method: method || "other" });
     TQA.quoteSent(j);
     if (!j.quoteStatus || j.quoteStatus === "pending") {
@@ -15388,6 +15398,146 @@ function trialDaysElapsed() {
 function trialDaysLeft()   { return Math.max(0, TRIAL_DAYS - trialDaysElapsed()); }
 function isTrialActive()   { return trialDaysElapsed() < TRIAL_DAYS; }
 
+/* ── FREE PLAN (replaces the account-age 30-day trial) ──────────
+   Anyone can use TileIQ without subscribing, and without even creating an account
+   (guest mode: Supabase anonymous sign-in, so their work is saved to the cloud like
+   anyone else's). Everything works, with no time limit; the only limit is SENDING:
+   one job's quote (and that job's invoice) can be sent free. Sending for a second job
+   needs a subscription, which starts with a 30-day free trial (set on the store
+   subscription itself, via RevenueCat); a guest creates their account first, which keeps
+   all their work (the guest account simply becomes their account).
+   The jobs counted are settings.freeSentJobIds plus any job already sent, so deleting a
+   job doesn't give the free send back. Accounts created before FREE_PLAN_START keep
+   unlimited sending until FREE_PLAN_GRACE_END, with a notice. Subscribers (including
+   store free-trial periods), access-code holders and the shared demo account are never
+   limited. AI Receptionist still needs a genuinely paid subscription (isPaidPro). */
+const FREE_SEND_JOBS = 1;
+const FREE_PLAN_START = "2026-10-17T00:00:00Z";
+const FREE_PLAN_GRACE_END = "2026-10-31T00:00:00Z";
+
+function isGuest() { return !!currentUser?.is_anonymous; }
+function freePlanApplies() { return !!currentUser && !isPro() && !isDemoAccount(); }
+function inFreePlanGrace() {
+    const created = Date.parse(currentUser?.created_at || "");
+    return !!created && created < Date.parse(FREE_PLAN_START) && Date.now() < Date.parse(FREE_PLAN_GRACE_END);
+}
+function freeSentJobIds() {
+    const ids = new Set(Array.isArray(settings?.freeSentJobIds) ? settings.freeSentJobIds : []);
+    (jobs || []).forEach(j => { if (j && !j.isDemo && (j.quoteSentAt || j.invoicedAt)) ids.add(j.id); });
+    return ids;
+}
+function freeSendsLeft() { return Math.max(0, FREE_SEND_JOBS - freeSentJobIds().size); }
+// Before sending a quote or invoice: true if it can go (subscribed, in the grace period, this
+// job's already the free one, or the free send is still unused); otherwise shows why and how.
+async function requireSend(job, what) {
+    if (!job || isDemoAccount()) return true;
+    if (_proStatus === null && !checkAccessCodePro()) { try { await refreshProStatus(); } catch (_) {} }
+    if (!freePlanApplies() || inFreePlanGrace()) return true;
+    const ids = freeSentJobIds();
+    if (ids.has(job.id) || ids.size < FREE_SEND_JOBS) return true;
+    showFreeLimitSheet(what);
+    return false;
+}
+// After a quote/invoice actually goes: remember the job, so deleting it doesn't free the send up
+function recordFreeSend(job) {
+    if (!job || job.isDemo || !freePlanApplies()) return;
+    const list = Array.isArray(settings.freeSentJobIds) ? settings.freeSentJobIds : [];
+    if (list.includes(job.id)) return;
+    settings.freeSentJobIds = [...list, job.id].slice(-50);
+    portfolioSaveSettings();
+    renderHomeScreen();
+}
+
+function showFreeLimitSheet(what) {
+    TQA.track("paywall_viewed", { trigger: "free_limit" });
+    document.getElementById("free-limit-sheet")?.remove();
+    const guest = isGuest();
+    const sheet = document.createElement("div");
+    sheet.id = "free-limit-sheet";
+    sheet.style.cssText = "position:fixed;inset:0;z-index:9900;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;";
+    sheet.innerHTML = `<div style="width:100%;background:var(--surface);border-radius:18px 18px 0 0;padding:20px 18px calc(env(safe-area-inset-bottom,0px) + 18px);">
+        <div style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px;">You've used your free ${what === "invoice" ? "send" : "quote"} 🎉</div>
+        <div style="font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:14px;">${guest
+            ? "Create your free account (everything you've done stays), then start your <b>30-day free trial</b> to send unlimited quotes and invoices."
+            : "Start your <b>30-day free trial</b> to send unlimited quotes and invoices. Everything you've set up stays exactly as it is."}</div>
+        <button type="button" id="fls-go" class="btn-primary" style="width:100%;padding:14px;margin-bottom:8px;">${guest ? "Create my free account" : "Start 30-day free trial"}</button>
+        <button type="button" id="fls-later" class="btn-secondary" style="width:100%;padding:12px;">Not now</button></div>`;
+    document.body.appendChild(sheet);
+    sheet.addEventListener("click", ev => { if (ev.target === sheet) sheet.remove(); });
+    sheet.querySelector("#fls-later").onclick = () => sheet.remove();
+    sheet.querySelector("#fls-go").onclick = () => { sheet.remove(); guest ? showCreateAccountSheet(true) : showPaywall("free_limit"); };
+}
+
+// Guest mode: an anonymous Supabase account, signed in like any other (completeOAuthSignIn)
+async function guestSignIn() {
+    const btn = document.getElementById("si-guest");
+    if (btn) { btn.disabled = true; btn.textContent = "Getting things ready…"; }
+    try {
+        const r = await fetch(`${SB_URL}/auth/v1/signup`, {
+            method: "POST", headers: { "Content-Type": "application/json", "apikey": SB_KEY },
+            body: JSON.stringify({ data: {} })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.access_token) throw new Error(j.msg || j.message || j.error_description || ("Error " + r.status));
+        await completeOAuthSignIn(j.access_token, j.refresh_token, j.expires_in);
+    } catch (e) {
+        alert("Couldn't start without an account just now (" + (e.message || "network error") + "). You can create a free account instead.");
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Try it without an account →"; }
+    }
+}
+
+// Turns the guest account into a normal one: same user id, so every job, quote, photo and
+// setting stays. Email confirmation is off for TileIQ sign-ups, so it takes effect at once.
+function showCreateAccountSheet(thenPaywall) {
+    document.getElementById("create-account-sheet")?.remove();
+    const sheet = document.createElement("div");
+    sheet.id = "create-account-sheet";
+    sheet.style.cssText = "position:fixed;inset:0;z-index:9910;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;";
+    sheet.innerHTML = `<div style="width:100%;background:var(--surface);border-radius:18px 18px 0 0;padding:20px 18px calc(env(safe-area-inset-bottom,0px) + 18px);max-height:90vh;overflow-y:auto;">
+        <div style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:4px;">Create your free account</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Everything you've done so far stays in your account.</div>
+        <input type="text" id="ca-name" placeholder="Your name" autocomplete="name" style="width:100%;box-sizing:border-box;margin-bottom:8px;">
+        <input type="email" id="ca-email" placeholder="Email address" autocomplete="email" autocapitalize="off" style="width:100%;box-sizing:border-box;margin-bottom:8px;">
+        <input type="password" id="ca-password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin-bottom:8px;">
+        <div id="ca-error" style="font-size:13px;color:var(--red);min-height:1em;margin-bottom:8px;"></div>
+        <button type="button" id="ca-go" class="btn-primary" style="width:100%;padding:14px;margin-bottom:8px;">Create account</button>
+        <button type="button" id="ca-cancel" class="btn-secondary" style="width:100%;padding:12px;">Not now</button></div>`;
+    document.body.appendChild(sheet);
+    sheet.querySelector("#ca-cancel").onclick = () => sheet.remove();
+    sheet.querySelector("#ca-go").onclick = async () => {
+        const name = sheet.querySelector("#ca-name").value.trim(), email = sheet.querySelector("#ca-email").value.trim().toLowerCase();
+        const password = sheet.querySelector("#ca-password").value, err = sheet.querySelector("#ca-error"), go = sheet.querySelector("#ca-go");
+        err.textContent = "";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { err.textContent = "Please enter a valid email address."; return; }
+        if (password.length < 6) { err.textContent = "Password must be at least 6 characters."; return; }
+        go.disabled = true; go.textContent = "Creating…";
+        try {
+            const r = await fetch(`${SB_URL}/auth/v1/user`, {
+                method: "PUT", headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": "Bearer " + portfolioToken() },
+                body: JSON.stringify({ email, password, data: { full_name: name } })
+            });
+            const u = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                const msg = String(u.msg || u.message || u.error_description || "");
+                throw new Error(/already|exists|registered/i.test(msg) ? "That email already has a TileIQ account. Sign out of guest mode and sign in with it instead (your guest work stays with this guest account)." : (msg || "Couldn't create the account."));
+            }
+            currentUser = { ...currentUser, ...u, is_anonymous: false };
+            try {
+                const stored = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}");
+                stored.user = currentUser;
+                localStorage.setItem("sb-lzwmqabxpxuuznhbpewm-auth-token", JSON.stringify(stored));
+            } catch (_) {}
+            fetch(TILEIQ_WORKER_URL + "/api/welcome-email", { method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, name }) }).catch(() => {});
+            TQA.track("sign_up", { method: "guest_upgrade" });
+            sheet.remove();
+            renderHomeScreen();
+            if (thenPaywall) showPaywall("free_limit"); else alert("✅ Your account is ready. Sign in with " + email + " on any device.");
+        } catch (e) { err.textContent = e.message; go.disabled = false; go.textContent = "Create account"; }
+    };
+}
+
 async function initRevenueCat() {
     try {
         const stored = localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token");
@@ -15451,18 +15601,16 @@ function updateProBadge() {
     const btn = document.getElementById("pro-badge-btn");
     if (!btn) return;
     if (_proStatus === false) {
-        // Nothing to "upgrade" to while the trial's still running — full
-        // access is already unlocked. Only nag once it's actually over.
-        const trialOver = !isTrialActive();
-        if (!trialOver) {
+        // Free plan: only show "Go Pro" once the free send is used (until then the app just works)
+        if (isDemoAccount() || freeSendsLeft() > 0 || inFreePlanGrace()) {
             btn.style.display = "none";
             btn.onclick = null;
         } else {
             btn.style.display    = "inline-block";
-            btn.textContent      = "⚠ Subscribe";
-            btn.style.background = "#dc2626";
+            btn.textContent      = "⭐ Go Pro";
+            btn.style.background = "#f59e0b";
             btn.style.cursor     = "pointer";
-            btn.onclick = () => showPaywall("trial_ended");
+            btn.onclick = () => isGuest() ? showCreateAccountSheet(true) : showPaywall("free_limit");
         }
     } else if (_proStatus === true) {
         btn.style.display    = "inline-block";
@@ -15478,15 +15626,12 @@ async function showPaywall(source) {
     TQA.track("paywall_viewed", { trigger: source || "other" });
     const subtitleEl = document.getElementById("paywall-subtitle");
     if (subtitleEl) {
-        if (source === "trial_ended") {
-            subtitleEl.textContent = "Your 30-day free trial has ended — subscribe to keep using TileIQ";
-        } else if (source === "ai_receptionist") {
+        if (source === "ai_receptionist") {
             subtitleEl.textContent = "AI Receptionist needs a paid subscription";
-        } else if (isTrialActive()) {
-            const daysLeft = trialDaysLeft();
-            subtitleEl.textContent = `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left in your free trial — subscribe any time`;
+        } else if (source === "free_limit") {
+            subtitleEl.textContent = "You've used your free quote — start your 30-day free trial to send unlimited quotes and invoices";
         } else {
-            subtitleEl.textContent = "Unlock all features";
+            subtitleEl.textContent = "Start with 30 days free — send unlimited quotes and invoices";
         }
     }
     await loadPaywallPackages();
@@ -15752,6 +15897,18 @@ async function loadPaywallPackages() {
         const Purchases = window.Capacitor?.Plugins?.Purchases || window.Capacitor?.Plugins?.purchase;
         let monthlyPrice = "£9.99";
         let yearlyPrice = "£79.99";
+        // The store subscription's own free trial, if it has one (Google Play: a free phase on the
+        // default offer; App Store: a £0 introductory price). Shown only when the store reports it.
+        let monthlyTrial = "", yearlyTrial = "";
+        const freeTrial = pkg => {
+            const pr = pkg?.product || {};
+            const phase = pr.defaultOption?.freePhase || (pr.subscriptionOptions || []).find(o => o?.freePhase)?.freePhase;
+            const iso = phase?.billingPeriod?.iso8601 || (pr.introPrice && Number(pr.introPrice.price) === 0 ? pr.introPrice.period : "");
+            const m = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?$/.exec(String(iso || ""));
+            if (!m) return "";
+            const days = (+m[1] || 0) * 365 + (+m[2] || 0) * 30 + (+m[3] || 0) * 7 + (+m[4] || 0);
+            return days ? `${days >= 28 && days <= 31 ? 30 : days} days free` : "";
+        };
         if (Purchases) {
             const offerings = await Purchases.getOfferings();
             const current = offerings?.current;
@@ -15760,6 +15917,7 @@ async function loadPaywallPackages() {
                 const annual = current.annual ?? current.availablePackages?.find(p => p.packageType === "ANNUAL");
                 if (monthly?.product?.priceString) monthlyPrice = monthly.product.priceString;
                 if (annual?.product?.priceString) yearlyPrice = annual.product.priceString;
+                monthlyTrial = freeTrial(monthly); yearlyTrial = freeTrial(annual);
             }
         }
         container.innerHTML = `
@@ -15768,13 +15926,13 @@ async function loadPaywallPackages() {
                     <div style="font-size:16px;font-weight:800;">Monthly</div>
                     <div style="font-size:20px;font-weight:800;">${monthlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / month</span></div>
                 </div>
-                <div style="font-size:12px;margin-top:6px;opacity:0.75;">Billed ${monthlyPrice}/month. Cancel anytime in your app store account settings.</div>
+                <div style="font-size:12px;margin-top:6px;opacity:0.75;">${monthlyTrial ? `<b>${monthlyTrial}</b>, then ${monthlyPrice}/month` : `Billed ${monthlyPrice}/month`}. Cancel anytime in your app store account settings.</div>
             </button>
             <button onclick="openPlayStorePurchase('yearly', this)" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:18px 20px;text-align:left;cursor:pointer;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
                         <div style="font-size:16px;font-weight:800;">Annual</div>
-                        <div style="font-size:11px;font-weight:700;margin-top:2px;opacity:0.7;">Best value — save 33%</div>
+                        <div style="font-size:11px;font-weight:700;margin-top:2px;opacity:0.7;">${yearlyTrial ? `${yearlyTrial}, then save 33%` : "Best value — save 33%"}</div>
                     </div>
                     <div style="font-size:20px;font-weight:800;">${yearlyPrice}<span style="font-size:12px;font-weight:500;opacity:0.7;"> / year</span></div>
                 </div>

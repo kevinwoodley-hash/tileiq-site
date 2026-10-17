@@ -170,6 +170,9 @@
                 <span class="auth-sep">·</span>
                 <a href="#" onclick="show('screen-signup');generateCaptcha();initSignupRegion();return false;">Create account</a>
             </div>
+            <!-- Guest mode: use the app straight away, no account needed (see guestSignIn / FREE PLAN in script.js) -->
+            <button type="button" onclick="guestSignIn()" id="si-guest" class="btn-secondary auth-btn" style="margin-top:16px;">Try it without an account →</button>
+            <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:6px;line-height:1.4;">Explore everything and send your first quote free. Create an account any time to keep your work.</div>
         </div>
     </div>
 </div>
