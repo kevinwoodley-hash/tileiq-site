@@ -161,10 +161,19 @@ footer{padding:28px 0 40px;text-align:center;font-size:13px}footer a{color:var(-
 .ba .line{position:absolute;top:0;bottom:0;left:50%;width:3px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.2);pointer-events:none}
 .ba .lbl{position:absolute;top:12px;padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.6);color:#fff;font-size:13px;font-weight:800}
 .ba input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
-.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-.gal button{padding:0;border:0;background:var(--line);border-radius:12px;overflow:hidden;cursor:zoom-in}
-.gal img{width:100%;height:auto;aspect-ratio:1;object-fit:cover}
-.gal figcaption{font-size:13px;color:var(--muted);padding:4px 2px 0}
+.viewer{margin:0 0 28px}
+.stage{position:relative;border-radius:16px;overflow:hidden;background:#14181d;touch-action:pan-y}
+.mainbtn{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in}
+.mainbtn img{width:100%;height:auto;aspect-ratio:4/3;object-fit:contain;display:block}
+.nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:22px;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:24px;line-height:1;cursor:pointer}
+.nav.prev{left:10px}.nav.next{right:10px}
+.count{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:13px;font-weight:700;padding:3px 9px;border-radius:8px;pointer-events:none}
+.cap{color:var(--muted);font-size:14px;margin:8px 2px 0;min-height:1.2em}
+.thumbs{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 4px;scroll-snap-type:x proximity}
+.th{flex:0 0 auto;width:84px;height:84px;padding:0;border:3px solid transparent;border-radius:10px;overflow:hidden;cursor:pointer;background:var(--line);scroll-snap-align:start}
+.th[aria-pressed="true"]{border-color:var(--brand)}
+.th img{width:100%;height:100%;object-fit:cover}
+@media(min-width:760px){.th{width:108px;height:108px}}
 #lb{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;padding:16px}
 #lb.on{display:flex}#lb img{max-height:86vh;max-width:100%;border-radius:8px}
 #lb button{position:absolute;top:14px;right:14px;width:46px;height:46px;border-radius:23px;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:22px;cursor:pointer}
@@ -277,13 +286,29 @@ function renderProject(data, p, L0) {
   const when = p.completed_on ? monthYear(p.completed_on) : "";
   const description = clip(p.description || `${p.title} by ${b.name}${p.location ? ` in ${p.location}` : ""}.`, 160);
   const ratio = i => i.width && i.height ? ` width="${i.width}" height="${i.height}"` : "";
+  // The main photo viewer: the cover first, then the rest in the tiler's order
+  const photos = [...p.images.filter(i => i.id === p.cover_image_id), ...p.images.filter(i => i.id !== p.cover_image_id)];
+  const alt = (i, n) => i.caption || `${p.title}, photo ${n + 1}`;
+  const viewerData = JSON.stringify(photos.map((i, n) => ({ f: img(i.id, "f"), c: i.caption || "", a: alt(i, n) }))).replace(/</g, "\\u003c");
   const body = `
 ${topBar(b, L)}
 <main class="wrap">
   <a class="crumb" href="${e(L.home)}">← All projects</a>
   <h1>${e(p.title)}</h1>
   <div class="meta">${[p.category, p.location && `📍 ${p.location}`, when && `Completed ${when}`].filter(Boolean).map(x => `<span>${e(x)}</span>`).join("")}</div>
-  ${showBA ? `<div class="ba" id="ba">
+  <div class="viewer">
+    <div class="stage" id="stage">
+      <button type="button" class="mainbtn" id="mainbtn" aria-label="Open photo full screen">
+        <img id="mainimg" src="${img(photos[0].id, "f")}" alt="${e(alt(photos[0], 0))}"></button>
+      ${photos.length > 1 ? `<button type="button" class="nav prev" id="prev" aria-label="Previous photo">‹</button>
+      <button type="button" class="nav next" id="next" aria-label="Next photo">›</button>
+      <span class="count" id="count">1 / ${photos.length}</span>` : ""}
+    </div>
+    <p class="cap" id="maincap">${e(photos[0].caption || "")}</p>
+    ${photos.length > 1 ? `<div class="thumbs" id="thumbs">${photos.map((i, n) => `<button type="button" class="th" data-i="${n}" aria-label="Show photo ${n + 1}" aria-pressed="${n === 0}">
+      <img src="${img(i.id, "t")}" alt="" loading="lazy" width="600" height="600"></button>`).join("")}</div>` : ""}
+  </div>
+  ${showBA ? `<h2>Before and after</h2><div class="ba" id="ba">
       <img src="${img(before.id, "f")}" alt="Before"${ratio(before)}>
       <div class="after" id="ba-after"><img src="${img(after.id, "f")}" alt="After"></div>
       <div class="line" id="ba-line"></div>
@@ -299,10 +324,6 @@ ${topBar(b, L)}
     <div class="panel"><h3>Like this work?</h3><p class="muted">Ask ${e(b.name)} for a quote for your own project.</p>
       <a class="btn btn-main" style="width:100%;" href="${e(L.quote)}">Request a quote</a></div>
   </div>
-  <h2 style="margin-top:36px;">Photos</h2>
-  <div class="gal">${p.images.map((i, n) => `<figure style="margin:0;"><button type="button" data-full="${img(i.id, "f")}" data-cap="${e(i.caption || "")}" aria-label="Open photo ${n + 1}">
-    <img src="${img(i.id, "t")}" alt="${e(i.caption || `${p.title}, photo ${n + 1}`)}" loading="lazy" width="600" height="600"></button>
-    ${i.caption ? `<figcaption>${e(i.caption)}</figcaption>` : ""}</figure>`).join("")}</div>
   ${others.length ? `<h2 style="margin-top:44px;">More work</h2><div class="grid">${others.map(o => `
     <a class="card" href="${e(L.proj(o.slug))}"><img src="${img(o.cover_image_id, "t")}" alt="${e(o.title)}" loading="lazy" width="600" height="450">
     <div><h3>${e(o.title)}</h3><span class="muted">${e([o.category, o.location].filter(Boolean).join(" · "))}</span></div></a>`).join("")}</div>` : ""}
@@ -317,13 +338,40 @@ ${footer(slug)}
     document.getElementById('ba-after').style.clipPath = 'inset(0 0 0 ' + r.value + '%)';
     document.getElementById('ba-line').style.left = r.value + '%';
   });
+  var P = ${viewerData}, cur = 0;
+  var mi = document.getElementById('mainimg'), mc = document.getElementById('maincap'), cnt = document.getElementById('count');
+  var ths = [].slice.call(document.querySelectorAll('#thumbs .th'));
+  function show(k) {
+    if (!P.length) return;
+    cur = (k + P.length) % P.length;
+    mi.src = P[cur].f; mi.alt = P[cur].a; mc.textContent = P[cur].c;
+    if (cnt) cnt.textContent = (cur + 1) + ' / ' + P.length;
+    ths.forEach(function (t, n) { t.setAttribute('aria-pressed', n === cur ? 'true' : 'false'); });
+    if (ths[cur] && ths[cur].scrollIntoView) ths[cur].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    if (P.length > 1) { var pre = new Image(); pre.src = P[(cur + 1) % P.length].f; }
+  }
+  ths.forEach(function (t) { t.addEventListener('click', function () { show(+t.getAttribute('data-i')); }); });
+  var pv = document.getElementById('prev'), nx = document.getElementById('next');
+  if (pv) pv.addEventListener('click', function () { show(cur - 1); });
+  if (nx) nx.addEventListener('click', function () { show(cur + 1); });
+  var st = document.getElementById('stage'), x0 = null;
+  st.addEventListener('touchstart', function (ev) { x0 = ev.touches[0].clientX; }, { passive: true });
+  st.addEventListener('touchend', function (ev) {
+    if (x0 === null || P.length < 2) return;
+    var dx = ev.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 40) show(cur + (dx < 0 ? 1 : -1));
+  });
   var lb = document.getElementById('lb'), li = lb.querySelector('img'), lc = lb.querySelector('p');
   function close() { lb.classList.remove('on'); li.removeAttribute('src'); }
-  document.querySelectorAll('.gal button').forEach(function (b) { b.addEventListener('click', function () {
-    li.src = b.getAttribute('data-full'); li.alt = b.getAttribute('data-cap') || ''; lc.textContent = b.getAttribute('data-cap') || ''; lb.classList.add('on');
-  }); });
+  document.getElementById('mainbtn').addEventListener('click', function () {
+    li.src = P[cur].f; li.alt = P[cur].a; lc.textContent = P[cur].c; lb.classList.add('on');
+  });
   lb.addEventListener('click', function (ev) { if (ev.target !== li) close(); });
-  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') close(); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') close();
+    else if (ev.key === 'ArrowLeft') { show(cur - 1); if (lb.classList.contains('on')) { li.src = P[cur].f; lc.textContent = P[cur].c; } }
+    else if (ev.key === 'ArrowRight') { show(cur + 1); if (lb.classList.contains('on')) { li.src = P[cur].f; lc.textContent = P[cur].c; } }
+  });
 })();
 </script>`;
   const ld = [businessLd(data, L.canon("")), {
