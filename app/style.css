@@ -1268,3 +1268,17 @@ html, body {
 #start-here .sh-p { font-size: 14px; color: #cbd5e1; margin: 0 0 12px; }
 #start-here .sh-cta { display: block; text-align: center; background: #f59e0b; color: #000; text-decoration: none; border-radius: 12px; padding: 13px; font-size: 14px; font-weight: 800; margin-bottom: 8px; }
 #start-here .sh-link { width: 100%; background: transparent; color: #94a3b8; border: 0; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* Sign-in screen: the "start free" (guest mode) button, the first thing new visitors see */
+.guest-start-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    width: 100%; padding: 18px 16px; border: none; border-radius: 14px; cursor: pointer;
+    background: linear-gradient(135deg, #f59e0b, #E07A2F); color: #1c1400;
+    box-shadow: 0 8px 24px rgba(224, 122, 47, 0.35);
+    font-family: inherit; text-align: center; transition: transform .1s ease;
+}
+.guest-start-btn:active { transform: scale(0.98); }
+.guest-start-btn:disabled { opacity: .7; }
+.guest-start-title { font-size: 18px; font-weight: 800; letter-spacing: .2px; }
+.guest-start-sub { font-size: 13px; font-weight: 600; opacity: .85; }
+.guest-start-note { font-size: 12px; color: rgba(255,255,255,0.55); text-align: center; margin: 8px 0 4px; }

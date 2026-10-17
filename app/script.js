@@ -1974,6 +1974,7 @@ async function authSignOut() {
     currentJobId  = null;
     helpHistory   = [];
     _proStatus    = null;  // Reset pro status for next user
+    _accessCodePro = null;
     // Clear greeting immediately
     const greetEl = document.getElementById("header-greeting");
     if (greetEl) greetEl.textContent = "";
@@ -15470,8 +15471,9 @@ function showFreeLimitSheet(what) {
 
 // Guest mode: an anonymous Supabase account, signed in like any other (completeOAuthSignIn)
 async function guestSignIn() {
-    const btn = document.getElementById("si-guest");
-    if (btn) { btn.disabled = true; btn.textContent = "Getting things ready…"; }
+    const btn = document.getElementById("si-guest"), label = document.getElementById("si-guest-title");
+    if (btn) btn.disabled = true;
+    if (label) label.textContent = "Getting things ready…";
     try {
         const r = await fetch(`${SB_URL}/auth/v1/signup`, {
             method: "POST", headers: { "Content-Type": "application/json", "apikey": SB_KEY },
@@ -15483,7 +15485,8 @@ async function guestSignIn() {
     } catch (e) {
         alert("Couldn't start without an account just now (" + (e.message || "network error") + "). You can create a free account instead.");
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "Try it without an account →"; }
+        if (btn) btn.disabled = false;
+        if (label) label.textContent = "Start free — no sign-up needed";
     }
 }
 
@@ -15556,30 +15559,55 @@ async function initRevenueCat() {
 
 async function refreshProStatus() {
     try {
-        // Check access code first
-        if (checkAccessCodePro()) { _proStatus = true; _proPeriodType = "normal"; updateProBadge(); return true; }
-        if (!_rcAppUserId) { _proStatus = false; _proPeriodType = null; updateProBadge(); return false; }
+        const uid = _rcAppUserId || currentUser?.id;
+        if (!uid) { _proStatus = false; _proPeriodType = null; updateProBadge(); return false; }
         const resp = await fetch(AI_PROXY_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "rc_check", user_id: _rcAppUserId })
+            body: JSON.stringify({ action: "rc_check", user_id: uid })
         });
-        if (!resp.ok) { _proStatus = false; _proPeriodType = null; updateProBadge(); return false; }
+        if (!resp.ok) throw new Error("rc_check " + resp.status);
         const data = await resp.json();
-        _proStatus = !!data.pro;
-        _proPeriodType = data.periodType || null;
+        _accessCodePro = !!data.accessCode;
+        // A code redeemed on this device before codes moved to the server: hand it over once. The
+        // device copy is only forgotten if the server actually says the code isn't valid.
+        const migrated = data.pro ? "skip" : await migrateLocalAccessCode();
+        _proStatus = !!data.pro || _accessCodePro === true || (migrated === "unreachable" && checkLocalAccessCodeFlag());
+        _proPeriodType = _proStatus && !data.pro ? "normal" : (data.periodType || null);
+        if (migrated === "rejected") { try { localStorage.removeItem(`tileiq_access_code_pro_${uid}`); } catch (_) {} }
         updateProBadge();
         return _proStatus;
     } catch(e) {
+        // Offline / server unreachable: fall back to this device's last known answer for codes
         console.warn("RC status check failed:", e.message);
-        _proStatus = false;
-        _proPeriodType = null;
+        _proStatus = checkAccessCodePro() ? true : false;
+        _proPeriodType = _proStatus ? "normal" : null;
         updateProBadge();
-        return false;
+        return _proStatus;
     }
 }
+// Codes redeemed before they moved to the server were only remembered on the device: send the
+// remembered code to the server once so the account keeps Pro (the server still checks it's valid).
+// Returns "none" (nothing to hand over), "ok", "rejected" (server says invalid) or "unreachable".
+async function migrateLocalAccessCode() {
+    const uid = currentUser?.id;
+    if (!uid || _accessCodePro || !checkLocalAccessCodeFlag()) return "none";
+    let codes = [];
+    try { codes = JSON.parse(localStorage.getItem(`tileiq_used_codes_${uid}`) || "[]"); } catch (_) {}
+    if (!codes.length) return "unreachable";             // flag but no code remembered: leave it alone
+    let unreachable = false;
+    for (const c of codes.slice(-3)) {
+        const res = await sendAccessCode(String(c));
+        if (res.ok) return "ok";
+        if (res.status !== 400 && res.status !== 429) unreachable = true;
+    }
+    return unreachable ? "unreachable" : "rejected";
+}
+function checkLocalAccessCodeFlag() {
+    try { return localStorage.getItem(`tileiq_access_code_pro_${currentUser?.id || "anon"}`) === "true"; } catch (_) { return false; }
+}
 
-function isPro() { return _proStatus === true || checkAccessCodePro(); }
+function isPro() { return _proStatus === true || checkAccessCodePro(); }   // checkAccessCodePro: the server's answer once known
 
 // A genuinely paying Pro — true subscribers and access-code holders, but NOT someone currently
 // inside a store free-trial/intro period. Use this (not isPro()) to gate anything with a real
@@ -15645,60 +15673,56 @@ function closePaywall() {
 // DEV OVERRIDE — tap version text 5 times to unlock Pro for testing
 let _devTapCount = 0;
 /* ── ACCESS CODES ────────────────────────────────────────────── */
-// Add/remove codes here — keep these secret!
-const ACCESS_CODES = [
-    'TILEIQ2026',    // General launch code
-    'PROTIILER',     // Pro tiler code
-    'EARLYBIRD',     // Early access
-    'KEVIN2026',     // Owner code
-    'FOUNDING20',    // Beta tester founding member code
-];
+// The valid codes live only on the server (worker secret ACCESS_CODES). Redeeming one records it
+// against the account (access_code_redemptions), and rc_check then reports the account as Pro, so
+// the server decides, not this device. The device keeps a copy of the answer only for when it's
+// offline (and until the first check of a session comes back).
+let _accessCodePro = null;   // true/false once the server has answered this session
 
-function redeemAccessCode() {
+async function redeemAccessCode() {
     const input = document.getElementById('access-code-input');
     const msg   = document.getElementById('access-code-msg');
     if (!input || !msg) return;
-
     const code = input.value.trim().toUpperCase();
     if (!code) { msg.style.color = '#ef4444'; msg.textContent = 'Please enter a code.'; return; }
-
-    // Check if already used
-    const uid = currentUser?.id || 'anon';
-    const usedCodes = JSON.parse(localStorage.getItem(`tileiq_used_codes_${uid}`) || '[]');
-    if (usedCodes.includes(code)) {
-        msg.style.color = '#10b981';
-        msg.textContent = '✅ Code already active!';
-        _proStatus = true;
-        localStorage.setItem(`tileiq_access_code_pro_${uid}`, 'true');
-        updateProBadge();
-        setTimeout(() => closePaywall(), 1000);
-        return;
-    }
-
-    if (ACCESS_CODES.includes(code)) {
-        // Valid code — activate Pro
-        usedCodes.push(code);
-        localStorage.setItem(`tileiq_used_codes_${uid}`, JSON.stringify(usedCodes));
-        localStorage.setItem(`tileiq_access_code_pro_${uid}`, 'true');
-
-        _proStatus = true;
-        updateProBadge();
+    if (!currentUser) { msg.style.color = '#ef4444'; msg.textContent = 'Please sign in first.'; return; }
+    msg.style.color = 'var(--text-muted)'; msg.textContent = 'Checking…';
+    const res = await sendAccessCode(code);
+    if (res.ok) {
         TQA.track("access_code_redeemed");
-
         msg.style.color = '#10b981';
-        msg.textContent = '✅ Code accepted! Pro unlocked.';
+        msg.textContent = res.already ? '✅ Code already active!' : '✅ Code accepted! Pro unlocked.';
         input.value = '';
         setTimeout(() => closePaywall(), 1200);
     } else {
         msg.style.color = '#ef4444';
-        msg.textContent = '❌ Invalid code. Please try again.';
-        input.value = '';
+        msg.textContent = '❌ ' + res.error;
+        if (res.status === 400) input.value = '';
     }
+}
+async function sendAccessCode(code) {
+    try {
+        const r = await fetch(TILEIQ_WORKER_URL + "/api/access-code", {
+            method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + portfolioToken() },
+            body: JSON.stringify({ code })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) return { ok: false, status: r.status, error: j.error || "That code isn't valid." };
+        setAccessCodePro(true);
+        return { ok: true, already: !!j.already };
+    } catch (e) { return { ok: false, status: 0, error: "No connection. Please try again." }; }
+}
+function setAccessCodePro(on) {
+    _accessCodePro = !!on;
+    const key = `tileiq_access_code_pro_${currentUser?.id || 'anon'}`;
+    try { on ? localStorage.setItem(key, 'true') : localStorage.removeItem(key); } catch (_) {}
+    if (on) { _proStatus = true; _proPeriodType = "normal"; }
+    updateProBadge();
 }
 
 function checkAccessCodePro() {
-    const uid = currentUser?.id || 'anon';
-    return localStorage.getItem(`tileiq_access_code_pro_${uid}`) === 'true';
+    if (_accessCodePro !== null) return _accessCodePro;
+    try { return localStorage.getItem(`tileiq_access_code_pro_${currentUser?.id || 'anon'}`) === 'true'; } catch (_) { return false; }
 }
 
 /* ── TILE LAYOUT DIAGRAM ─────────────────────────────────────── */

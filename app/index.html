@@ -148,7 +148,14 @@
             <div class="auth-brand-name">TileIQ Pro</div>
         </div>
         <div class="auth-card">
-            <h2 class="auth-title">Welcome back</h2>
+            <!-- Guest mode first: use the app straight away, no account needed (guestSignIn / FREE PLAN in script.js) -->
+            <button type="button" onclick="guestSignIn()" id="si-guest" class="guest-start-btn">
+                <span class="guest-start-title" id="si-guest-title">Start free — no sign-up needed</span>
+                <span class="guest-start-sub">Try every feature and send your first quote free</span>
+            </button>
+            <div class="guest-start-note">You can create an account later and keep everything.</div>
+            <div class="auth-divider">Already have an account?</div>
+            <h2 class="auth-title">Sign in</h2>
             <div id="signin-error" class="auth-error hidden"></div>
             <div class="field-group"><label>Email</label><input id="si-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
             <div class="field-group"><label>Password</label>
@@ -170,9 +177,6 @@
                 <span class="auth-sep">·</span>
                 <a href="#" onclick="show('screen-signup');generateCaptcha();initSignupRegion();return false;">Create account</a>
             </div>
-            <!-- Guest mode: use the app straight away, no account needed (see guestSignIn / FREE PLAN in script.js) -->
-            <button type="button" onclick="guestSignIn()" id="si-guest" class="btn-secondary auth-btn" style="margin-top:16px;">Try it without an account →</button>
-            <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:6px;line-height:1.4;">Explore everything and send your first quote free. Create an account any time to keep your work.</div>
         </div>
     </div>
 </div>
