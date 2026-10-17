@@ -5932,76 +5932,67 @@ function renderFinishedPhotos(job) {
     `).join("");
 }
 
-async function addJobPhoto() {
-    TQA.feature("job_photos");
+// Job Photos and Finished Photos: take one with the camera or pick several at once from the
+// gallery (portfolioPickNative, the same choice as the portfolio screens; a file picker on the
+// web). Each is uploaded to the job-photos bucket under <user>/<job>/ and kept on the job:
+// sitePhotos for the tiler's own reference, finishedPhotos for the finished work.
+function addJobPhoto() { return addPhotosToJob("site"); }
+function addFinishedPhoto() { return addPhotosToJob("finished"); }
+function pickImageFilesWeb() {
+    return new Promise(resolve => {
+        const input = document.createElement("input");
+        input.type = "file"; input.accept = "image/*"; input.multiple = true;
+        input.style.display = "none";
+        input.addEventListener("change", () => { resolve([...(input.files || [])]); input.remove(); });
+        document.body.appendChild(input);
+        input.click();
+    });
+}
+async function addPhotosToJob(kind) {
+    const finished = kind === "finished";
+    TQA.feature(finished ? "finished_photos" : "job_photos");
     if (!currentUser) { alert("Please log in first."); return; }
     const job = getJob();
     if (!job) return;
-    const btn = document.getElementById("btn-add-job-photo");
-    const msg = document.getElementById("job-photo-upload-msg");
+    const btn = document.getElementById(finished ? "btn-add-finished-photo" : "btn-add-job-photo");
+    const msg = document.getElementById(finished ? "finished-photo-upload-msg" : "job-photo-upload-msg");
+    const label = finished ? "📷 Add Finished Photos" : "📷 Add Photos";
     if (msg) msg.textContent = "";
 
-    const cameraPlugin = window.Capacitor?.Plugins?.Camera;
-    if (!cameraPlugin) { alert("Camera is not available on this build."); return; }
+    const pick = await portfolioPickNative(20);
+    let blobs;
+    if (pick === null) blobs = (await pickImageFilesWeb()).filter(f => /^image\//.test(f.type || "image/")).slice(0, 20);
+    else if (pick.error) { if (msg) { msg.textContent = pick.error; msg.style.color = "#ef4444"; } return; }
+    else blobs = pick.blobs;
+    if (!blobs.length) return;
 
-    if (btn) { btn.disabled = true; btn.textContent = "Opening camera…"; }
-    try {
-        // source: "PROMPT" brings up the native "Take Photo / Choose from Gallery"
-        // action sheet on both iOS and Android — same plugin call either way, the
-        // OS handles the choice.
-        const photo = await cameraPlugin.getPhoto({
-            quality: 80,
-            allowEditing: false,
-            resultType: "base64",
-            source: "PROMPT",
-            saveToGallery: false
-        });
-        if (!photo?.base64String) return;
-
-        if (btn) btn.textContent = "Uploading…";
-        const byteChars = atob(photo.base64String);
-        const byteArr = new Uint8Array(byteChars.length);
-        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-        const mimeType = `image/${photo.format || "jpeg"}`;
-        const blob = new Blob([byteArr], { type: mimeType });
-
-        const ext = photo.format || "jpg";
-        const fileName = `${currentUser.id}/${job.id}/${Date.now()}.${ext}`;
-        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || SB_KEY;
-
-        // Upload to Supabase Storage — bucket "job-photos" must exist with a
-        // public-read policy (same setup as the "logos" bucket) before this works.
-        const uploadResp = await fetch(
-            `${SB_URL}/storage/v1/object/job-photos/${fileName}`,
-            {
+    const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || SB_KEY;
+    const list = finished ? (job.finishedPhotos = Array.isArray(job.finishedPhotos) ? job.finishedPhotos : [])
+                          : (job.sitePhotos = Array.isArray(job.sitePhotos) ? job.sitePhotos : []);
+    if (btn) btn.disabled = true;
+    let added = 0, failed = 0;
+    for (let i = 0; i < blobs.length; i++) {
+        if (btn) btn.textContent = blobs.length > 1 ? `Uploading ${i + 1} of ${blobs.length}…` : "Uploading…";
+        try {
+            const blob = blobs[i];
+            const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "jpg";
+            const fileName = `${currentUser.id}/${job.id}/${finished ? "finished-" : ""}${Date.now()}-${i}.${ext}`;
+            const uploadResp = await fetch(`${SB_URL}/storage/v1/object/job-photos/${fileName}`, {
                 method: "POST",
-                headers: {
-                    "apikey": tok,
-                    "Authorization": "Bearer " + tok,
-                    "Content-Type": blob.type,
-                    "x-upsert": "true"
-                },
+                headers: { "apikey": tok, "Authorization": "Bearer " + tok, "Content-Type": blob.type || "image/jpeg", "x-upsert": "true" },
                 body: blob
-            }
-        );
-        if (!uploadResp.ok) throw new Error("Upload failed: " + uploadResp.status);
-
-        const photoUrl = `${SB_URL}/storage/v1/object/public/job-photos/${fileName}`;
-        if (!Array.isArray(job.sitePhotos)) job.sitePhotos = [];
-        job.sitePhotos.push(photoUrl);
-        saveAll();
-        renderJobPhotos(job);
-        if (msg) { msg.textContent = "✅ Photo added"; msg.style.color = "#10b981"; }
-    } catch (e) {
-        // User backing out of the camera/picker isn't an error worth alerting on.
-        const cancelled = /cancel/i.test(e?.message || "");
-        if (!cancelled) {
-            console.error("Job photo upload error:", e);
-            if (msg) { msg.textContent = "Upload failed — please try again."; msg.style.color = "#ef4444"; }
-        }
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "📷 Add Photo"; }
+            });
+            if (!uploadResp.ok) throw new Error("Upload failed: " + uploadResp.status);
+            list.push(`${SB_URL}/storage/v1/object/public/job-photos/${fileName}`);
+            added++;
+        } catch (e) { console.error("Job photo upload error:", e); failed++; }
     }
+    if (added) { saveAll(); finished ? renderFinishedPhotos(job) : renderJobPhotos(job); }
+    if (msg) {
+        msg.textContent = failed ? `${added} added, ${failed} failed. Please try those again.` : `✅ ${added} photo${added === 1 ? "" : "s"} added`;
+        msg.style.color = failed ? "#ef4444" : "#10b981";
+    }
+    if (btn) { btn.disabled = false; btn.textContent = label; }
 }
 
 function removeJobPhoto(url) {
@@ -6016,71 +6007,6 @@ function removeJobPhoto(url) {
 // Same upload flow as addJobPhoto() above, but into job.finishedPhotos and
 // the "finished/" prefix of the same job-photos bucket — see the comment on
 // renderFinishedPhotos() for why this is a separate collection.
-async function addFinishedPhoto() {
-    TQA.feature("finished_photos");
-    if (!currentUser) { alert("Please log in first."); return; }
-    const job = getJob();
-    if (!job) return;
-    const btn = document.getElementById("btn-add-finished-photo");
-    const msg = document.getElementById("finished-photo-upload-msg");
-    if (msg) msg.textContent = "";
-
-    const cameraPlugin = window.Capacitor?.Plugins?.Camera;
-    if (!cameraPlugin) { alert("Camera is not available on this build."); return; }
-
-    if (btn) { btn.disabled = true; btn.textContent = "Opening camera…"; }
-    try {
-        const photo = await cameraPlugin.getPhoto({
-            quality: 80,
-            allowEditing: false,
-            resultType: "base64",
-            source: "PROMPT",
-            saveToGallery: false
-        });
-        if (!photo?.base64String) return;
-
-        if (btn) btn.textContent = "Uploading…";
-        const byteChars = atob(photo.base64String);
-        const byteArr = new Uint8Array(byteChars.length);
-        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-        const mimeType = `image/${photo.format || "jpeg"}`;
-        const blob = new Blob([byteArr], { type: mimeType });
-
-        const ext = photo.format || "jpg";
-        const fileName = `${currentUser.id}/${job.id}/finished-${Date.now()}.${ext}`;
-        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token || SB_KEY;
-
-        const uploadResp = await fetch(
-            `${SB_URL}/storage/v1/object/job-photos/${fileName}`,
-            {
-                method: "POST",
-                headers: {
-                    "apikey": tok,
-                    "Authorization": "Bearer " + tok,
-                    "Content-Type": blob.type,
-                    "x-upsert": "true"
-                },
-                body: blob
-            }
-        );
-        if (!uploadResp.ok) throw new Error("Upload failed: " + uploadResp.status);
-
-        const photoUrl = `${SB_URL}/storage/v1/object/public/job-photos/${fileName}`;
-        if (!Array.isArray(job.finishedPhotos)) job.finishedPhotos = [];
-        job.finishedPhotos.push(photoUrl);
-        saveAll();
-        renderFinishedPhotos(job);
-        if (msg) { msg.textContent = "✅ Photo added"; msg.style.color = "#10b981"; }
-    } catch (e) {
-        const cancelled = /cancel/i.test(e?.message || "");
-        if (!cancelled) {
-            console.error("Finished photo upload error:", e);
-            if (msg) { msg.textContent = "Upload failed — please try again."; msg.style.color = "#ef4444"; }
-        }
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "📷 Add Finished Photo"; }
-    }
-}
 
 function removeFinishedPhoto(url) {
     const job = getJob();
