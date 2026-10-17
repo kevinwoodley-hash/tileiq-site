@@ -149,13 +149,16 @@
         </div>
         <div class="auth-card">
             <!-- Guest mode first: use the app straight away, no account needed (guestSignIn / FREE PLAN in script.js) -->
-            <button type="button" onclick="guestSignIn()" id="si-guest" class="guest-start-btn">
-                <span class="guest-start-title" id="si-guest-title">Start free — no sign-up needed</span>
-                <span class="guest-start-sub">Try every feature and send your first quote free</span>
-            </button>
-            <div class="guest-start-note">You can create an account later and keep everything.</div>
-            <div class="auth-divider">Already have an account?</div>
-            <h2 class="auth-title">Sign in</h2>
+            <!-- Hidden on devices where someone has already signed in with a real account (syncSignInScreen) -->
+            <div id="si-guest-wrap">
+                <button type="button" onclick="guestSignIn()" id="si-guest" class="guest-start-btn">
+                    <span class="guest-start-title" id="si-guest-title">Start free — no sign-up needed</span>
+                    <span class="guest-start-sub">Try every feature and send your first quote free</span>
+                </button>
+                <div class="guest-start-note">You can create an account later and keep everything.</div>
+                <div class="auth-divider">Already have an account?</div>
+            </div>
+            <h2 class="auth-title" id="si-title">Sign in</h2>
             <div id="signin-error" class="auth-error hidden"></div>
             <div class="field-group"><label>Email</label><input id="si-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
             <div class="field-group"><label>Password</label>

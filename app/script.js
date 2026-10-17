@@ -192,7 +192,9 @@ function show(id) {
     const el = document.getElementById(id);
     // Native apps ask for the analytics choice the first time Home is shown, however it was reached:
     // signing in and restoring a saved session call show("screen-home") directly, not goHome().
+    if (id === "screen-signin") syncSignInScreen();
     if (id === "screen-home") {
+        if (currentUser && !currentUser.is_anonymous) rememberRealAccount();
         try { TQA.maybeAsk(); } catch (_) {}
         // Portfolio counts for the Home link: fetched once, then kept up to date by the portfolio screens
         setTimeout(() => { try { if (!PortfolioUI.loaded) PortfolioUI.load().then(() => PortfolioUI.homeSubtitle()).catch(() => {}); } catch (_) {} }, 1500);
@@ -15469,6 +15471,22 @@ function showFreeLimitSheet(what) {
     sheet.querySelector("#fls-go").onclick = () => { sheet.remove(); guest ? showCreateAccountSheet(true) : showPaywall("free_limit"); };
 }
 
+// Once someone has signed in on this device with a real account (or turned their guest account
+// into one), the sign-in screen no longer offers "Start free": it's just Sign in / Welcome back.
+function rememberRealAccount() { try { localStorage.setItem("tileiq-has-account", "1"); } catch (_) {} }
+function syncSignInScreen() {
+    let has = false;
+    try {
+        has = localStorage.getItem("tileiq-has-account") === "1";
+        // Signed out before this update: the last session is still kept on the device (for offline sign-in)
+        const u = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").user;
+        if (!has && u && u.email && !u.is_anonymous) { has = true; rememberRealAccount(); }
+    } catch (_) {}
+    const wrap = document.getElementById("si-guest-wrap"), title = document.getElementById("si-title");
+    if (wrap) wrap.style.display = has ? "none" : "";
+    if (title) title.textContent = has ? "Welcome back" : "Sign in";
+}
+
 // Guest mode: an anonymous Supabase account, signed in like any other (completeOAuthSignIn)
 async function guestSignIn() {
     const btn = document.getElementById("si-guest"), label = document.getElementById("si-guest-title");
@@ -15534,6 +15552,7 @@ function showCreateAccountSheet(thenPaywall) {
             fetch(TILEIQ_WORKER_URL + "/api/welcome-email", { method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, name }) }).catch(() => {});
             TQA.track("sign_up", { method: "guest_upgrade" });
+            rememberRealAccount();
             sheet.remove();
             renderHomeScreen();
             if (thenPaywall) showPaywall("free_limit"); else alert("✅ Your account is ready. Sign in with " + email + " on any device.");
