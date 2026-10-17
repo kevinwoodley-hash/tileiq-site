@@ -55,6 +55,11 @@ export async function onRequestGet({ request, params, waitUntil }) {
   let parts = [].concat(params.path || []).filter(Boolean).map(s => String(s).toLowerCase());
   const ownDomain = parts[1] === "_d";
   if (ownDomain) parts = [parts[0], ...parts.slice(2)];
+  if (parts.length === 2 && parts[1] === "sitemap.xml" && /^[a-z0-9-]{1,80}$/.test(parts[0])) {
+    const data = await getSite(parts[0], url.origin, waitUntil);
+    if (!data || (ownDomain && !data.business.domain)) return new Response("Not found", { status: 404 });
+    return sitemap(data, links(data, ownDomain));
+  }
   if (!parts.length || parts.length > 2 || !parts.every(p => /^[a-z0-9-]{1,80}$/.test(p))) return notFound();
   const data = await getSite(parts[0], url.origin, waitUntil);
   if (!data || (ownDomain && !data.business.domain)) return notFound();
@@ -62,6 +67,18 @@ export async function onRequestGet({ request, params, waitUntil }) {
   if (parts.length === 1) return page(renderHome(data, L));
   const project = data.projects.find(p => p.slug === parts[1]);
   return project ? page(renderProject(data, project, L)) : notFound(data, L);
+}
+
+// One tiler's sitemap: their home page and each published project, at their canonical addresses
+function sitemap(data, L) {
+  const day = d => (d ? String(d).slice(0, 10) : "");
+  const latest = data.projects.map(p => day(p.updated_at || p.published_at)).filter(Boolean).sort().pop();
+  const urls = [{ loc: L.canon(""), mod: latest }, ...data.projects.map(p => ({ loc: L.canon(p.slug), mod: day(p.updated_at || p.published_at) }))];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map(u => `  <url><loc>${e(u.loc)}</loc>${u.mod ? `<lastmod>${u.mod}</lastmod>` : ""}</url>`).join("\n")}
+</urlset>`;
+  return new Response(xml, { headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
 }
 
 function page(html, status = 200, extra = {}) {

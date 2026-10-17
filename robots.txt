@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /embed/
 
 Sitemap: https://tile-iq.com/sitemap.xml
+Sitemap: https://tile-iq.com/sitemaps/portfolios

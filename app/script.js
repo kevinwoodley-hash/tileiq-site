@@ -6759,7 +6759,8 @@ const PortfolioUI = {
                     : `<div style="font-size:12.5px;color:var(--muted);">A free mini website showing your published projects, with a Request a Quote button.</div>`}
                 <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
                     <button type="button" onclick="goPortfolioSite()" class="btn-primary" style="flex:1;min-width:140px;">${slug ? "⚙ Manage website" : "Set up my website"}</button>
-                    ${slug && on ? `<button type="button" onclick="portfolioOpenUrl(portfolioSiteUrl())" class="btn-secondary" style="flex:1;min-width:100px;">👁 View</button>` : ""}
+                    ${slug && on ? `<button type="button" onclick="portfolioPublicRoot().then(portfolioOpenUrl)" class="btn-secondary" style="flex:1;min-width:90px;">👁 View</button>
+                    <button type="button" onclick="portfolioShareSite()" class="btn-secondary" style="flex:1;min-width:90px;">📤 Share</button>` : ""}
                 </div>`;
         }
 
@@ -6886,6 +6887,7 @@ const PortfolioEditor = {
         el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <span style="font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;background:${pub ? "#16a34a" : "var(--border)"};color:${pub ? "#fff" : "var(--ink)"};">${pub ? "Published" : this.id ? "Draft" : "New, not saved yet"}</span>
             <span style="flex:1;font-size:12.5px;color:var(--muted);min-width:160px;">${pub ? "Shown on your portfolio website once it's switched on." : "Private. Only you can see it."}</span>
+            ${this.id && pub ? `<button type="button" onclick="portfolioShareProject('${this.id}')" class="btn-primary" style="padding:8px 14px;">📤 Share</button>` : ""}
             ${this.id ? `<button type="button" onclick="portfolioEditorPublish(${pub ? "false" : "true"})" class="${pub ? "btn-secondary" : "btn-primary"}" style="padding:8px 14px;">${pub ? "Unpublish" : "🌐 Publish"}</button>` : ""}
         </div>`;
     },
@@ -7212,6 +7214,7 @@ const PortfolioSite = {
         show("screen-portfolio-site");
         this.renderStatus(); this.renderBusiness(); this.renderSwatches(); this.renderHeaderPhotos();
         PortfolioDomain.load();
+        PortfolioEmbed.render();
     },
     renderStatus() {
         const el = document.getElementById("pfs-status");
@@ -7345,6 +7348,7 @@ const PortfolioDomain = {
         if (isDemoAccount() || !settings.slug) { this.state = null; this.render(); return; }
         el.innerHTML = `<div style="font-size:12.5px;color:var(--muted);">Checking…</div>`;
         try { this.state = (await this._api("GET")).domain; } catch (e) { this.state = null; this.error = e.message; }
+        this._loaded = true;
         this.render();
     },
     render(msg) {
@@ -7431,6 +7435,224 @@ const PortfolioDomain = {
         this.busy = true;
         try { await this._api("DELETE"); this.state = null; this.busy = false; this.render("✓ Removed. You can also remove the DNS record you added."); }
         catch (e) { this.busy = false; this.render(e.message); }
+    },
+    // Quietly fetch the domain once (for share links), without touching the My Website screen
+    async ensure() {
+        if (!this._loaded && settings.slug && !isDemoAccount()) {
+            try { this.state = (await this._api("GET")).domain; } catch (_) {}
+            this._loaded = true;
+        }
+        return this.state;
+    },
+};
+
+// The public address of the tiler's portfolio: their own domain once it's connected, else tile-iq.com/p/<slug>
+async function portfolioPublicRoot() {
+    const d = await PortfolioDomain.ensure();
+    return d && d.status === "active" ? `https://${d.host}${d.base || ""}` : portfolioSiteUrl();
+}
+
+// ── Portfolio (phase 4: sharing and embedding) ───────────────────
+// Share a published project (or the whole portfolio): WhatsApp, Facebook, email and copy
+// link use the page's public address (its link preview shows the cover photo); Instagram
+// and TikTok can't take a link from another app, so they get the photos through the phone's
+// share sheet with the caption copied, ready to paste. Captions come from the existing AI
+// caption writer (worker generate_social_post) and are always edited/approved by the tiler.
+const PORTFOLIO_SHARE_STYLES = [
+    { value: "professional", icon: "🤝", label: "Professional" }, { value: "friendly", icon: "😊", label: "Friendly" },
+    { value: "short", icon: "⚡", label: "Short and punchy" }, { value: "detailed", icon: "📝", label: "Detailed" },
+];
+const PortfolioShare = {
+    project: null, url: "", style: "friendly", busy: false,
+    _msg(t, ok) { const el = document.getElementById("pfsh-msg"); if (el) { el.textContent = t || ""; el.style.color = ok ? "#16a34a" : "var(--red)"; } },
+    async open(projectId) {
+        const p = projectId ? PortfolioUI.projects.find(x => x.id === projectId) : null;
+        this.project = p; this.style = "friendly";
+        document.getElementById("pfsh-sub").textContent = p ? p.title : "Your portfolio website";
+        document.getElementById("pf-share-overlay").classList.remove("hidden");
+        const body = document.getElementById("pfsh-body");
+        const on = !!settings.portfolioSite?.enabled;
+        if (!settings.slug || !on || (p && p.status !== "published")) {
+            body.innerHTML = `<div class="form-card"><div style="font-size:14px;color:var(--ink);margin-bottom:10px;">${!settings.slug || !on
+                ? "Switch your portfolio website on first, so there's a page for people to see."
+                : "Publish this project first, so it has a public page to share."}</div>
+                <button type="button" onclick="portfolioShareClose();${!settings.slug || !on ? "goPortfolioSite()" : ""}" class="btn-primary" style="width:100%;">${!settings.slug || !on ? "Set up my website" : "OK"}</button></div>`;
+            return;
+        }
+        body.innerHTML = `<div class="empty-state-small">Getting your link…</div>`;
+        const root = await portfolioPublicRoot();
+        this.url = p ? `${root}/${p.slug}` : root;
+        TQA.feature(p ? "portfolio_share_project" : "portfolio_share_site");
+        this.render();
+    },
+    close() { document.getElementById("pf-share-overlay")?.classList.add("hidden"); },
+    _default() {
+        const name = settings.companyName || "us";
+        return this.project
+            ? `${this.project.title}${this.project.location ? " in " + this.project.location : ""}. See the photos: ${this.url}`
+            : `See our latest tiling work and request a quote from ${name}: ${this.url}`;
+    },
+    render() {
+        const body = document.getElementById("pfsh-body");
+        const p = this.project;
+        const dest = (icon, label, onclick, sub) => `<button type="button" onclick="${onclick}" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--ink);cursor:pointer;min-height:76px;">
+            <span style="font-size:22px;">${icon}</span><span style="font-size:12.5px;font-weight:700;">${label}</span>${sub ? `<span style="font-size:10.5px;color:var(--muted);">${sub}</span>` : ""}</button>`;
+        body.innerHTML = `
+            <div class="form-card" style="margin-bottom:12px;">
+                <div class="form-section-label" style="margin-bottom:6px;">🔗 Link</div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink);word-break:break-all;user-select:all;">${esc(this.url)}</div>
+                <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Shows ${p ? "this project's cover photo" : "your header photo"} as a preview on Facebook, WhatsApp and most apps.</div>
+            </div>
+            <div class="form-card" style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+                    <div class="form-section-label" style="margin:0;">✏️ Caption</div><div style="font-size:11px;color:var(--muted);">edit before sharing</div>
+                </div>
+                ${p ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">${PORTFOLIO_SHARE_STYLES.map(s => `<button type="button" onclick="PortfolioShare.setStyle('${s.value}')" style="padding:8px;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;border:1.5px solid ${this.style === s.value ? "#E07A2F" : "var(--border)"};background:${this.style === s.value ? "#fff4ec" : "var(--bg)"};color:var(--ink);">${s.icon} ${s.label}</button>`).join("")}</div>
+                <button type="button" id="pfsh-gen" onclick="PortfolioShare.generate()" class="btn-secondary" style="width:100%;margin-bottom:8px;">✨ Write a caption for me</button>` : ""}
+                <textarea id="pfsh-caption" rows="7" maxlength="2200" style="width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;font-family:inherit;resize:vertical;">${esc(this._default())}</textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+                ${dest("💬", "WhatsApp", "PortfolioShare.to('whatsapp')")}
+                ${dest("📘", "Facebook", "PortfolioShare.to('facebook')")}
+                ${dest("✉️", "Email", "PortfolioShare.to('email')")}
+                ${p ? dest("📸", "Instagram / TikTok", "PortfolioShare.photos()", "photos + caption") : ""}
+                ${dest("📋", "Copy link", "PortfolioShare.to('copy')")}
+                ${dest("📤", "More…", "PortfolioShare.to('native')", "other apps")}
+            </div>
+            <div id="pfsh-msg" style="font-size:13px;margin-top:10px;"></div>
+            ${p ? `<div style="display:flex;gap:8px;background:var(--amber-lt);border-radius:8px;padding:10px 12px;margin-top:12px;font-size:12px;line-height:1.45;">
+                <div>💡</div><div>Instagram and TikTok don't let other apps post links or captions. Tap Instagram / TikTok to send them the photos, then paste the caption (it's copied for you). Put your link in your bio.</div></div>` : ""}`;
+    },
+    setStyle(v) { const cap = document.getElementById("pfsh-caption")?.value; this.style = v; this.render(); if (cap) document.getElementById("pfsh-caption").value = cap; },
+    _caption() { return (document.getElementById("pfsh-caption")?.value || "").trim(); },
+    async generate() {
+        const p = this.project;
+        if (!p || this.busy) return;
+        const btn = document.getElementById("pfsh-gen");
+        this.busy = true; if (btn) { btn.disabled = true; btn.textContent = "Writing…"; }
+        this._msg("");
+        try {
+            const imgs = PortfolioUI.imagesOf(p.id).filter(i => !i.hidden);
+            const ordered = [...imgs.filter(i => i.id === p.cover_image_id), ...imgs.filter(i => i.id !== p.cover_image_id)].slice(0, 4);
+            const urls = await portfolioSignedUrls(ordered.map(i => i.path));
+            const resp = await fetch(TILEIQ_WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "generate_social_post", photoUrls: ordered.map(i => urls[i.path]).filter(Boolean),
+                    roomNames: [p.title], tileTypes: p.tile_type ? [p.tile_type] : [], town: p.location || null,
+                    style: this.style, companyName: settings.companyName || "", projectDescription: p.description || "" }) });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data.caption) throw new Error(data.error || "no caption");
+            document.getElementById("pfsh-caption").value = data.caption.trim() + "\n\n" + this.url;
+            TQA.feature("portfolio_caption_" + this.style);
+        } catch (e) { this._msg("Couldn't write a caption just now. You can write your own above."); }
+        finally { this.busy = false; if (btn) { btn.disabled = false; btn.textContent = "✨ Write another"; } }
+    },
+    _withLink(text) { return text.includes(this.url) ? text : (text ? text + "\n\n" : "") + this.url; },
+    async to(where) {
+        const text = this._withLink(this._caption());
+        const open = u => portfolioOpenUrl(u);
+        TQA.feature("portfolio_share_" + where);
+        if (where === "whatsapp") return open("https://wa.me/?text=" + encodeURIComponent(text));
+        if (where === "facebook") {
+            try { await navigator.clipboard.writeText(this._caption()); this._msg("✓ Caption copied: paste it into your Facebook post.", true); } catch (_) {}
+            return open("https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(this.url));
+        }
+        if (where === "email") {
+            const subject = this.project ? `${this.project.title}: ${settings.companyName || "our work"}` : `${settings.companyName || "Our"} tiling portfolio`;
+            window.location.href = "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(text);
+            return;
+        }
+        if (where === "copy") {
+            try { await navigator.clipboard.writeText(this.url); this._msg("✓ Link copied.", true); } catch (_) { prompt("Copy this link:", this.url); }
+            return;
+        }
+        // native share sheet (or the browser's), else copy
+        const sharePlugin = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Share : null;
+        try {
+            if (sharePlugin) await sharePlugin.share({ title: this.project?.title || settings.companyName || "Portfolio", text, url: this.url, dialogTitle: "Share to…" });
+            else if (navigator.share) await navigator.share({ title: this.project?.title || "Portfolio", text, url: this.url });
+            else { await navigator.clipboard.writeText(text); this._msg("✓ Copied: paste it wherever you like.", true); }
+        } catch (e) { if (!/cancel|abort/i.test(e?.message || e?.name || "")) this._msg("Sharing failed: " + (e?.message || "please try again")); }
+    },
+    // Instagram / TikTok: the photos themselves via the share sheet, caption on the clipboard.
+    // On the web: download the photos instead.
+    async photos() {
+        const p = this.project;
+        if (!p || this.busy) return;
+        const caption = this._caption();
+        try { await navigator.clipboard.writeText(caption); } catch (_) {}
+        const imgs = PortfolioUI.imagesOf(p.id).filter(i => !i.hidden);
+        const ordered = [...imgs.filter(i => i.id === p.cover_image_id), ...imgs.filter(i => i.id !== p.cover_image_id)].slice(0, 10);
+        if (!ordered.length) { this._msg("This project has no shown photos."); return; }
+        this.busy = true; this._msg("Preparing photos…", true);
+        TQA.feature("portfolio_share_photos");
+        try {
+            const urls = await portfolioSignedUrls(ordered.map(i => i.path));
+            const sharePlugin = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Share : null;
+            const fsPlugin = window.Capacitor?.Plugins?.Filesystem;
+            if (sharePlugin && fsPlugin) {
+                const files = [];
+                for (let i = 0; i < ordered.length; i++) {
+                    const blob = await (await fetch(urls[ordered[i].path])).blob();
+                    const base64 = await new Promise(res => { const r = new FileReader(); r.onload = ev => res(ev.target.result.split(",")[1]); r.readAsDataURL(blob); });
+                    const name = `tileiq-portfolio-${Date.now()}-${i}.jpg`;
+                    await fsPlugin.writeFile({ path: name, data: base64, directory: "CACHE" });
+                    const u = await fsPlugin.getUri({ path: name, directory: "CACHE" });
+                    if (u?.uri) files.push(u.uri);
+                }
+                this._msg("✓ Caption copied. Choose Instagram or TikTok, then paste the caption.", true);
+                await sharePlugin.share({ title: p.title, text: caption, files, dialogTitle: "Share photos to…" });
+            } else {
+                for (let i = 0; i < ordered.length; i++) {
+                    const blob = await (await fetch(urls[ordered[i].path])).blob();
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob); a.download = `${p.slug}-${i + 1}.jpg`;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+                }
+                this._msg("✓ Photos downloaded and caption copied. Upload them in Instagram or TikTok and paste the caption.", true);
+            }
+        } catch (e) { if (!/cancel/i.test(e?.message || "")) this._msg("Couldn't prepare the photos: " + (e?.message || "please try again")); }
+        finally { this.busy = false; }
+    },
+};
+function portfolioShareProject(id) { PortfolioShare.open(id); }
+function portfolioShareSite() { PortfolioShare.open(null); }
+function portfolioShareClose() { PortfolioShare.close(); }
+
+// Embed code for a tiler's existing website: an auto-sizing iframe of their published projects,
+// plus a plain link button for site builders that don't allow embed code.
+const PortfolioEmbed = {
+    show: "all", brand: true,
+    render() {
+        const el = document.getElementById("pfs-embed");
+        if (!el) return;
+        if (!settings.slug) { el.innerHTML = `<div style="font-size:12.5px;color:var(--muted);">Choose your website address above first.</div>`; return; }
+        const slug = settings.slug;
+        const query = [this.show === "featured" ? "show=featured" : "", this.brand ? "" : "brand=0"].filter(Boolean).join("&");
+        const src = `https://tile-iq.com/embed/${slug}${query ? "?" + query : ""}`;
+        const id = "tileiq-portfolio-" + slug;
+        const code = `<iframe id="${id}" src="${src}" title="Our tiling work" loading="lazy" style="width:100%;border:0;min-height:420px;"></iframe>\n<script>window.addEventListener("message",function(e){if(e.origin==="https://tile-iq.com"&&e.data&&e.data.tileiqEmbed==="${slug}"){document.getElementById("${id}").style.height=e.data.height+"px";}});<\/script>`;
+        const button = `<a href="${portfolioSiteUrl()}" target="_blank" rel="noopener" style="display:inline-block;background:${settings.portfolioSite?.brandColour || "#E07A2F"};color:#fff;padding:12px 20px;border-radius:10px;font-weight:700;text-decoration:none;">See our tiling work</a>`;
+        const ta = (id2, v) => `<textarea id="${id2}" readonly rows="4" onclick="this.select()" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:11.5px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);resize:vertical;">${esc(v)}</textarea>`;
+        el.innerHTML = `<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Already have a website (WordPress, Wix, Squarespace…)? Paste this code into a page and your published projects appear there, always up to date.${settings.portfolioSite?.enabled ? "" : " <b>Switch your website on for it to show anything.</b>"}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <select onchange="PortfolioEmbed.show=this.value;PortfolioEmbed.render()" style="flex:1;min-width:150px;">
+                    <option value="all" ${this.show === "all" ? "selected" : ""}>All published projects</option>
+                    <option value="featured" ${this.show === "featured" ? "selected" : ""}>Featured projects only</option>
+                </select>
+                <label style="display:flex;gap:6px;align-items:center;font-size:13px;"><input type="checkbox" ${this.brand ? "checked" : ""} onchange="PortfolioEmbed.brand=this.checked;PortfolioEmbed.render()"> TileIQ credit</label>
+            </div>
+            ${ta("pfs-embed-code", code)}
+            <button type="button" onclick="PortfolioEmbed.copy('pfs-embed-code', this)" class="btn-secondary" style="width:100%;margin:6px 0 12px;">📋 Copy embed code</button>
+            <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">If your website can't take embed code, add a button that links to your portfolio instead:</div>
+            ${ta("pfs-embed-btn", button)}
+            <button type="button" onclick="PortfolioEmbed.copy('pfs-embed-btn', this)" class="btn-secondary" style="width:100%;margin-top:6px;">📋 Copy button code</button>`;
+    },
+    async copy(id, btn) {
+        const v = document.getElementById(id)?.value || "";
+        try { await navigator.clipboard.writeText(v); if (btn) { const t = btn.textContent; btn.textContent = "✓ Copied"; setTimeout(() => { btn.textContent = t; }, 2000); } }
+        catch (_) { document.getElementById(id)?.select(); }
+        TQA.feature("portfolio_embed_copied");
     },
 };
 
