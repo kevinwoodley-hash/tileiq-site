@@ -431,7 +431,7 @@ setTimeout(() => {
 }, 3000);
 
 
-function esc(s)    { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function esc(s)    { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 
 // ── Auto-fill demo credentials if ?demo=1 ────────────────────
 (function() {
@@ -1123,6 +1123,12 @@ function emailAuthHeaders() {
     return h;
 }
 function isDemoAccount() { return !!currentUser && currentUser.email === DEMO_EMAIL; }
+// Photos a customer sent with a web enquiry: only addresses in our own public enquiry-photos store
+// (the enquiry arrives from the public internet, so anything else is ignored rather than shown)
+function enquiryPhotoUrls(job) {
+    return (Array.isArray(job?.photos) ? job.photos : []).filter(u => typeof u === "string" &&
+        /^https:\/\/lzwmqabxpxuuznhbpewm\.supabase\.co\/storage\/v1\/object\/public\/enquiry-photos\/[A-Za-z0-9_\/.\-]+$/.test(u));
+}
 // Accounts we gave to app-store reviewers: their use is testing, so analytics marks it internal on any device
 const TEST_ACCOUNT_EMAILS = ["google@tile-iq.com"];
 function isTestAccount() { return !!currentUser && TEST_ACCOUNT_EMAILS.includes(String(currentUser.email || "").toLowerCase()); }
@@ -6410,7 +6416,7 @@ const Portfolio = {
         this.items = [
             ...fromList(job.finishedPhotos, "finished", "finished", true),
             ...fromList(job.sitePhotos, "site", "before", false),
-            ...fromList(job.photos, "customer", "before", false),
+            ...fromList(enquiryPhotoUrls(job), "customer", "before", false),
         ];
         const s = this.suggest(job);
         document.getElementById("portfolio-title").value = s.title;
@@ -6965,7 +6971,7 @@ const PortfolioEditor = {
         const already = new Set(this.items.filter(i => !i.removed).map(i => i.source_url || i.url).filter(Boolean));
         const groups = getRealJobs().filter(j => !j.isDemo).map(j => {
             const list = (arr, stage, from) => (Array.isArray(arr) ? arr : []).filter(u => typeof u === "string" && u && !already.has(u)).map(url => ({ url, stage, from }));
-            return { job: j, photos: [...list(j.finishedPhotos, "finished", "Finished"), ...list(j.sitePhotos, "before", "On-site"), ...list(j.photos, "before", "From the customer")] };
+            return { job: j, photos: [...list(j.finishedPhotos, "finished", "Finished"), ...list(j.sitePhotos, "before", "On-site"), ...list(enquiryPhotoUrls(j), "before", "From the customer")] };
         }).filter(g => g.photos.length)
           .sort((a, b) => String(b.job.updatedAt || b.job.createdAt || "").localeCompare(String(a.job.updatedAt || a.job.createdAt || "")));
         this.picker = { selected: new Set(), photos: groups.flatMap(g => g.photos) };
@@ -7838,22 +7844,24 @@ function renderJobView() {
             <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
                 ${job.jobType    ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">📍 ${esc(job.jobType)}</span>` : ""}
                 ${job.areaSize   ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">📐 ${esc(job.areaSize)}</span>` : ""}
-                ${Array.isArray(job.surfaces) && job.surfaces.length ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">🧱 ${job.surfaces.join(", ")}</span>` : ""}
+                ${Array.isArray(job.surfaces) && job.surfaces.length ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">🧱 ${esc(job.surfaces.join(", "))}</span>` : ""}
                 ${job.tileSupply ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">🪣 ${esc(job.tileSupply)}</span>` : ""}
                 ${job.removal    ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">🔨 ${esc(job.removal)}</span>` : ""}
                 ${job.timescale  ? `<span style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 9px;font-size:12px;color:#94a3b8;">📅 ${esc(job.timescale)}</span>` : ""}
             </div>
-            ${Array.isArray(job.photos) && job.photos.length ? `
+            ${enquiryPhotoUrls(job).length ? `
             <div style="margin-top:10px;">
                 <div style="font-size:11px;color:#64748b;margin-bottom:6px;">📷 Customer Photos</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    ${job.photos.map(url => `<img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #334155;cursor:pointer;" onclick="viewPhoto('${url}')">`).join("")}
+                    ${enquiryPhotoUrls(job).map(url => `<img src="${url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid #334155;cursor:pointer;" onclick="viewPhoto('${url}')">`).join("")}
                 </div>
             </div>` : ""}
             <button onclick="goAddRoomFromEnquiry()" style="margin-top:12px;width:100%;background:#e07a2f;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;">+ Add Room & Quote</button>
         ` : "";
         srcBannerEl.innerHTML = `<div style="margin:12px 16px 0;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px;">
             <div style="font-size:11px;color:#e07a2f;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">${bannerTitle}</div>
+            ${job.enquirySource && /^portfolio/.test(job.enquirySource) ? `<div style="font-size:12.5px;color:#fbbf24;margin-bottom:6px;">🖼 From your portfolio website${job.portfolioProject?.title ? `, after looking at <b>${esc(job.portfolioProject.title)}</b>` : job.enquirySource === "portfolio-embed" ? " (the gallery on your other website)" : ""}</div>` : ""}
+            ${job.returningCustomer ? `<div style="font-size:12.5px;color:#93c5fd;margin-bottom:6px;">↩ Same phone or email as an earlier job (${esc(job.returningCustomer)}). Check it's not a duplicate customer.</div>` : ""}
             <div style="font-size:13px;color:#cbd5e1;line-height:1.5;">${esc(job.description)}</div>
             ${job.startDate ? `<div style="font-size:12px;color:#64748b;margin-top:6px;">🗓 Start: ${esc(job.startDate)}</div>` : ""}
             ${enquiryDetails}

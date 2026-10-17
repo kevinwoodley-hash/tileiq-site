@@ -300,6 +300,12 @@
         <label>Anything else we should know? <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
         <textarea id="extraInfo" placeholder="e.g. heated floor, awkward layout, specific tile style, approximate m²..."></textarea>
       </div>
+      <div class="field">
+        <label>Photos of the area <span style="font-weight:400;color:var(--text-muted)">(optional, up to 5)</span></label>
+        <input type="file" id="photoInput" accept="image/*" multiple onchange="handlePhotos(this)" style="width:100%;">
+        <div id="photoPreviews" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div>
+        <div id="photoCount" style="font-size:12px;color:var(--text-muted);margin-top:4px;"></div>
+      </div>
       <div class="btn-row">
         <button class="btn btn-back" onclick="goStep(1)">← Back</button>
         <button class="btn btn-next" onclick="goStep(3)">Next →</button>
@@ -320,22 +326,27 @@
         </div>
       </div>
       <div class="field">
-        <label>Phone number</label>
-        <input type="tel" id="phone" placeholder="07700 000000">
+        <label>Phone number <span style="font-weight:400;color:var(--text-muted)">(phone or email needed)</span></label>
+        <input type="tel" id="phone" placeholder="07700 000000" autocomplete="tel">
       </div>
       <div class="field">
-        <label>Email address <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
-        <input type="email" id="email" placeholder="jane@example.com">
+        <label>Email address</label>
+        <input type="email" id="email" placeholder="jane@example.com" autocomplete="email">
       </div>
       <div class="field">
-        <label>Postcode</label>
-        <input type="text" id="postcode" placeholder="OX12 9AA" style="text-transform:uppercase">
+        <label>Postcode or town</label>
+        <input type="text" id="postcode" placeholder="OX12 9AA" style="text-transform:uppercase" autocomplete="postal-code">
+      </div>
+      <!-- Left empty by people; spam bots fill every field -->
+      <div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+        <label>Website <input type="text" id="website" name="website" tabindex="-1" autocomplete="off"></label>
       </div>
 
       <div class="btn-row">
         <button class="btn btn-back" onclick="goStep(2)">← Back</button>
         <button class="btn btn-submit" id="submitBtn" onclick="submitForm()">Send Enquiry ✓</button>
       </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:14px;line-height:1.5;">Your details are sent to <span class="tilerNameInline">this tiler</span> so they can reply to your enquiry. TileIQ Pro handles them on their behalf. <a href="https://tile-iq.com/privacy" target="_blank" rel="noopener" style="color:inherit;">Privacy policy</a></p>
     </div>
   </div>
 
@@ -352,7 +363,12 @@
   const WORKER = 'https://damp-bread-e0f9.kevin-woodley.workers.dev';
 
   // Get slug from query param: /enquire/?t=kevin-woodley
-  const slug = new URLSearchParams( window.location.search).get('t') || '';
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get('t') || '';
+  // Sent from the tiler's portfolio website (or the gallery on their own site), and which project
+  const src = ['portfolio', 'portfolio-embed'].includes(params.get('src')) ? params.get('src') : '';
+  const projectSlug = /^[a-z0-9-]{1,80}$/.test(params.get('project') || '') ? params.get('project') : '';
+  const formShownAt = Date.now();
 
   let tilerInfo = null;
   let currentStep = 1;
@@ -372,6 +388,7 @@
       document.getElementById('companyName').textContent = tilerInfo.companyName;
       document.title = `Get a Quote — ${tilerInfo.companyName}`;
       document.getElementById('successCompany').textContent = tilerInfo.companyName;
+      document.querySelectorAll('.tilerNameInline').forEach(el => { el.textContent = tilerInfo.companyName; });
 
       if (tilerInfo.logoUrl) {
         const logoEl = document.getElementById('tilerLogo');
@@ -418,8 +435,8 @@
       if (currentStep === 1 && !selectedJobType) { alert('Please select what needs tiling.'); return; }
       if (currentStep === 3) {
         if (!document.getElementById('firstName').value.trim()) { alert('Please enter your first name.'); return; }
-        if (!document.getElementById('phone').value.trim()) { alert('Please enter your phone number.'); return; }
-        if (!document.getElementById('postcode').value.trim()) { alert('Please enter your postcode.'); return; }
+        if (!document.getElementById('phone').value.trim() && !document.getElementById('email').value.trim()) { alert('Please enter a phone number or an email address.'); return; }
+        if (!document.getElementById('postcode').value.trim()) { alert('Please enter your postcode or town.'); return; }
       }
     }
     document.getElementById('step' + currentStep).classList.remove('active');
@@ -432,7 +449,7 @@
   let photoFiles = [];
 
   function handlePhotos(input) {
-    const files = [...input.files].slice(0, 3);
+    const files = [...input.files].filter(f => /^image\//.test(f.type || 'image/')).slice(0, 5);
     photoFiles = files;
     const previews = document.getElementById('photoPreviews');
     const count = document.getElementById('photoCount');
@@ -447,38 +464,48 @@
     count.textContent = files.length > 0 ? `${files.length} photo${files.length > 1 ? 's' : ''} selected` : '';
   }
 
-  async function uploadPhotos(jobId) {
+  // Each photo is re-drawn as a JPEG (max 2048px) before it leaves the phone, which drops its
+  // location and camera data, then sent to the worker, which checks it and stores it.
+  async function cleanPhoto(file) {
+    let src;
+    try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (e) {
+      src = await new Promise((resolve, reject) => {
+        const img = new Image(), u = URL.createObjectURL(file);
+        img.onload = () => { URL.revokeObjectURL(u); resolve(img); };
+        img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('unreadable')); };
+        img.src = u;
+      });
+    }
+    const scale = Math.min(1, 2048 / Math.max(src.width, src.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(src.width * scale)); c.height = Math.max(1, Math.round(src.height * scale));
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+  }
+  async function uploadPhotos() {
     const urls = [];
     for (const file of photoFiles) {
       try {
-        const ext = (file.name.split('.').pop() || (file.type.split('/')[1]) || 'jpg').toLowerCase().replace('jpeg','jpg');
-        const mimeType = file.type || 'image/jpeg';
-        const path = `enquiry/${jobId}/${Date.now()}.${ext}`;
-        const SB_URL = 'https://lzwmqabxpxuuznhbpewm.supabase.co';
-        const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6d21xYWJ4cHh1dXpuaGJwZXdtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Mjk2NDIsImV4cCI6MjA4ODQwNTY0Mn0.N1K9ERPwAV5tcvmLcSrYp7aDKTazDXxFT9sf6GzcXKU';
-        const resp = await fetch(`${SB_URL}/storage/v1/object/enquiry-photos/${path}`, {
-          method: 'POST',
-          headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': mimeType },
-          body: file
-        });
-        const respText = await resp.text();
-        console.log("Upload resp status:", resp.status, "body:", respText);
-        if (resp.status === 200 || resp.status === 201) {
-          urls.push(`${SB_URL}/storage/v1/object/public/enquiry-photos/${path}`);
-        }
-      } catch(e) { console.error("Upload error:", e); alert("Photo upload error: " + e.message); }
+        const blob = await cleanPhoto(file);
+        if (!blob) continue;
+        const resp = await fetch(`${WORKER}/api/enquiry-photo?slug=${encodeURIComponent(slug)}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+        const out = await resp.json().catch(() => ({}));
+        if (resp.ok && out.url) urls.push(out.url);
+      } catch (e) { console.warn('Photo skipped:', e.message); }
     }
-    console.log("Uploaded URLs:", urls);
     return urls;
   }
 
   async function submitForm() {
     const firstName = document.getElementById('firstName').value.trim();
     const phone     = document.getElementById('phone').value.trim();
+    const email     = document.getElementById('email').value.trim();
     const postcode  = document.getElementById('postcode').value.trim();
     if (!firstName) { alert('Please enter your first name.'); return; }
-    if (!phone)     { alert('Please enter your phone number.'); return; }
-    if (!postcode)  { alert('Please enter your postcode.'); return; }
+    if (!phone && !email) { alert('Please enter a phone number or an email address.'); return; }
+    if (!postcode)  { alert('Please enter your postcode or town.'); return; }
 
     const btn = document.getElementById('submitBtn');
     btn.disabled = true;
@@ -489,7 +516,7 @@
       slug,
       name:       firstName + ' ' + document.getElementById('lastName').value.trim(),
       phone,
-      email:      document.getElementById('email').value.trim(),
+      email,
       postcode:   postcode.toUpperCase(),
       jobType:    selectedJobType,
       areaSize:   document.getElementById('areaSize').value,
@@ -498,17 +525,18 @@
       removal:    document.getElementById('removal').value,
       timescale:  document.getElementById('timescale').value,
       extraInfo:  document.getElementById('extraInfo').value,
-      submittedAt: new Date().toISOString()
+      submittedAt: new Date().toISOString(),
+      src, project: projectSlug,
+      website: document.getElementById('website').value,
+      elapsedMs: Date.now() - formShownAt
     };
 
     try {
       // Upload photos first if any
-      const tempJobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
       if (photoFiles.length > 0) {
         btn.textContent = 'Uploading photos…';
-        const photoUrls = await uploadPhotos(tempJobId);
+        const photoUrls = await uploadPhotos();
         if (photoUrls.length > 0) payload.photos = photoUrls;
-        payload.tempJobId = tempJobId;
       }
       btn.textContent = 'Sending…';
       const resp = await fetch(`${WORKER}/enquiry`, {
@@ -521,7 +549,7 @@
     } catch(e) {
       btn.disabled = false;
       btn.textContent = 'Send Enquiry ✓';
-      alert('Something went wrong — please try again or call us directly.');
+      alert(e.message && e.message !== 'Failed' && !/fetch/i.test(e.message) ? e.message : 'Something went wrong — please try again or call us directly.');
       return;
     }
 

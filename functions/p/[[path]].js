@@ -266,7 +266,9 @@ document.querySelectorAll('.chip').forEach(function (c) { c.addEventListener('cl
     ogImage: heroId ? L.imgAbs(heroId, "f") : null, body, jsonLd: businessLd(data, url) });
 }
 
-function renderProject(data, p, L) {
+function renderProject(data, p, L0) {
+  // Quote requests from a project page tell the tiler which project the customer was looking at
+  const L = { ...L0, quote: L0.quote + "&project=" + encodeURIComponent(p.slug) };
   const b = data.business, slug = data.slug, url = L.canon(p.slug), img = L.img;
   const before = p.images.find(i => i.stage === "before");
   const after = p.images.find(i => i.stage === "after") || p.images.find(i => i.stage === "finished");
