@@ -50,9 +50,9 @@ if (false && (!window.Capacitor || !window.Capacitor.isNativePlatform())) {
          style="background:#f59e0b;color:#0f172a;padding:0.75rem 1.5rem;border-radius:8px;text-decoration:none;font-weight:600;display:block;margin-bottom:1rem;">
         Get it on Google Play
       </a>
-      <a href="https://tileiq.app"
+      <a href="https://tile-iq.com"
          style="color:#94a3b8;font-size:0.9rem;text-decoration:underline;">
-        Learn more at tileiq.app
+        Learn more at tile-iq.com
       </a>
     </div>
   `;
@@ -12309,15 +12309,15 @@ function renderCalDayPanel(dateStr) {
             cursor:pointer;border-left:3px solid #f59e0b;
         ">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;">
-                <div style="font-weight:700;font-size:16px;color:var(--text-primary);">${name}</div>
+                <div style="font-weight:700;font-size:16px;color:#f1f5f9;">${esc(name)}</div>
                 ${statusBadge(j.status)}
             </div>
-            ${type ? `<div style="font-size:13px;color:#94a3b8;margin-bottom:6px;">🪣 ${type}</div>` : ""}
-            ${addr ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📍 ${addr}</div>` : ""}
-            ${phone ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📞 ${phone}</div>` : ""}
-            ${email ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">✉️ ${email}</div>` : ""}
+            ${type ? `<div style="font-size:13px;color:#94a3b8;margin-bottom:6px;">🪣 ${esc(type)}</div>` : ""}
+            ${addr ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📍 ${esc(addr)}</div>` : ""}
+            ${phone ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">📞 ${esc(phone)}</div>` : ""}
+            ${email ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">✉️ ${esc(email)}</div>` : ""}
             ${dateRange ? `<div style="font-size:12px;color:#64748b;margin-bottom:2px;">📅 ${dateRange}${dayCount ? ` · ${dayCount}` : ""}</div>` : ""}
-            ${notes ? `<div style="font-size:12px;color:#64748b;margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-style:italic;">${notes}</div>` : ""}
+            ${notes ? `<div style="font-size:12px;color:#94a3b8;margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-style:italic;">${esc(notes)}</div>` : ""}
             <div style="text-align:right;margin-top:8px;font-size:11px;color:#f59e0b;font-weight:600;">Tap to open job →</div>
         </div>`;
     }).join("") + gcalHtml;
