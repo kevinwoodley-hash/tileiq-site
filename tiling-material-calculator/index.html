@@ -1,23 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <!-- TileIQ analytics: Google tag G-274KES4P2G with Consent Mode v2 (see /analytics.js) -->
 <script src="/analytics.js"></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Free tiling material calculator: work out how many tiles, how much adhesive and how much grout you need for any area, instantly. Plus how TileIQ does this automatically on every job." />
-  <title>Tiling Material Calculator | TileIQ Pro</title>
+  <meta name="description" content="Free tiling material calculator: work out tiles, boxes, adhesive and grout for any area, with wastage for straight, diagonal and herringbone layouts." />
+  <title>Tiling Material Calculator: Tiles, Adhesive and Grout | TileIQ</title>
   <link rel="canonical" href="https://tile-iq.com/tiling-material-calculator/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="TileIQ" />
   <meta property="og:url" content="https://tile-iq.com/tiling-material-calculator/" />
-  <meta property="og:title" content="Tiling Material Calculator | TileIQ Pro" />
-  <meta property="og:description" content="Free tiling material calculator: work out how many tiles, how much adhesive and how much grout you need for any area, instantly. Plus how TileIQ does this automatically on every job." />
+  <meta property="og:title" content="Tiling Material Calculator: Tiles, Adhesive and Grout | TileIQ" />
+  <meta property="og:description" content="Free tiling material calculator: work out tiles, boxes, adhesive and grout for any area, with wastage for straight, diagonal and herringbone layouts." />
   <meta property="og:image" content="https://tile-iq.com/images/og-image.jpg" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Tiling Material Calculator | TileIQ Pro" />
-  <meta name="twitter:description" content="Free tiling material calculator: work out how many tiles, how much adhesive and how much grout you need for any area, instantly. Plus how TileIQ does this automatically on every job." />
-  <meta name="twitter:image" content="https://tile-iq.com/images/og-image.jpg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -38,7 +35,13 @@
         {
           "@type": "ListItem",
           "position": 2,
-          "name": "Tiling Material Calculator",
+          "name": "Guides",
+          "item": "https://tile-iq.com/guides/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Tiling material calculator",
           "item": "https://tile-iq.com/tiling-material-calculator/"
         }
       ]
@@ -47,8 +50,8 @@
       "@type": "WebPage",
       "@id": "https://tile-iq.com/tiling-material-calculator/#webpage",
       "url": "https://tile-iq.com/tiling-material-calculator/",
-      "name": "Tiling Material Calculator | TileIQ Pro",
-      "description": "Free tiling material calculator: work out how many tiles, how much adhesive and how much grout you need for any area, instantly. Plus how TileIQ does this automatically on every job.",
+      "name": "Tiling Material Calculator: Tiles, Adhesive and Grout | TileIQ",
+      "description": "Free tiling material calculator: work out tiles, boxes, adhesive and grout for any area, with wastage for straight, diagonal and herringbone layouts.",
       "isPartOf": {
         "@id": "https://tile-iq.com/#website"
       },
@@ -88,67 +91,41 @@
   </header>
 
   <main>
-    <section class="features-hero">
-      <div class="container features-hero-grid">
-        <div>
-          <span class="kicker">TILING MATERIAL CALCULATOR</span>
-          <h1>How much tile, adhesive<br>and grout do you need?</h1>
-          <p>Enter the area and get a quick planning estimate for tiles, adhesive and grout — free, no sign-up. For the exact numbers on a real job, TileIQ works this out automatically from your measurements every time.</p>
-        </div>
-        <div class="features-summary-card">
-          <span>Quick estimate</span>
-          <div class="summary-flow"><b>Area</b><i>→</i><b>Tiles</b><i>→</i><b>Adhesive</b><i>→</i><b>Grout</b></div>
-        </div>
+    <section class="features-hero calc-hero">
+      <div class="container">
+        <p class="calc-crumbs"><a href="/">Home</a> › <a href="/guides/">Guides</a> › <span>Tiling material calculator</span></p>
+        <span class="kicker">FREE TILING CALCULATOR</span>
+        <h1>How much tile, adhesive<br>and grout do you need?</h1>
+        <p class="calc-intro">Enter the area, tile size and layout to get tiles, boxes, adhesive and grout. Free, with no sign-up. On a real job, TileIQ works this out from your measurements automatically.</p>
       </div>
     </section>
 
     <section class="feature-category" id="calculator">
       <div class="container">
-        <div class="calc-box">
-          <div class="calc-row">
-            <label for="calc-area">Area to tile (m²)</label>
-            <input type="number" id="calc-area" value="35" min="0" step="0.1">
-          </div>
-          <div class="calc-row">
-            <label for="calc-waste">Wastage allowance (%)</label>
-            <input type="number" id="calc-waste" value="10" min="0" step="1">
-          </div>
-          <div class="calc-row">
-            <label for="calc-tile-l">Tile size — length (cm)</label>
-            <input type="number" id="calc-tile-l" value="30" min="1" step="1">
-          </div>
-          <div class="calc-row">
-            <label for="calc-tile-w">Tile size — width (cm)</label>
-            <input type="number" id="calc-tile-w" value="30" min="1" step="1">
-          </div>
-          <div class="calc-row">
-            <label for="calc-adh-rate">Adhesive coverage (kg per m²)</label>
-            <input type="number" id="calc-adh-rate" value="4" min="0" step="0.1">
-          </div>
-          <div class="calc-row">
-            <label for="calc-adh-bag">Adhesive bag size (kg)</label>
-            <input type="number" id="calc-adh-bag" value="20" min="1" step="1">
-          </div>
-          <div class="calc-row">
-            <label for="calc-grout-joint">Grout joint width</label>
-            <select id="calc-grout-joint">
-              <option value="0.3">Narrow (≤2mm)</option>
-              <option value="0.6" selected>Medium (3–5mm)</option>
-              <option value="1.2">Wide (6mm+)</option>
-            </select>
-          </div>
-          <div class="calc-row">
-            <label for="calc-grout-bag">Grout bag size (kg)</label>
-            <input type="number" id="calc-grout-bag" value="5" min="1" step="1">
-          </div>
-
-          <div class="calc-results" id="calc-results">
+        <div class="calc-box" data-calc="tiling-material-calculator">
+          <h2 class="calc-group">Area and tiles</h2>
+          <div class="calc-row"><label for="calc-area">Area to tile (m²)</label><input type="number" id="calc-area" value="35" min="0" step="0.1" inputmode="decimal"></div>
+          <div class="calc-row"><label for="calc-layout">Layout</label><select id="calc-layout"><option value="10" selected>Straight (10%)</option><option value="15">Diagonal (15%)</option><option value="25">Herringbone (25%)</option></select></div>
+          <div class="calc-row"><label for="calc-waste">Wastage allowance (%)</label><input type="number" id="calc-waste" value="10" min="0" step="1" inputmode="decimal"></div>
+          <div class="calc-row"><label for="calc-tile-l">Tile length (mm)</label><input type="number" id="calc-tile-l" value="600" min="0" step="1" inputmode="decimal"></div>
+          <div class="calc-row"><label for="calc-tile-w">Tile width (mm)</label><input type="number" id="calc-tile-w" value="300" min="0" step="1" inputmode="decimal"></div>
+          <div class="calc-row"><label for="calc-box-m2">m² per box (optional)</label><input type="number" id="calc-box-m2" value="" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 1.44"></div>
+          <h2 class="calc-group">Adhesive</h2>
+          <div class="calc-row"><label for="calc-adh-type">Tile and bed</label><select id="calc-adh-type"><option value="2">Mosaic, small (2 kg)</option><option value="3" selected>Standard (3 kg)</option><option value="5">Large format (5 kg)</option><option value="">Custom</option></select></div>
+          <div class="calc-row"><label for="calc-adh-rate">Adhesive (kg per m²)</label><input type="number" id="calc-adh-rate" value="3" min="0" step="0.1" inputmode="decimal"></div>
+          <div class="calc-row"><label for="calc-adh-bag">Adhesive bag size (kg)</label><input type="number" id="calc-adh-bag" value="20" min="0" step="1" inputmode="decimal"></div>
+          <h2 class="calc-group">Grout</h2>
+          <div class="calc-row"><label for="calc-joint">Joint width (mm)</label><input type="number" id="calc-joint" value="3" min="0" step="0.5" inputmode="decimal"></div>
+          <div class="calc-row"><label for="calc-thick">Tile thickness (mm)</label><input type="number" id="calc-thick" value="9" min="0" step="0.5" inputmode="decimal"></div>
+          <div class="calc-row"><label for="calc-grout-bag">Grout bag size (kg)</label><input type="number" id="calc-grout-bag" value="2.5" min="0" step="0.5" inputmode="decimal"></div>
+          <div class="calc-results">
             <div><span>Tile area to buy (with wastage)</span><b id="res-tile-area">–</b></div>
+            <div><span>Boxes</span><b id="res-boxes">–</b></div>
             <div><span>Approx. number of tiles</span><b id="res-tile-count">–</b></div>
-            <div><span>Adhesive needed</span><b id="res-adhesive">–</b></div>
-            <div><span>Grout needed</span><b id="res-grout">–</b></div>
+            <div><span>Adhesive</span><b id="res-adhesive">–</b></div>
+            <div><span>Grout</span><b id="res-grout">–</b></div>
           </div>
-          <p class="calc-note">Planning estimates only. Adhesive and grout coverage vary by product, trowel notch size and tile size — always check the coverage guidance on the packaging you're using before ordering for a real job.</p>
+          <p class="calc-note">Planning estimates only. Adhesive figures are typical manufacturer consumption rates (e.g. Mapei Adesilex P9); grout uses the standard formula (L+W)/(L×W) × joint width × tile thickness × 1.6. Always check the data sheet for the product you are using.</p>
         </div>
       </div>
     </section>
@@ -157,33 +134,28 @@
       <div class="container">
         <div class="feature-category-heading">
           <span class="category-num">01</span>
-          <div><span class="kicker">HOW THE NUMBERS WORK</span><h2>How much adhesive do I need for 35m²?</h2><p>As a planning estimate: at a typical coverage rate of around 4kg per m² (roughly what a 6mm notched trowel uses for a single fix), 35m² needs about 140kg of adhesive — seven 20kg bags. Grout at a medium joint width (around 0.6kg per m²) would need about 21kg, or five 5kg bags. Always confirm against your specific product's coverage chart, since it changes with trowel notch size, tile size and how flat the substrate is.</p></div>
+          <div><span class="kicker">HOW THE NUMBERS WORK</span><h2>How much adhesive and grout per m²?</h2><p>Mapei's data sheet for a standard cement-based adhesive gives about 2 kg/m² for mosaics, 2.5–3 kg/m² for standard tiles and about 5 kg/m² for large-format and external floors. A 20 kg bag covers roughly 6–7.5 m² with a 6 mm notched trowel, or 4–5 m² with a 10 mm one. Grout depends on the tile size, thickness and joint width: narrow joints on big tiles use very little, wide joints on small thick tiles use much more. The calculator adds 10% to the grout for waste.</p></div>
         </div>
-        <div class="feature-detail-grid">
-          <article><h3>Tile wastage</h3><p>A wastage allowance of around 10% is a common starting point for straight lay patterns, and higher for diagonal, herringbone or complex cuts.</p></article>
-          <article><h3>Adhesive coverage</h3><p>Coverage depends on trowel notch size and whether it's a single or solid bed fix — check the bag for the exact figure.</p></article>
-          <article><h3>Grout coverage</h3><p>Wider joints and larger tiles both increase how much grout a job needs per m².</p></article>
-        </div>
+        <div class="feature-detail-grid"><article><h3>Tile wastage</h3><p>10% for a straight lay, 15% for diagonal and 20–25% for herringbone. Allow more for large format and small, awkward rooms.</p><a href="/guides/tile-wastage-and-materials/">Read the wastage guide →</a></article>
+          <article><h3>Round up to full boxes</h3><p>Order whole boxes from the same batch and leave the customer a few spares for future repairs.</p></article>
+          <article><h3>Check the product</h3><p>Coverage changes with the trowel, tile and how flat the surface is. Use the data sheet for the product you are fixing with.</p></article></div>
       </div>
     </section>
-
     <section class="feature-category">
       <div class="container">
         <div class="feature-category-heading">
           <span class="category-num">02</span>
-          <div><span class="kicker">DOING THIS ON A REAL JOB</span><h2>Want TileIQ to calculate this automatically on every job?</h2><p>This calculator gives a quick planning estimate. On a real job, TileIQ calculates tiles, adhesive and grout directly from the room measurements you take — with wastage, tile type and coverage built in — so the quote you send is accurate, not rounded up "to be safe".</p></div>
+          <div><span class="kicker">DOING THIS ON A REAL JOB</span><h2>Want TileIQ to calculate this automatically on every job?</h2><p>On a real job, TileIQ works out tiles, adhesive, grout, sealant and tanking for every wall and floor from the measurements you take, and puts them straight into the quote.</p></div>
         </div>
-        <div class="feature-detail-grid">
-          <article><h3>From measurement to quote</h3><p>Material calculations feed straight into a professional quote you can send from site.</p><a href="/tiling-quote-app/">See the quote app →</a></article>
-          <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>
-        </div>
+        <div class="feature-detail-grid"><article><h3>From measurement to quote</h3><p>Material calculations feed straight into a professional quote you can send from site.</p><a href="/tiling-quote-app/">See the quote app →</a></article>
+          <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article></div>
       </div>
     </section>
-
     <section class="cta-section">
       <div class="container cta-card">
-        <div><h2>Let TileIQ do this calculation for you.</h2><p>Free to start. No credit card required.</p></div>
-        <a class="btn btn-dark" href="https://tile-iq.com/app/demo">Try TileIQ Free →</a>
+        <div><h2>Use your rates on every real quote.</h2><p>Try the real TileIQ app free. No sign-up needed, and your first quote is free.</p>
+          <p class="calc-demo-link">Just looking? <a href="/app/demo" data-cta-kind="demo">Try the demo</a> (no account, nothing saved).</p></div>
+        <a class="btn btn-dark" href="/app/?utm_source=calc-tiling-material-calculator&utm_medium=calculator" data-cta-kind="app">Try TileIQ free →</a>
       </div>
     </section>
   </main>
@@ -207,33 +179,43 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const ids = ['calc-area','calc-waste','calc-tile-l','calc-tile-w','calc-adh-rate','calc-adh-bag','calc-grout-joint','calc-grout-bag'];
-
-  function calc() {
-    const area   = parseFloat($('calc-area').value) || 0;
-    const waste  = parseFloat($('calc-waste').value) || 0;
-    const tileL  = parseFloat($('calc-tile-l').value) || 0;
-    const tileW  = parseFloat($('calc-tile-w').value) || 0;
-    const adhRate= parseFloat($('calc-adh-rate').value) || 0;
-    const adhBag = parseFloat($('calc-adh-bag').value) || 1;
-    const groutRate = parseFloat($('calc-grout-joint').value) || 0;
-    const groutBag  = parseFloat($('calc-grout-bag').value) || 1;
-
-    const areaWithWaste = area * (1 + waste / 100);
-    const tileAreaM2 = (tileL / 100) * (tileW / 100);
-    const tileCount = tileAreaM2 > 0 ? Math.ceil(areaWithWaste / tileAreaM2) : 0;
-    const adhesiveKg = area * adhRate;
-    const adhesiveBags = adhBag > 0 ? Math.ceil(adhesiveKg / adhBag) : 0;
-    const groutKg = area * groutRate;
-    const groutBags = groutBag > 0 ? Math.ceil(groutKg / groutBag) : 0;
-
-    $('res-tile-area').textContent = areaWithWaste.toFixed(1) + ' m²';
-    $('res-tile-count').textContent = tileCount ? tileCount + ' tiles' : '–';
-    $('res-adhesive').textContent = adhesiveKg.toFixed(0) + ' kg (' + adhesiveBags + ' bag' + (adhesiveBags === 1 ? '' : 's') + ')';
-    $('res-grout').textContent = groutKg.toFixed(1) + ' kg (' + groutBags + ' bag' + (groutBags === 1 ? '' : 's') + ')';
+  const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : 0; };
+  const gbp = n => '£' + Math.round(n).toLocaleString('en-GB');
+  const gbp2 = n => '£' + n.toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const box = document.querySelector('.calc-box');
+  let used = false;
+  // One anonymous event per visit when someone uses the calculator; analytics only exist after consent.
+  function track(name, props) {
+    try { if (typeof window.gtag === 'function') window.gtag('event', name, props); } catch (e) {}
+    try { if (window.posthog && window.posthog.__loaded) window.posthog.capture(name, props); } catch (e) {}
   }
+  document.addEventListener('click', ev => {
+    const a = ev.target.closest && ev.target.closest('[data-cta-kind]');
+    if (a) track('calculator_cta_click', { calculator: box.dataset.calc, cta_kind: a.dataset.ctaKind });
+  }, true);
 
-  ids.forEach(id => $(id) && $(id).addEventListener('input', calc));
+  $('calc-layout').addEventListener('change', () => { $('calc-waste').value = $('calc-layout').value; });
+  $('calc-adh-type').addEventListener('change', () => { if ($('calc-adh-type').value) $('calc-adh-rate').value = $('calc-adh-type').value; });
+  function calc() {
+    const area = num('calc-area'), waste = num('calc-waste'), L = num('calc-tile-l'), W = num('calc-tile-w');
+    const boxM2 = num('calc-box-m2'), adhRate = num('calc-adh-rate'), adhBag = num('calc-adh-bag') || 1;
+    const joint = num('calc-joint'), thick = num('calc-thick'), groutBag = num('calc-grout-bag') || 1;
+    const buy = area * (1 + waste / 100);
+    const tileM2 = (L / 1000) * (W / 1000);
+    const tiles = tileM2 > 0 ? Math.ceil(buy / tileM2) : 0;
+    const adhKg = area * adhRate, adhBags = Math.ceil(adhKg / adhBag);
+    const groutPerM2 = L > 0 && W > 0 ? ((L + W) / (L * W)) * joint * thick * 1.6 : 0;
+    const groutKg = area * groutPerM2 * 1.1, groutBags = Math.ceil(groutKg / groutBag);
+    $('res-tile-area').textContent = buy.toFixed(2) + ' m²';
+    $('res-boxes').textContent = boxM2 > 0 ? Math.ceil(buy / boxM2) + ' boxes (' + (Math.ceil(buy / boxM2) * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
+    $('res-tile-count').textContent = tiles ? tiles + ' tiles' : '–';
+    $('res-adhesive').textContent = adhKg.toFixed(0) + ' kg (' + adhBags + ' × ' + adhBag + ' kg)';
+    $('res-grout').textContent = groutKg.toFixed(1) + ' kg (' + groutBags + ' × ' + groutBag + ' kg)';
+  }
+  box.querySelectorAll('input,select').forEach(el => el.addEventListener('input', () => {
+    calc();
+    if (!used) { used = true; track('calculator_used', { calculator: box.dataset.calc }); }
+  }));
   calc();
 })();
 </script>
