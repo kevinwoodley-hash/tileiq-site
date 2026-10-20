@@ -78,12 +78,12 @@ def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, scrip
 <script>
 (() => {{
   const $ = id => document.getElementById(id);
-  const num = id => {{ const v = parseFloat($(id).value); return isFinite(v) ? v : 0; }};
+  const num = id => {{ const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : 0; }};   // blanks and negatives count as 0
   const gbp = n => '£' + Math.round(n).toLocaleString('en-GB');
   const gbp2 = n => '£' + n.toLocaleString('en-GB', {{minimumFractionDigits: 2, maximumFractionDigits: 2}});
   const box = document.querySelector('.calc-box');
   let used = false;
-  // One anonymous event per visit when someone uses the calculator; analytics only exist after consent.
+  // Anonymous events only (no values entered); analytics only exist after consent.
   function track(name, props) {{
     try {{ if (typeof window.gtag === 'function') window.gtag('event', name, props); }} catch (e) {{}}
     try {{ if (window.posthog && window.posthog.__loaded) window.posthog.capture(name, props); }} catch (e) {{}}
@@ -93,9 +93,14 @@ def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, scrip
     if (a) track('calculator_cta_click', {{ calculator: box.dataset.calc, cta_kind: a.dataset.ctaKind }});
   }}, true);
 {script}
+  // calculator_used = first change; calculator_completed = changed at least two different inputs and
+  // then paused for 4 seconds (i.e. they put in their own numbers and read the result). Once per visit.
+  const changed = new Set(); let done = false, idle;
   box.querySelectorAll('input,select').forEach(el => el.addEventListener('input', () => {{
     calc();
     if (!used) {{ used = true; track('calculator_used', {{ calculator: box.dataset.calc }}); }}
+    changed.add(el.id); clearTimeout(idle);
+    if (!done && changed.size >= 2) idle = setTimeout(() => {{ done = true; track('calculator_completed', {{ calculator: box.dataset.calc, inputs_changed: changed.size }}); }}, 4000);
   }}));
   calc();
 }})();

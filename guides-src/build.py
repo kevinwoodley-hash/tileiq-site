@@ -221,7 +221,7 @@ def build_hub(guides, header, footer, tools):
         {"@type": "CollectionPage", "name": "Tiling advice and resources", "url": url,
          "hasPart": [{"@type": "Article", "headline": g["h1"], "url": f"{SITE}/guides/{g['slug']}/"} for g in live]}]}
     desc = "Practical guides for UK tilers: labour and day rates, quoting bathrooms, tile wastage and materials, plus free calculators."
-    page = head("Tiling Guides for UK Tilers: Prices, Quoting & Calculators | TileIQ", desc, url, "website", ld)
+    page = head("Tiling Guides: Prices, Quoting & Calculators | TileIQ", desc, url, "website", ld)
     sections = ""
     for cat in CATEGORIES:
         cards = [g for g in live if g["category"] == cat]

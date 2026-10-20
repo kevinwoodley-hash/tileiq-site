@@ -174,12 +174,12 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : 0; };
+  const num = id => { const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : 0; };   // blanks and negatives count as 0
   const gbp = n => '£' + Math.round(n).toLocaleString('en-GB');
   const gbp2 = n => '£' + n.toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const box = document.querySelector('.calc-box');
   let used = false;
-  // One anonymous event per visit when someone uses the calculator; analytics only exist after consent.
+  // Anonymous events only (no values entered); analytics only exist after consent.
   function track(name, props) {
     try { if (typeof window.gtag === 'function') window.gtag('event', name, props); } catch (e) {}
     try { if (window.posthog && window.posthog.__loaded) window.posthog.capture(name, props); } catch (e) {}
@@ -209,9 +209,14 @@
     else if (diff > 0.25) { c.textContent = 'This works out ' + Math.round(diff * 100) + '% above your day rate. Check it is competitive for the job.'; c.className = 'calc-check high'; }
     else { c.textContent = 'In line with your day rate.'; c.className = 'calc-check ok'; }
   }
+  // calculator_used = first change; calculator_completed = changed at least two different inputs and
+  // then paused for 4 seconds (i.e. they put in their own numbers and read the result). Once per visit.
+  const changed = new Set(); let done = false, idle;
   box.querySelectorAll('input,select').forEach(el => el.addEventListener('input', () => {
     calc();
     if (!used) { used = true; track('calculator_used', { calculator: box.dataset.calc }); }
+    changed.add(el.id); clearTimeout(idle);
+    if (!done && changed.size >= 2) idle = setTimeout(() => { done = true; track('calculator_completed', { calculator: box.dataset.calc, inputs_changed: changed.size }); }, 4000);
   }));
   calc();
 })();

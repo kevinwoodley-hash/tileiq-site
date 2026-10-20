@@ -928,6 +928,10 @@ const TQA = (() => {
                 phUser = currentUser.id;
             }
             p.register({ platform_type: platform(), is_internal_test: internal() ? "true" : "false" });
+            // Web app: keep where this browser first arrived from (e.g. utm_source=guide-tiling-labour-rates-uk
+            // from a guide's "Try the real app" link), so sign_up / first_quote_sent can be traced to it.
+            const src = platform() === "web" ? window.tileiqConsent?.source?.() : null;
+            if (src?.s) p.register_once({ entry_source: src.s, entry_medium: src.m, entry_campaign: src.c || undefined });
             phPerson(p);
         } catch (_) {}
     }
