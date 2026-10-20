@@ -1,2 +1,5 @@
 /.well-known/assetlinks.json
   Content-Type: application/json
+
+/guides-src/*
+  X-Robots-Tag: noindex
