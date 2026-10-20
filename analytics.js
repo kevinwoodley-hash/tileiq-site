@@ -224,6 +224,19 @@
     [/(^|\.)tiktok\.com$/, 'tiktok'], [/(^|\.)youtube\.com$|^youtu\.be$/, 'youtube'], [/(^|\.)linkedin\.com$|^lnkd\.in$/, 'linkedin'],
     [/^(t\.co|x\.com|twitter\.com|mobile\.twitter\.com)$/, 'x'], [/(^|\.)pinterest\./, 'pinterest'], [/(^|\.)reddit\.com$/, 'reddit'],
     [/(^|\.)whatsapp\.com$/, 'whatsapp']];
+  // AI assistants and AI search, recorded with medium 'ai'. Matched on the referring host,
+  // or on a utm_source they add to links (ChatGPT adds utm_source=chatgpt.com). Many AI apps
+  // send no referrer at all; those visits can't be identified and show up as direct.
+  var AI = [[/(^|\.)(chatgpt\.com|chat\.openai\.com|openai\.com)$/, 'chatgpt'], [/(^|\.)perplexity\.ai$/, 'perplexity'],
+    [/^(gemini|bard)\.google\.com$/, 'gemini'], [/^copilot\.microsoft\.com$|^copilot\.cloud\.microsoft$/, 'copilot'],
+    [/(^|\.)claude\.ai$/, 'claude'], [/(^|\.)(grok\.com|x\.ai)$/, 'grok'], [/(^|\.)meta\.ai$/, 'meta_ai'],
+    [/(^|\.)deepseek\.com$/, 'deepseek'], [/(^|\.)mistral\.ai$/, 'mistral'], [/(^|\.)you\.com$/, 'you.com'],
+    [/(^|\.)phind\.com$/, 'phind'], [/(^|\.)poe\.com$/, 'poe']];
+  function aiName(host) {
+    host = String(host || '').toLowerCase().replace(/^www\./, '');
+    for (var i = 0; i < AI.length; i++) if (AI[i][0].test(host)) return AI[i][1];
+    return '';
+  }
   function hostOf(u) { try { return new URL(u).hostname.toLowerCase(); } catch (e) { return ''; } }
   // The page the visit is about: the demo wrapper when we're the app inside it
   var topWin = window;
@@ -238,6 +251,8 @@
   function visitSource() {
     var q = new URLSearchParams(topWin.location.search);
     var camp = q.get('utm_campaign');
+    var ai = aiName(q.get('utm_source'));
+    if (ai) return { s: ai, m: 'ai', c: camp };
     if (q.get('utm_source')) return { s: q.get('utm_source'), m: q.get('utm_medium') || '(not set)', c: camp };
     if (q.get('gclid') || q.get('gbraid') || q.get('wbraid')) return { s: 'google', m: 'cpc', c: camp };
     if (q.get('ttclid')) return { s: 'tiktok', m: 'paid_social', c: camp };
@@ -245,6 +260,7 @@
     var ref = hostOf(topWin.document.referrer);
     if (ref && SITE_HOST.test(ref)) return null;
     if (ref) {
+      if (aiName(ref)) return { s: aiName(ref), m: 'ai' };
       for (var i = 0; i < SOCIAL.length; i++) if (SOCIAL[i][0].test(ref)) return { s: SOCIAL[i][1], m: 'social' };
       var se = ref.match(/(^|\.)(google|bing|duckduckgo|yahoo|ecosia|yandex|baidu)\./);
       if (se) return { s: se[2], m: 'organic' };
@@ -254,7 +270,10 @@
     if (/FBAN|FBAV|FB_IAB/.test(ua) || q.get('fbclid')) return { s: /Instagram/.test(ua) ? 'instagram' : 'facebook', m: 'social' };
     if (/Instagram/.test(ua)) return { s: 'instagram', m: 'social' };
     if (/musical_ly|BytedanceWebview|TikTok|trill_/i.test(ua)) return { s: 'tiktok', m: 'social' };
-    return { s: '(direct)', m: '(none)' };
+    // No referrer and no tags. Arriving straight on an inner page (a guide, a calculator) rather
+    // than the homepage is typical of links opened from AI assistants, chat apps and email, so
+    // it's kept apart from typed-in / bookmarked homepage visits. Still unattributed, not AI.
+    return { s: '(direct)', m: topWin.location.pathname === '/' ? '(none)' : 'deep link' };
   }
   var source = visitSource();
 

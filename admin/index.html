@@ -1055,20 +1055,56 @@ async function loadTraffic() {
       </table></div>` : '<div style="font-size:13px;color:var(--text-muted);">Nothing in this period yet.</div>'}
     </div>`;
     const t = d.totals, max = Math.max(1, ...d.daily.map(x => x.visits));
+    const ai = d.sources.filter(r => / \/ ai$/.test(r.key));
+    const aiVisits = ai.reduce((n, r) => n + r.visits, 0);
+    const deep = (d.sources.find(r => r.key === '(direct) / deep link') || { visits: 0 }).visits;
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
         <div class="card"><div style="font-size:12px;color:var(--text-muted);">Visits</div><div style="font-size:28px;font-weight:800;">${t.visits}</div></div>
         <div class="card"><div style="font-size:12px;color:var(--text-muted);">Store taps</div><div style="font-size:28px;font-weight:800;">${t.store_clicks}</div><div style="font-size:12px;color:var(--text-muted);">${t.google_play} Google Play · ${t.app_store} App Store</div></div>
         <div class="card"><div style="font-size:12px;color:var(--text-muted);">Visits that tapped a store</div><div style="font-size:28px;font-weight:800;">${pct(t.store_clicks, t.visits)}</div></div>
+        <div class="card"><div style="font-size:12px;color:var(--text-muted);">From AI assistants</div><div style="font-size:28px;font-weight:800;">${aiVisits}</div><div style="font-size:12px;color:var(--text-muted);">identified · ${deep} unattributed deep-link visits</div></div>
       </div>
       ${d.daily.length > 1 ? `<div class="card" style="margin-bottom:16px;"><h2>Visits per day</h2>
         <div style="display:flex;align-items:flex-end;gap:2px;height:90px;margin-top:8px;">${d.daily.map(x => `<div title="${x.key}: ${x.visits} visits, ${x.store_clicks} store taps" style="flex:1;background:var(--amber);border-radius:3px 3px 0 0;height:${Math.max(2, Math.round(x.visits / max * 100))}%;"></div>`).join('')}</div></div>` : ''}
       ${table('Where visitors come from', 'Source / medium. Untagged Facebook, Instagram and TikTok visits are recognised from their in-app browsers where possible; tag your links with utm_source so every post and ad is counted correctly. "(moved between pages)" = a store tap on a page after the first one, where the original source is no longer known.', d.sources, 'Source / medium')}
       ${table('Campaigns', 'From utm_campaign on your links (e.g. one name per ad or post).', d.campaigns, 'Source · campaign')}
-      ${table('Landing pages', 'The page people arrived on.', d.landings, 'Page')}`;
+      ${table('Landing pages', 'The page people arrived on.', d.landings, 'Page')}
+      ${table('From AI assistants', 'Visitors recognised as coming from ChatGPT, Perplexity, Gemini, Copilot, Claude and other AI tools, by their referrer or the utm_source they add. Many AI apps send no referrer: those visits cannot be identified and are counted as "(direct) / deep link" (arrived straight on an inner page) or "(direct) / (none)" (homepage).', ai, 'AI source')}
+      <div id="tr-crawlers"><div class="card" style="margin-bottom:16px;"><h2>Search and AI crawlers</h2><div class="loading">Loading…</div></div></div>`;
+    loadCrawlers();
   } catch (e) {
     status.textContent = '';
     body.innerHTML = `<div class="card" style="color:#b91c1c;font-size:13px;">Couldn't load traffic (${jrEsc(e.message)}). If this is new, check the site_source_events table exists in Supabase and the worker is deployed.</div>`;
+  }
+}
+
+// Search / AI crawlers fetching the guides, calculators, robots.txt and sitemap, from
+// GET /api/admin/crawlers (worker; logged by the site's Pages Functions). Bot names come from
+// the user agent, so they are what the crawler claims to be.
+async function loadCrawlers() {
+  const box = document.getElementById('tr-crawlers');
+  if (!box) return;
+  const th = 'text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:1px solid var(--border);';
+  const td = 'padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);';
+  const when = iso => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  try {
+    const d = await api('/api/admin/crawlers?days=' + document.getElementById('tr-days').value);
+    box.innerHTML = `<div class="card" style="margin-bottom:16px;">
+      <h2>Search and AI crawlers</h2>
+      <p>When crawlers such as Googlebot, Bingbot, OAI-SearchBot (ChatGPT search), PerplexityBot and ClaudeBot fetched the guides, calculators, robots.txt and sitemap. ${d.total} fetches in this period. Names are as the crawler reports itself. A crawl is not a guarantee of being shown in results.</p>
+      ${d.bots.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+        <tr><th style="${th}">Crawler</th><th style="${th}text-align:right;">Fetches</th><th style="${th}text-align:right;">Pages</th><th style="${th}text-align:right;">Errors</th><th style="${th}">First seen</th><th style="${th}">Last seen</th></tr>
+        ${d.bots.map(b => `<tr><td style="${td}font-weight:600;">${jrEsc(b.bot)}</td><td style="${td}text-align:right;">${b.hits}</td><td style="${td}text-align:right;">${b.pages}</td><td style="${td}text-align:right;">${b.errors}</td><td style="${td}">${when(b.first)}</td><td style="${td}">${when(b.last)}</td></tr>`).join('')}
+      </table></div>` : '<div style="font-size:13px;color:var(--text-muted);">No crawler fetches logged in this period yet.</div>'}
+    </div>
+    ${d.pages.length ? `<div class="card" style="margin-bottom:16px;"><h2>Pages crawled</h2><p>Each page, with when each crawler last fetched it.</p>
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+        <tr><th style="${th}">Page</th><th style="${th}text-align:right;">Fetches</th><th style="${th}">Last crawled by</th></tr>
+        ${d.pages.map(p => `<tr><td style="${td}font-weight:600;">${jrEsc(p.path)}</td><td style="${td}text-align:right;">${p.hits}</td><td style="${td}">${Object.entries(p.bots).sort((a, b) => b[1].localeCompare(a[1])).map(([bot, t]) => `${jrEsc(bot)} <span style="color:var(--text-muted);">${when(t)}</span>`).join('<br>')}</td></tr>`).join('')}
+      </table></div></div>` : ''}`;
+  } catch (e) {
+    box.innerHTML = `<div class="card" style="margin-bottom:16px;font-size:13px;"><h2>Search and AI crawlers</h2><p style="color:#b91c1c;">Couldn't load crawler visits (${jrEsc(e.message)}). If this is new: create the crawler_hits table in Supabase, set CRAWLER_LOG_KEY on the worker and the Pages project, and deploy the worker.</p></div>`;
   }
 }
 
