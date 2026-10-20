@@ -11484,7 +11484,7 @@ function goPrivacy(from) {
 }
 
 function openPrivacyWeb() {
-    const url = "https://tileiq.com/privacy";
+    const url = "https://tile-iq.com/privacy";
     try { window.open(url, "_system"); } catch(e) { window.location.href = url; }
 }
 
@@ -11499,7 +11499,7 @@ function goTerms(from) {
 }
 
 function openTermsWeb() {
-    const url = "https://tileiq.com/terms";
+    const url = "https://tile-iq.com/terms";
     try { window.open(url, "_system"); } catch(e) { window.location.href = url; }
 }
 

@@ -66,6 +66,7 @@ def site_chrome():
     blog = open(os.path.join(ROOT, "blog", "how-to-measure-a-room-for-tiling", "index.html"), encoding="utf-8").read()
     header = re.search(r"  <header class=\"site-header contact-header\">.*?</header>", blog, re.S).group(0)
     header = header.replace(' class="active" href="/blog/"', ' href="/blog/"')
+    header = header.replace('<a href="/guides/">Guides</a>', '<a class="active" href="/guides/">Guides</a>')
     if 'href="/guides/"' not in header:
         header = header.replace('<a href="/blog/">Blog</a>', '<a class="active" href="/guides/">Guides</a>\n        <a href="/blog/">Blog</a>')
     footer = re.search(r"  <footer>.*?</footer>", blog, re.S).group(0)

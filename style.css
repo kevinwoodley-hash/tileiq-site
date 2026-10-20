@@ -21,6 +21,9 @@ img{max-width:100%;display:block}
 .brand-icon i{border:1px solid var(--yellow)}
 .brand-word{font:800 32px/1 'Manrope',sans-serif}.brand-word span{color:var(--yellow)}.brand-word small{display:block;font-size:7px;letter-spacing:.14em;margin-top:5px;color:#aaa}
 .nav-links{display:flex;gap:26px;font-size:13px;font-weight:600}
+.nav-links a{white-space:nowrap}
+@media(max-width:1500px){.nav-links{gap:16px}}
+@media(max-width:1120px){.nav-links{gap:10px;font-size:12px}}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:14px;border-radius:11px;padding:14px 20px;font-weight:800}
 .btn-primary{background:linear-gradient(135deg,var(--yellow-2),#099895);color:#111}
 .btn-ghost{border:1px solid #666;background:rgba(0,0,0,.25)}
