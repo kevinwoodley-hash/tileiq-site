@@ -385,9 +385,9 @@ wall_sections = section("01", "HOW THE NUMBERS WORK", "Working out walls",
           <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>""")
 
 pages = [
-    ("tiling-material-calculator", "Tiling Material Calculator: Tiles, Adhesive and Grout | TileIQ",
-     "Free tiling material calculator: work out tiles, boxes, adhesive and grout for any area, with wastage for straight, diagonal and herringbone layouts.",
-     "Tiling material calculator", "FREE TILING CALCULATOR", "How much tile, adhesive<br>and grout do you need?",
+    ("tiling-material-calculator", "Tiling Calculator: Tiles, Adhesive and Grout | TileIQ",
+     "Free tiling calculator: work out how many tiles and boxes you need, plus adhesive and grout, with wastage for straight, diagonal and herringbone layouts.",
+     "Tiling calculator", "FREE TILING CALCULATOR", "Tiling calculator: tiles,<br>adhesive and grout",
      "Enter the area, tile size and layout to get tiles, boxes, adhesive and grout. Free, with no sign-up. On a real job, TileIQ works this out from your measurements automatically.",
      mat_calc, mat_sections, mat_script),
     ("tiling-day-rate-calculator", "Tiler Day Rate Calculator (UK) | TileIQ",

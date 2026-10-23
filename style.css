@@ -1099,3 +1099,12 @@ a.blog-card:hover{border-color:#187477}
 .benefit-closer{font:800 19px/1.3 'Manrope';color:#fff;margin:0;max-width:600px;margin-left:auto;margin-right:auto}
 @media(max-width:600px){.benefit-row{padding:52px 0}}
 @media(max-width:760px){.features-hero.calc-hero{padding-top:96px!important}}
+
+/* Site-wide footer links (SEO internal linking) */
+.footer-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;padding:28px 0 22px;margin-bottom:14px;border-bottom:1px solid #222;text-align:left}
+.footer-links h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#c9ced3;margin:0 0 10px;font-weight:700}
+.footer-links ul{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.footer-links a{color:#8f969d;text-decoration:none;font-size:13px}
+.footer-links a:hover{color:var(--yellow);text-decoration:underline}
+@media (max-width:720px){.footer-links{grid-template-columns:1fr 1fr}}
+@media (max-width:440px){.footer-links{grid-template-columns:1fr}}
