@@ -6,6 +6,18 @@
   "Free calculators"
  ],
  [
+  "Floor tiling calculator",
+  "/floor-tiling-calculator/",
+  "Enter the room size to get floor tiles, boxes, adhesive and grout.",
+  "Free calculators"
+ ],
+ [
+  "Wall tiling calculator",
+  "/wall-tiling-calculator/",
+  "Enter the walls, take off doors and windows, and get tiles, adhesive and grout.",
+  "Free calculators"
+ ],
+ [
   "Tiler day rate calculator",
   "/tiling-day-rate-calculator/",
   "The day, hourly and per m² rate that covers your income, costs and time off.",

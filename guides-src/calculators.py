@@ -184,7 +184,8 @@ mat_sections = section("01", "HOW THE NUMBERS WORK", "How much adhesive and grou
     section("02", "DOING THIS ON A REAL JOB", "Want TileIQ to calculate this automatically on every job?",
     "On a real job, TileIQ works out tiles, adhesive, grout, sealant and tanking for every wall and floor from the measurements you take, and puts them straight into the quote.",
     """<article><h3>From measurement to quote</h3><p>Material calculations feed straight into a professional quote you can send from site.</p><a href="/tiling-quote-app/">See the quote app →</a></article>
-          <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>""")
+          <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>
+          <article><h3>Measuring a floor or walls?</h3><p>Enter room or wall sizes instead of the area, with doors and units taken off.</p><a href="/floor-tiling-calculator/">Floor calculator →</a> <a href="/wall-tiling-calculator/">Wall calculator →</a></article>""")
 
 # ── Day-rate calculator ──────────────────────────────────────────────────────
 day_calc = "\n".join([
@@ -290,6 +291,99 @@ lab_sections = section("01", "HOW IT WORKS", "Price the labour, then check it ag
           <article><h3>Work out your day rate</h3><p>Find the rate that covers your costs and time off.</p><a href="/tiling-day-rate-calculator/">Day-rate calculator →</a></article>
           <article><h3>Going rates</h3><p>What UK tilers charge per m², per day and by region.</p><a href="/guides/tiling-labour-rates-uk/">UK tiling labour rates →</a></article>""")
 
+# ── Floor and wall calculators: the material calculator's maths, with the area worked out from
+# measurements instead of typed in. Same tile, adhesive and grout formulas as above.
+def tile_calc(area_rows, area_js, tile_l, tile_w, adh_opts, adh_default, waste_opts, waste_default, note):
+    html = "\n".join([group("Measurements")] + area_rows + [
+        group("Tiles"),
+        f'''          <div class="calc-row"><label for="calc-layout">Layout</label><select id="calc-layout">{waste_opts}</select></div>''',
+        row("calc-waste", "Wastage allowance (%)", waste_default),
+        row("calc-tile-l", "Tile length (mm)", tile_l),
+        row("calc-tile-w", "Tile width (mm)", tile_w),
+        row("calc-box-m2", "m² per box (optional)", "", "0.01", ' placeholder="e.g. 1.44"'),
+        group("Adhesive"),
+        f'''          <div class="calc-row"><label for="calc-adh-type">Tile and bed</label><select id="calc-adh-type">{adh_opts}<option value="">Custom</option></select></div>''',
+        row("calc-adh-rate", "Adhesive (kg per m²)", adh_default, "0.1"),
+        row("calc-adh-bag", "Adhesive bag size (kg)", "20"),
+        group("Grout"),
+        row("calc-joint", "Joint width (mm)", "3", "0.5"),
+        row("calc-thick", "Tile thickness (mm)", "9", "0.5"),
+        row("calc-grout-bag", "Grout bag size (kg)", "2.5", "0.5"),
+        '          <div class="calc-results">',
+        res("res-area", "Area to tile", True),
+        res("res-tile-area", "Tile area to buy (with wastage)"),
+        res("res-boxes", "Boxes"),
+        res("res-tile-count", "Approx. number of tiles"),
+        res("res-adhesive", "Adhesive"),
+        res("res-grout", "Grout"),
+        '          </div>',
+        f'          <p class="calc-note">{note}</p>'])
+    script = """
+  $('calc-layout').addEventListener('change', () => { $('calc-waste').value = $('calc-layout').value; });
+  $('calc-adh-type').addEventListener('change', () => { if ($('calc-adh-type').value) $('calc-adh-rate').value = $('calc-adh-type').value; });
+  function getArea() { %s }
+  function calc() {
+    const area = Math.max(0, getArea()), waste = num('calc-waste'), L = num('calc-tile-l'), W = num('calc-tile-w');
+    const boxM2 = num('calc-box-m2'), adhRate = num('calc-adh-rate'), adhBag = num('calc-adh-bag') || 1;
+    const joint = num('calc-joint'), thick = num('calc-thick'), groutBag = num('calc-grout-bag') || 1;
+    const buy = area * (1 + waste / 100);
+    const tileM2 = (L / 1000) * (W / 1000);
+    const tiles = tileM2 > 0 && area > 0 ? Math.ceil(buy / tileM2) : 0;
+    const adhKg = area * adhRate, adhBags = Math.ceil(adhKg / adhBag);
+    const groutPerM2 = L > 0 && W > 0 ? ((L + W) / (L * W)) * joint * thick * 1.6 : 0;
+    const groutKg = area * groutPerM2 * 1.1, groutBags = Math.ceil(groutKg / groutBag);
+    $('res-area').textContent = area.toFixed(2) + ' m²';
+    $('res-tile-area').textContent = buy.toFixed(2) + ' m²';
+    $('res-boxes').textContent = boxM2 > 0 ? Math.ceil(buy / boxM2) + ' boxes (' + (Math.ceil(buy / boxM2) * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
+    $('res-tile-count').textContent = tiles ? tiles + ' tiles' : '–';
+    $('res-adhesive').textContent = adhKg.toFixed(0) + ' kg (' + adhBags + ' × ' + adhBag + ' kg)';
+    $('res-grout').textContent = groutKg.toFixed(1) + ' kg (' + groutBags + ' × ' + groutBag + ' kg)';
+  }""" % area_js
+    return html, script
+
+STRAIGHT_DIAG_HB = '<option value="10" selected>Straight (10%)</option><option value="15">Diagonal (15%)</option><option value="25">Herringbone (25%)</option>'
+CALC_NOTE = "Planning estimates only. Adhesive figures are typical manufacturer consumption rates (e.g. Mapei Adesilex P9); grout uses the standard formula (L+W)/(L×W) × joint width × tile thickness × 1.6, plus 10%. Always check the data sheet for the product you are using."
+
+floor_calc, floor_script = tile_calc(
+    [row("fl-len", "Room length (m)", "4", "0.01"),
+     row("fl-wid", "Room width (m)", "3", "0.01"),
+     row("fl-extra", "Extra area, e.g. a bay or alcove (m²)", "0", "0.01"),
+     row("fl-deduct", "Not tiled, e.g. kitchen units or a bath (m²)", "0", "0.01")],
+    "return num('fl-len') * num('fl-wid') + num('fl-extra') - num('fl-deduct');",
+    "600", "600",
+    '<option value="3">Standard floor tile (3 kg)</option><option value="5" selected>Large format or solid bed (5 kg)</option>', "5",
+    STRAIGHT_DIAG_HB, "10", CALC_NOTE)
+floor_sections = section("01", "HOW THE NUMBERS WORK", "Working out a floor",
+    "Multiply the length by the width of the room, add any bays or alcoves, and take off anything that won't be tiled, like fitted kitchen units or a bath. Add wastage for the layout: about 10% for a straight lay, 15% for diagonal and 20–25% for herringbone. Floors usually need more adhesive than walls. Mapei's data sheet puts large-format tiles and floors that need a solid bed at about 5 kg/m², so that's the starting value here.",
+    """<article><h3>Uneven floors cost time</h3><p>Levelling, priming and boarding should be priced separately from the tiling.</p><a href="/guides/how-much-to-charge-for-floor-preparation/">Pricing floor preparation →</a></article>
+          <article><h3>Quoting a kitchen floor</h3><p>What to measure, what to allow for, and how to price it.</p><a href="/guides/how-to-quote-a-kitchen-floor/">Read the guide →</a></article>
+          <article><h3>Herringbone and large format</h3><p>Both use more tile and take longer to lay. Price them accordingly.</p><a href="/guides/how-to-price-herringbone-tiling/">Pricing herringbone →</a></article>""") + \
+    section("02", "DOING THIS ON A REAL JOB", "Want TileIQ to do this on every job?",
+    "Measure the room in TileIQ, or straight from a Leica Disto by Bluetooth, and it works out tiles, adhesive, grout and prep for every floor and wall, then puts them into the quote.",
+    """<article><h3>Walls too?</h3><p>Work out tiles, adhesive and grout for walls, with doors and windows taken off.</p><a href="/wall-tiling-calculator/">Wall tiling calculator →</a></article>
+          <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>""")
+
+wall_calc, wall_script = tile_calc(
+    [row("wl-run", "Total width of walls to tile (m)", "8", "0.01"),
+     row("wl-height", "Tiled height (m)", "2.4", "0.01"),
+     row("wl-extra", "Extra area, e.g. a boxed-in pipe or window reveals (m²)", "0", "0.01"),
+     row("wl-doors", "Doors not tiled (number)", "1"),
+     row("wl-door-m2", "Size of each door (m²)", "1.6", "0.01"),
+     row("wl-deduct", "Windows and other gaps (m²)", "0", "0.01")],
+    "return num('wl-run') * num('wl-height') + num('wl-extra') - num('wl-doors') * num('wl-door-m2') - num('wl-deduct');",
+    "600", "300",
+    '<option value="2">Mosaic, small (2 kg)</option><option value="3" selected>Standard wall tile (3 kg)</option><option value="5">Large format (5 kg)</option>', "3",
+    STRAIGHT_DIAG_HB, "10", CALC_NOTE)
+wall_sections = section("01", "HOW THE NUMBERS WORK", "Working out walls",
+    "Add up the width of every wall you're tiling and multiply by the tiled height. Use the full height for a floor-to-ceiling bathroom, or measure to the top of the splashback or the half-height line. Take off doors and windows: a standard internal door is about 0.8 m wide and 2 m high, so roughly 1.6 m². Add back window reveals and boxing, which are easy to forget and full of cuts. Mapei's data sheet gives about 2.5–3 kg/m² of adhesive for standard wall tiles, and about 2 kg/m² for mosaics.",
+    """<article><h3>Quoting a bathroom</h3><p>A step-by-step guide with a worked example for a 2.5 × 2 m bathroom.</p><a href="/guides/how-to-quote-bathroom-tiling/">Read the guide →</a></article>
+          <article><h3>Showers need tanking</h3><p>Price the waterproofing as its own line on the quote.</p><a href="/guides/how-much-to-charge-for-tanking/">Pricing tanking →</a></article>
+          <article><h3>Tile wastage</h3><p>How much extra to allow for each layout, room and tile size.</p><a href="/guides/tile-wastage-and-materials/">Read the wastage guide →</a></article>""") + \
+    section("02", "DOING THIS ON A REAL JOB", "Want TileIQ to do this on every job?",
+    "Measure each wall in TileIQ, or straight from a Leica Disto by Bluetooth, and it works out tiles, adhesive, grout and tanking for every wall and floor, then puts them into the quote.",
+    """<article><h3>Floor too?</h3><p>Work out tiles, adhesive and grout for the floor from the room size.</p><a href="/floor-tiling-calculator/">Floor tiling calculator →</a></article>
+          <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>""")
+
 pages = [
     ("tiling-material-calculator", "Tiling Material Calculator: Tiles, Adhesive and Grout | TileIQ",
      "Free tiling material calculator: work out tiles, boxes, adhesive and grout for any area, with wastage for straight, diagonal and herringbone layouts.",
@@ -306,6 +400,16 @@ pages = [
      "Tiling labour cost calculator", "FREE TILING CALCULATOR", "Tiling labour cost calculator",
      "Price the labour for a tiling job from your per m² rates, add extras such as tanking and levelling, and check what the job earns per day against your day rate.",
      lab_calc, lab_sections, lab_script),
+    ("floor-tiling-calculator", "Floor Tiling Calculator: Tiles, Adhesive and Grout | TileIQ",
+     "Free floor tiling calculator: enter the room size to work out floor tiles, boxes, adhesive and grout, with wastage for straight, diagonal and herringbone layouts.",
+     "Floor tiling calculator", "FREE TILING CALCULATOR", "Floor tiling calculator",
+     "Enter the room size and tile to work out how many floor tiles, boxes, and how much adhesive and grout you need. Free, with no sign-up.",
+     floor_calc, floor_sections, floor_script),
+    ("wall-tiling-calculator", "Wall Tiling Calculator: Tiles, Adhesive and Grout | TileIQ",
+     "Free wall tiling calculator: enter the wall sizes, take off doors and windows, and work out wall tiles, boxes, adhesive and grout with wastage.",
+     "Wall tiling calculator", "FREE TILING CALCULATOR", "Wall tiling calculator",
+     "Enter the walls and tiled height, take off doors and windows, and get the tiles, boxes, adhesive and grout you need. Free, with no sign-up.",
+     wall_calc, wall_sections, wall_script),
 ]
 for slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, script in pages:
     os.makedirs(os.path.join(ROOT, slug), exist_ok=True)
