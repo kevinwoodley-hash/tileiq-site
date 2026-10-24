@@ -80,6 +80,9 @@ def head(title, desc, url, og_type, ld, robots=None, extra=""):
 <!-- TileIQ analytics: Google tag G-274KES4P2G with Consent Mode v2 (see /analytics.js) -->
 <script src="/analytics.js"></script>
   <meta charset="utf-8" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{e(title)}</title>
   <meta name="description" content="{e(desc)}" />
@@ -162,7 +165,7 @@ def build_guide(g, by_slug, header, footer):
          "datePublished": g["published"], "dateModified": g["updated"], "inLanguage": "en-GB",
          "articleSection": g["category"],
          "author": {"@type": "Organization", "name": "The TileIQ team", "url": f"{SITE}/"},
-         "publisher": {"@type": "Organization", "name": "TileIQ", "logo": {"@type": "ImageObject", "url": f"{SITE}/images/tileiq-pro-logo.png"}}}]}
+         "publisher": {"@type": "Organization", "name": "TileIQ", "logo": {"@type": "ImageObject", "url": f"{SITE}/images/tileiq-icon-512.png", "width": 512, "height": 512}}}]}
     page = head(g["title"], g["description"], url, "article", ld, robots="noindex" if draft else None,
                 extra=f'<meta property="article:published_time" content="{g["published"]}" />\n  <meta property="article:modified_time" content="{g["updated"]}" />')
     toc_html = "".join(f'<li><a href="#{e(i)}">{e(t)}</a></li>' for i, t in toc)
