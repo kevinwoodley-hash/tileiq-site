@@ -291,7 +291,7 @@ def build_about(header, footer):
         <div class="container post-body guide-body">
 <p>I'm Kevin, a City &amp; Guilds Level 2 qualified tiler based in Wantage, Oxfordshire. I've run my own tiling business, Oxfordshire Tiling, since 2015, doing bathrooms, kitchens, floors and showers for homeowners across south Oxfordshire.</p>
 <p>Like most tilers, I'd spend the day on the tools and the evening doing the paperwork: working out tiles and adhesive from scribbled measurements, typing up quotes, sending invoices and chasing payments. Most trade apps are built for every trade, so they leave the tiling maths to you.</p>
-<p>So I built my own. TileIQ measures the room, works out the tiles, adhesive, grout and tanking, prices the job from your own rates and sends the quote, then runs the job through to the invoice and the review request. Every feature is built around how tiling work actually happens.</p>
+<p>So I built my own. TileIQ measures the room, works out the tiles, adhesive, grout and tanking, prices the job from your own rates and sends the quote, then runs the job through to the invoice and the review request. I use it on my own jobs, and I build every feature around how tiling work actually happens.</p>
 <h2>The guides on this site</h2>
 <p>The guides and calculators here are written for working tilers. They're reviewed by me, and every price and figure links to its source, so you can check it.</p>
 <h2>Get in touch</h2>
