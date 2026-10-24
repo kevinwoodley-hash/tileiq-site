@@ -21,6 +21,12 @@ OUT = os.path.join(ROOT, "guides")
 SITE = "https://tile-iq.com"
 PLAY = "https://play.google.com/store/apps/details?id=com.tileiqpro.android"
 APPLE = "https://apps.apple.com/gb/app/tileiq-pro/id6787447373"
+# The author of every guide: a real, qualified tiler, shown in the byline and in structured data.
+AUTHOR = {"@type": "Person", "@id": f"{SITE}/about/#kevin", "name": "Kevin", "url": f"{SITE}/about/",
+          "jobTitle": "Tiler and founder of TileIQ",
+          "hasCredential": {"@type": "EducationalOccupationalCredential", "name": "City & Guilds Level 2, Wall and Floor Tiling"},
+          "worksFor": {"@type": "Organization", "@id": f"{SITE}/#organization", "name": "TileIQ"}}
+BYLINE = 'By <a href="/about/">Kevin</a>, City &amp; Guilds Level 2 qualified tiler'
 CATEGORIES = ["Tiling prices", "Estimating & materials", "Running a tiling business", "Free calculators"]
 
 # The call to action at the end of each guide, matched to its subject. Every one offers the real
@@ -164,7 +170,7 @@ def build_guide(g, by_slug, header, footer):
          "description": g["description"], "image": f"{SITE}/images/og-image.jpg",
          "datePublished": g["published"], "dateModified": g["updated"], "inLanguage": "en-GB",
          "articleSection": g["category"],
-         "author": {"@type": "Organization", "name": "The TileIQ team", "url": f"{SITE}/"},
+         "author": AUTHOR,
          "publisher": {"@type": "Organization", "name": "TileIQ", "logo": {"@type": "ImageObject", "url": f"{SITE}/images/tileiq-icon-512.png", "width": 512, "height": 512}}}]}
     page = head(g["title"], g["description"], url, "article", ld, robots="noindex" if draft else None,
                 extra=f'<meta property="article:published_time" content="{g["published"]}" />\n  <meta property="article:modified_time" content="{g["updated"]}" />')
@@ -185,7 +191,7 @@ def build_guide(g, by_slug, header, footer):
           <nav class="guide-crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <a href="/guides/">Tiling guides</a> › <span>{e(g['h1'])}</span></nav>
           <span class="post-category">{e(g['category'])}</span>
           <h1>{e(g['h1'])}</h1>
-          <p class="post-meta">Updated {fmt_date(g['updated'])} · {reading_minutes(body)} min read · By the TileIQ team</p>
+          <p class="post-meta">Updated {fmt_date(g['updated'])} · {reading_minutes(body)} min read · {BYLINE}</p>
         </div>
       </section>
 
@@ -259,6 +265,51 @@ def build_hub(guides, header, footer, tools):
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(page)
 
 
+def build_about(header, footer):
+    url = f"{SITE}/about/"
+    ld = {"@context": "https://schema.org", "@graph": [
+        {"@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Home", "item": f"{SITE}/"},
+            {"@type": "ListItem", "position": 2, "name": "About", "item": url}]},
+        {"@type": "AboutPage", "url": url, "name": "About TileIQ", "mainEntity": AUTHOR},
+        dict(AUTHOR, sameAs=["https://www.checkatrade.com/trades/oxfordshiretiling"])]}
+    desc = "TileIQ is built by Kevin, a City & Guilds qualified tiler who runs Oxfordshire Tiling in Wantage, to take the late-night admin out of tiling."
+    page = head("About TileIQ: Built by a Tiler, for Tilers", desc, url, "website", ld)
+    page += f"""
+<body class="features-page guide-page">
+{header}
+  <main>
+    <article>
+      <section class="post-hero">
+        <div class="container post-hero-inner">
+          <nav class="guide-crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <span>About</span></nav>
+          <h1>Built by a tiler, for tilers</h1>
+          <p class="post-meta">{BYLINE}</p>
+        </div>
+      </section>
+      <section class="post-body-section">
+        <div class="container post-body guide-body">
+<p>I'm Kevin, a City &amp; Guilds Level 2 qualified tiler based in Wantage, Oxfordshire. I've run my own tiling business, Oxfordshire Tiling, since 2015, doing bathrooms, kitchens, floors and showers for homeowners across south Oxfordshire.</p>
+<p>Like most tilers, I'd spend the day on the tools and the evening doing the paperwork: working out tiles and adhesive from scribbled measurements, typing up quotes, sending invoices and chasing payments. Most trade apps are built for every trade, so they leave the tiling maths to you.</p>
+<p>So I built my own. TileIQ measures the room, works out the tiles, adhesive, grout and tanking, prices the job from your own rates and sends the quote, then runs the job through to the invoice and the review request. Every feature is built around how tiling work actually happens.</p>
+<h2>The guides on this site</h2>
+<p>The guides and calculators here are written for working tilers. They're reviewed by me, and every price and figure links to its source, so you can check it.</p>
+<h2>Get in touch</h2>
+<p>If you've got a question, a feature you'd like or a correction to one of the guides, email <a href="mailto:info@tile-iq.com">info@tile-iq.com</a> or call 0800 246 1951. You can see reviews of my tiling work on <a href="https://www.checkatrade.com/trades/oxfordshiretiling" rel="noopener" target="_blank">Checkatrade</a>.</p>
+        </div>
+      </section>
+    </article>
+    <div class="container guide-cta-wrap">{cta_block('business', 'about')}</div>
+  </main>
+{footer}
+<script src="/mobile-menu.js"></script>
+</body>
+</html>
+"""
+    os.makedirs(os.path.join(ROOT, "about"), exist_ok=True)
+    open(os.path.join(ROOT, "about", "index.html"), "w", encoding="utf-8").write(page)
+
+
 def update_sitemap(guides):
     p = os.path.join(ROOT, "sitemap.xml")
     s = open(p, encoding="utf-8").read()
@@ -268,6 +319,8 @@ def update_sitemap(guides):
     if live:
         newest = max(g["updated"] for g in live)
         entries = f"\n  <url><loc>{SITE}/guides/</loc><lastmod>{newest}</lastmod><priority>0.8</priority></url>" + entries
+    if f"{SITE}/about/" not in s:
+        entries += f"\n  <url><loc>{SITE}/about/</loc><priority>0.6</priority></url>"
     s = s.replace("</urlset>", entries + "\n</urlset>")
     open(p, "w", encoding="utf-8").write(s)
 
@@ -281,5 +334,6 @@ if __name__ == "__main__":
     for g in guides:
         build_guide(g, by_slug, header, footer)
     build_hub(guides, header, footer, tools)
+    build_about(header, footer)
     update_sitemap(guides)
     print(f"built {len(guides)} guide(s) ({sum(1 for g in guides if g.get('status') == 'draft')} draft) + hub")
