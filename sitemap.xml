@@ -1,28 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://tile-iq.com/</loc><priority>1.0</priority></url>
-  <url><loc>https://tile-iq.com/features</loc><priority>0.9</priority></url>
+  <url><loc>https://tile-iq.com/</loc><lastmod>2026-10-25</lastmod><priority>1.0</priority></url>
+  <url><loc>https://tile-iq.com/features</loc><lastmod>2026-10-25</lastmod><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/tour/</loc><priority>0.8</priority></url>
   <url><loc>https://tile-iq.com/contact</loc><priority>0.5</priority></url>
   <url><loc>https://tile-iq.com/signup/</loc><priority>0.6</priority></url>
   <url><loc>https://tile-iq.com/tiling-quote-app/</loc><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/invoice-app-for-tilers/</loc><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/tiling-estimating-software/</loc><priority>0.9</priority></url>
-  <url><loc>https://tile-iq.com/tiling-job-management/</loc><priority>0.9</priority></url>
+  <url><loc>https://tile-iq.com/tiling-job-management/</loc><lastmod>2026-10-25</lastmod><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/tiling-material-calculator/</loc><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/floor-tiling-calculator/</loc><lastmod>2026-10-23</lastmod><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/wall-tiling-calculator/</loc><lastmod>2026-10-23</lastmod><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/tiling-labour-cost-calculator/</loc><priority>0.8</priority></url>
   <url><loc>https://tile-iq.com/tiling-day-rate-calculator/</loc><priority>0.8</priority></url>
-  <url><loc>https://tile-iq.com/software-for-tilers/</loc><priority>0.9</priority></url>
+  <url><loc>https://tile-iq.com/software-for-tilers/</loc><lastmod>2026-10-25</lastmod><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/tiling-quotation-software/</loc><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/leica-disto-tiling/</loc><priority>0.9</priority></url>
   <url><loc>https://tile-iq.com/terms</loc><priority>0.3</priority></url>
-  <url><loc>https://tile-iq.com/blog/</loc><priority>0.8</priority></url>
-  <url><loc>https://tile-iq.com/blog/tiling-is-the-easy-bit/</loc><priority>0.7</priority></url>
-  <url><loc>https://tile-iq.com/blog/why-tilers-need-job-management-software/</loc><priority>0.7</priority></url>
-  <url><loc>https://tile-iq.com/blog/tilers-losing-money/</loc><priority>0.7</priority></url>
-  <url><loc>https://tile-iq.com/blog/how-to-measure-a-room-for-tiling/</loc><priority>0.7</priority></url>
+  <url><loc>https://tile-iq.com/privacy</loc><priority>0.3</priority></url>
+  <url><loc>https://tile-iq.com/blog/</loc><lastmod>2026-10-25</lastmod><priority>0.8</priority></url>
+  <url><loc>https://tile-iq.com/blog/tiling-is-the-easy-bit/</loc><lastmod>2026-10-25</lastmod><priority>0.7</priority></url>
+  <url><loc>https://tile-iq.com/blog/why-tilers-need-job-management-software/</loc><lastmod>2026-10-25</lastmod><priority>0.7</priority></url>
+  <url><loc>https://tile-iq.com/blog/tilers-losing-money/</loc><lastmod>2026-10-25</lastmod><priority>0.7</priority></url>
+  <url><loc>https://tile-iq.com/blog/how-to-measure-a-room-for-tiling/</loc><lastmod>2026-10-25</lastmod><priority>0.7</priority></url>
   <url><loc>https://tile-iq.com/about/</loc><priority>0.6</priority></url>
 
   <url><loc>https://tile-iq.com/guides/</loc><lastmod>2026-10-24</lastmod><priority>0.8</priority></url>

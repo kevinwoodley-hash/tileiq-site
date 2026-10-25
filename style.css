@@ -1108,3 +1108,29 @@ a.blog-card:hover{border-color:#187477}
 .footer-links a:hover{color:var(--yellow);text-decoration:underline}
 @media (max-width:720px){.footer-links{grid-template-columns:1fr 1fr}}
 @media (max-width:440px){.footer-links{grid-template-columns:1fr}}
+
+/* Features page: direct answers under question headings, portfolio screenshots, FAQ links (Oct 2026 SEO pass) */
+.feature-categories .feature-category-heading p.category-answer{color:#e6ecee;font-size:15px;line-height:1.6;margin:0 0 8px}
+.feature-category-heading p a,.features-page .guide-faq p a{color:var(--yellow)}
+.features-final-cta p a{color:#fff;text-decoration:underline}
+.features-final-cta#free h2{font-size:clamp(1.7rem,2.8vw,2.6rem);line-height:1.08}
+.features-final-cta#free .hero-actions{flex-shrink:0;align-items:center}
+.feature-categories .portfolio-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,400px);gap:12px;align-items:start}
+.feature-categories .portfolio-layout .feature-detail-grid{grid-template-columns:1fr 1fr}
+.feature-categories .portfolio-shots{display:flex;gap:12px}
+.feature-categories .portfolio-shots img{width:calc(50% - 6px);height:auto;border:1px solid #222d31;border-radius:13px}
+@media(max-width:980px){.feature-categories .portfolio-layout{grid-template-columns:1fr}.feature-categories .portfolio-shots{max-width:440px}}
+@media(max-width:640px){.feature-categories .portfolio-layout .feature-detail-grid{grid-template-columns:1fr}}
+.features-page #faq .guide-faq{margin:0}
+
+/* Blog: store badges in the closing call to action, and article tables (Oct 2026 SEO pass) */
+.cta-card .cta-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0}
+.cta-card .cta-actions img{display:block;height:40px;width:auto}
+.cta-card .cta-actions .btn-dark{padding:12px 20px}
+@media(max-width:640px){.cta-card .cta-actions{justify-content:center}}
+.post-body .post-table-wrap{overflow-x:auto;margin:0 0 18px}
+.post-body table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.5}
+.post-body th,.post-body td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid #222d31}
+.post-body th{color:#fff;font-weight:700;background:#0e1315}
+.post-body .guide-faq{margin:0 0 18px}
+.post-body .guide-faq p{font-size:14px}

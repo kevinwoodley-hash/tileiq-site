@@ -3,3 +3,16 @@
 
 /guides-src/*
   X-Robots-Tag: noindex
+
+# Private screens: keep out of search results (Oct 2026)
+/admin
+  X-Robots-Tag: noindex, nofollow
+
+/admin/*
+  X-Robots-Tag: noindex, nofollow
+
+/enquire
+  X-Robots-Tag: noindex
+
+/enquire/*
+  X-Robots-Tag: noindex
