@@ -18,6 +18,7 @@
   <meta property="og:description" content="Notebooks, texts and a paper diary work fine until they don't. Here's what actually goes wrong without a job management system, and what a proper one fixes." />
   <meta property="og:image" content="https://tile-iq.com/images/og-image.jpg" />
   <meta property="article:published_time" content="2026-08-25" />
+  <meta property="article:modified_time" content="2026-10-25" />
   <meta property="article:section" content="Job Management" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Why Every Tiler Needs a Simple Job Management System" />
@@ -46,7 +47,9 @@
         "description": "Notebooks, texts and a paper diary work fine until they don't. Here's what actually goes wrong without a job management system, and what a proper one fixes.",
         "image": "https://tile-iq.com/images/og-image.jpg",
         "datePublished": "2026-08-25",
-        "dateModified": "2026-08-25",
+        "dateModified": "2026-10-25",
+        "inLanguage": "en-GB",
+        "articleSection": "Job Management",
         "author": { "@type": "Person", "@id": "https://tile-iq.com/about/#kevin", "name": "Kevin", "url": "https://tile-iq.com/about/", "jobTitle": "Tiler and founder of TileIQ" },
         "publisher": {
           "@type": "Organization",
@@ -98,8 +101,8 @@
       <div class="container post-body">
         <p>Running jobs from a notebook, a diary and a few text threads works right up until it doesn't — a double-booked Tuesday, a quote nobody chased, an enquiry that went cold because it got buried under three other conversations. None of it looks like a big problem on its own. All of it adds up.</p>
 
-        <h2>What actually goes wrong without a system</h2>
-        <p>The failures are rarely dramatic. They're small and quiet:</p>
+        <h2>What goes wrong when tilers don't use a job management system?</h2>
+        <p><strong>Short answer:</strong> enquiries go cold, quotes don't get chased, jobs get double-booked and invoices go out late. It's rarely a bad decision. It's that nothing reminds you. The failures are small and quiet:</p>
         <ul>
           <li><strong>Enquiries go cold.</strong> An enquiry that isn't followed up within a day or two often just goes to the next tiler who replies.</li>
           <li><strong>Nothing gets chased.</strong> An unanswered quote or an unpaid invoice relies entirely on you remembering to follow it up — and eventually, one doesn't get remembered.</li>
@@ -107,24 +110,68 @@
           <li><strong>Customer history lives nowhere.</strong> When a past customer calls back, their previous job, quote and notes should be one lookup away — not a search through old messages.</li>
         </ul>
 
-        <h2>One pipeline, not five places</h2>
-        <p>A proper system doesn't need to be complicated. It needs every job to move through the same clear stages — enquiry, surveyed, quoted, accepted, scheduled, in progress, complete — so you always know exactly where each one is up to, without having to hold it in your head.</p>
+        <h2>What should a simple tiling job pipeline look like?</h2>
+        <p><strong>Short answer:</strong> seven stages — enquiry, surveyed, quoted, accepted, scheduled, in progress, complete — with every job sitting in exactly one of them. A proper system doesn't need to be complicated. It just needs every job to move through the same clear stages, so you always know where each one is up to without holding it in your head.</p>
         <p>That's the model behind <a href="/tiling-job-management/">TileIQ's job management</a>: a single pipeline for every job, and a dashboard that shows what needs attention today — new enquiries, quotes going quiet, and this week's schedule — the moment you open the app.</p>
 
-        <h2>Chase-up reminders instead of relying on memory</h2>
-        <p>The jobs that get lost usually aren't lost because of a bad decision — they're lost because nothing flagged that a quote had gone quiet, or that an invoice was still unpaid two weeks later. Automatic chase-up reminders turn "I should really follow that up" into something the system surfaces for you.</p>
+        <h2>Example: one bathroom job from enquiry to invoice</h2>
+        <p>Here's how a single job moves through the pipeline. The job and dates are made up for illustration; the stages are the ones TileIQ uses.</p>
+        <div class="post-table-wrap">
+          <table>
+            <thead><tr><th>Stage</th><th>What happens</th><th>What you track</th></tr></thead>
+            <tbody>
+              <tr><td>Enquiry</td><td>Monday: a customer asks for a price to retile a bathroom.</td><td>Name, address, phone, what they want done.</td></tr>
+              <tr><td>Surveyed</td><td>Wednesday: you visit and measure the walls, floor and shower area.</td><td>Room measurements, substrate, prep needed, photos for your own reference.</td></tr>
+              <tr><td>Quoted</td><td>Wednesday evening: the quote goes out, built from those measurements.</td><td>Quote sent date and the total.</td></tr>
+              <tr><td>Chase-up</td><td>Saturday: no reply yet, so the quote is flagged for a follow-up.</td><td>Whether the customer has responded.</td></tr>
+              <tr><td>Accepted</td><td>The following Tuesday: the customer accepts.</td><td>Accepted price, any changes agreed.</td></tr>
+              <tr><td>Scheduled</td><td>You book it in for two weeks' time.</td><td>Start date and expected days on site.</td></tr>
+              <tr><td>In progress</td><td>The job is underway.</td><td>Materials ordered, any extras the customer asks for.</td></tr>
+              <tr><td>Complete</td><td>Job finished and photographed.</td><td>Invoice sent, payment received, a Google review request.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Without a pipeline, the Saturday chase-up is the step that usually gets missed — and it's often the difference between winning the job and losing it to someone who followed up.</p>
 
-        <h2>Every customer, every job, in one record</h2>
-        <p>Customer details, job history and messages should stay attached to the customer, not scattered across separate text threads and call logs. Save a customer's details once, and reuse them instantly for repeat work — no re-entering an address or a phone number you've already typed in twice before.</p>
+        <h2>How do you stop quotes and invoices going quiet?</h2>
+        <p><strong>Short answer:</strong> let the system flag them instead of relying on memory. The jobs that get lost usually aren't lost because of a bad decision — they're lost because nothing flagged that a quote had gone quiet, or that an invoice was still unpaid two weeks later.</p>
+        <p>In TileIQ, a quote that hasn't had a response is flagged for a chase-up after a set number of days — three by default, and you can change it. "I should really follow that up" becomes something the app surfaces for you. When the job is done, <a href="/invoice-app-for-tilers/">the invoice is created from the job</a>, so it can go out the same day.</p>
+
+        <h2>Where should customer details and job history live?</h2>
+        <p><strong>Short answer:</strong> on one customer record, attached to every job you do for them. Customer details, job history and messages shouldn't be scattered across separate text threads and call logs. Save a customer's details once, and reuse them instantly for repeat work — no re-entering an address or a phone number you've already typed in twice before.</p>
 
         <blockquote>You don't need more hours in the day. You need fewer places for a job to quietly fall through.</blockquote>
 
-        <h2>It works whether you're on your own or running a small team</h2>
-        <p>A simple pipeline works just as well for a sole trader running their own book of jobs as it does for a small tiling team, where everyone needs to be working from the same information rather than whoever remembered to update the group chat.</p>
-        <p>And because enquiries can arrive by phone or web form, every new lead lands in the same pipeline automatically — nothing has to be typed in twice, and nothing gets missed because it arrived a different way.</p>
+        <h2>Does a sole trader really need a system?</h2>
+        <p><strong>Short answer:</strong> yes — arguably more than anyone. When you're on your own, there's no office and no one else to remember things. Every enquiry, quote and invoice depends on you, usually while you're on the tools.</p>
+        <p>A simple pipeline means new enquiries — including ones that come in through a web form or your <a href="/features#portfolio">TileIQ portfolio page</a> — land in the same place as everything else. Nothing has to be typed in twice, and nothing gets missed because it arrived a different way.</p>
 
         <h2>Start with the pipeline, the rest follows</h2>
-        <p>You don't need five different tools to run a tiling business properly — you need one system that keeps enquiries, quotes, jobs and invoices in the same place, with a dashboard that tells you what needs doing today. That's what TileIQ is.</p>
+        <p>You don't need five different tools to run a tiling business properly — you need one system that keeps enquiries, quotes, jobs and invoices in the same place, with a dashboard that tells you what needs doing today. That's what TileIQ is. See <a href="/features#cat-jobs">how jobs and customers work in TileIQ</a>, or read the practical guide on <a href="/guides/how-to-manage-tiling-jobs-and-customers/">how to manage tiling jobs and customers</a>.</p>
+
+        <h2>Job management for tilers: common questions</h2>
+        <div class="guide-faq">
+          <details>
+            <summary>Is a spreadsheet good enough to manage tiling jobs?</summary>
+            <p>It can work when you only have a few jobs on. The problem is that a spreadsheet won't remind you to chase a quote, won't build the quote from your measurements, and isn't easy to update from a phone on site. Most tilers outgrow it once several quotes are out at the same time.</p>
+          </details>
+          <details>
+            <summary>What's the difference between job management and a CRM?</summary>
+            <p>A CRM keeps track of customers and conversations. Job management tracks the work itself: measurements, quotes, scheduling and invoicing. For a tiler the two belong together, because every job starts with a customer and every customer comes back as a job.</p>
+          </details>
+          <details>
+            <summary>Do I need it if I only do a few jobs a month?</summary>
+            <p>You'll feel the benefit less than a busy tiler, but the cost of one quote that's never chased, or one invoice that's sent late, is usually bigger than the time it takes to log a job.</p>
+          </details>
+          <details>
+            <summary>What should I record for each tiling job?</summary>
+            <p>At minimum: the customer's details, the measurements, what was quoted and when, whether it was accepted, the booked dates and the invoice status. Photos before and after the job are useful for your own records and for showing your work.</p>
+          </details>
+          <details>
+            <summary>Can I try TileIQ before paying?</summary>
+            <p>Yes. Download the app and you can send your first real quote without signing up. After that you can use TileIQ free for 30 days without subscribing.</p>
+          </details>
+        </div>
       </div>
     </section>
 
@@ -140,8 +187,12 @@
 
     <section class="cta-section">
       <div class="container cta-card">
-        <div><h2>Stop running your business from memory.</h2><p>Send your first quote free, with no account or card needed. Then try everything free for 30 days.</p></div>
-        <a class="btn btn-dark" href="https://tile-iq.com/app/demo">Try TileIQ Free →</a>
+        <div><h2>Stop running your business from memory.</h2><p>Download the app and send your first quote free, without signing up. Then use TileIQ free for 30 days, no subscription needed.</p></div>
+        <div class="cta-actions">
+          <a class="google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="146" height="43"></a>
+          <a class="app-store-link" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener noreferrer" aria-label="Download TileIQ Pro on the App Store"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="120" height="40"></a>
+          <a class="btn btn-dark" href="https://tile-iq.com/app/demo">Try the demo →</a>
+        </div>
       </div>
     </section>
   </main>
