@@ -7847,8 +7847,9 @@ function renderJobView() {
             return `<span class="surf-chip">${icon} ${esc(s.label)} ${dim} · ${currencySymbol()}${s.total}</span>`;
         }).join("");
 
-        const mats       = surfaces.reduce((a, s) => a + (s.materialSell  || 0), 0);
-        const lab        = surfaces.reduce((a, s) => a + (s.labour        || 0), 0);
+        const extra      = roomExtraCosts(r);
+        const mats       = surfaces.reduce((a, s) => a + (s.materialSell  || 0), 0) + extra.materials;
+        const lab        = surfaces.reduce((a, s) => a + (s.labour        || 0), 0) + extra.labour;
         const prepMat    = surfaces.reduce((a, s) => a + (s.prepMatCost   || 0), 0);
         const prepLab    = surfaces.reduce((a, s) => a + (s.prepLabCost   || 0), 0);
         const ufh        = surfaces.reduce((a, s) => a + (s.ufhCost       || 0), 0);
@@ -7917,8 +7918,9 @@ function renderJobView() {
         const totalArea = (r.surfaces||[]).reduce((a,s) => a+(s.area||0), 0);
         const labourOpts = r.labourType === "day" ? {type:"day", days:r.days||1, dayRate:r.dayRate||settings.dayRate||200, totalArea} : null;
         (r.surfaces||[]).forEach(s => { s.tileType = s.tileType || r.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
-        totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0);
-        totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0);
+        const extra = roomExtraCosts(r);
+        totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0) + extra.materials;
+        totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0) + extra.labour;
         totalPrepMat += (r.surfaces||[]).reduce((a,s) => a+(s.prepMatCost||0), 0);
         totalPrepLab += (r.surfaces||[]).reduce((a,s) => a+(s.prepLabCost||0), 0);
     });
@@ -10936,8 +10938,10 @@ function calcSealantCost(roomOrForm) {
 // its surfaces plus the costs that belong to the room rather than to any one surface
 // (extra work, trim, sealant, niches) — the same sum the room editor's live estimate
 // and saveRoom() use. materials + labour always equals total, so no document can show
-// lines that don't add up, or a total lower than the room cards it's made of. prep is
-// the part of materials that's surface prep, for documents that list it separately.
+// lines that don't add up, or a total lower than the room cards it's made of. Surface prep
+// is split by what it is: its materials (membrane, tanking kits, boards…) go in materials
+// and its fitting labour in labour. prep is the whole prep cost (prepMat + prepLab), for
+// documents that list it separately.
 // Callers that need today's prices run calcSurface() over the surfaces first.
 function roomPriceParts(room) {
     const surfaces = room.surfaces || [];
@@ -10945,9 +10949,23 @@ function roomPriceParts(room) {
     const nicheCost = getNicheSurfaces(null, room.niches).reduce((a, n) => a + n.labourCost, 0);
     const total = sum("total") + parseFloat(room.extraWorkCost || 0) + parseFloat(room.trimCost || 0) + calcSealantCost(room) + nicheCost;
     const prep = sum("prepCost");
-    const materials = sum("materialSell") + prep + sum("trayCost") + parseFloat(room.trimCost || 0) + calcSealantCost(room);
+    const prepMat = sum("prepMatCost");
+    const prepLab = prep - prepMat;
+    const materials = sum("materialSell") + prepMat + sum("trayCost") + parseFloat(room.trimCost || 0) + calcSealantCost(room);
     // Labour takes the remainder so the two lines add up to the penny (s.total is rounded per surface)
-    return { total, materials, labour: total - materials, prep };
+    return { total, materials, labour: total - materials, prep, prepMat, prepLab };
+}
+
+// The costs that belong to the room rather than to its surfaces' own materials/labour lines:
+// wet room trays, trim and sealant are materials; extra work and niches are labour. The room
+// card and Job Total breakdown add these on so their lines add up to roomGrandTotal().
+function roomExtraCosts(room) {
+    const trays = (room.surfaces || []).reduce((a, s) => a + (parseFloat(s.trayCost) || 0), 0);
+    const nicheCost = getNicheSurfaces(null, room.niches).reduce((a, n) => a + n.labourCost, 0);
+    return {
+        materials: trays + parseFloat(room.trimCost || 0) + calcSealantCost(room),
+        labour:    parseFloat(room.extraWorkCost || 0) + nicheCost
+    };
 }
 
 function roomGrandTotal(room) {
@@ -11366,8 +11384,8 @@ async function exportAllData() {
                 if (room.labourType === "day") labOpts = { type:"day", days: room.days||1, dayRate: room.dayRate||settings.dayRate||200, totalArea: rArea };
                 surfaces.forEach(s => { s.tileType = s.tileType || room.tileType || "ceramic"; calcSurface(s, ct, labOpts); });
                 const parts = roomPriceParts(room);
-                totalMats  += parts.materials - parts.prep;
-                totalLab   += parts.labour;
+                totalMats  += parts.materials - parts.prepMat;
+                totalLab   += parts.labour - parts.prepLab;
                 totalPrep  += parts.prep;
             });
 
@@ -14559,8 +14577,8 @@ async function exportFreeAgent() {
                 calcSurface(s, ct, rLabOpts);
             });
             const parts = roomPriceParts(room);
-            totalLabour    += parts.labour + parts.prep;
-            totalMaterials += parts.materials - parts.prep;
+            totalLabour    += parts.labour + parts.prepMat;
+            totalMaterials += parts.materials - parts.prepMat;
         });
         const items = [];
         if (totalLabour > 0)    items.push({ description: j.description || "Labour",  quantity: 1, price: totalLabour.toFixed(2),    vat_rate: applyVat ? 20 : 0 });
@@ -14676,8 +14694,8 @@ async function exportQBO() {
                 calcSurface(s, ct, rLabOpts);
             });
             const parts = roomPriceParts(room);
-            totalLabour    += parts.labour + parts.prep;
-            totalMaterials += parts.materials - parts.prep;
+            totalLabour    += parts.labour + parts.prepMat;
+            totalMaterials += parts.materials - parts.prepMat;
         });
         const jobDesc = (j.description || [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works");
         const jobAddr = [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works";
@@ -14858,8 +14876,8 @@ async function exportXero() {
                 calcSurface(s, ct, rLabOpts);
             });
             const parts = roomPriceParts(room);
-            totalLabour    += parts.labour + parts.prep;
-            totalMaterials += parts.materials - parts.prep;
+            totalLabour    += parts.labour + parts.prepMat;
+            totalMaterials += parts.materials - parts.prepMat;
         });
         const jobDesc = (j.description || [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works");
         const jobAddr = [j.address, j.city, j.postcode].filter(Boolean).join(", ") || "Tiling works";
@@ -15298,8 +15316,8 @@ async function buildQuoteUrl(j) {
         if (room.labourType === "day") rLabOpts = { type: "day", days: room.days || 1, dayRate: room.dayRate || settings.dayRate || 200, totalArea: rArea };
         surfaces.forEach(s => { s.tileType = s.tileType || room.tileType || "ceramic"; calcSurface(s, rCt, rLabOpts); });
         const parts = roomPriceParts(room);
-        totalMats   += parts.materials - parts.prep;
-        totalLabour += parts.labour;
+        totalMats   += parts.materials - parts.prepMat;
+        totalLabour += parts.labour - parts.prepLab;
         totalPrep   += parts.prep;
         grand       += parts.total;
         surfaces.forEach(s => {
