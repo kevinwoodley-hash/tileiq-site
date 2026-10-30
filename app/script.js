@@ -9023,6 +9023,10 @@ function clearRoomInputs() {
     const rSizeRow = document.getElementById("rm-r-tray-size-row"); if (rSizeRow) rSizeRow.classList.add("hidden");
     const fSizeRow = document.getElementById("rm-f-tray-size-row"); if (fSizeRow) fSizeRow.classList.add("hidden");
     document.getElementById("rm-r-ufh").checked       = false;
+    // ...and its amounts, so a new room never inherits the last room's UFH prices
+    ["mat","stat","other","labour","labour-ft2rate","other-desc"].forEach(f => ["r","f"].forEach(m => {
+        const el = document.getElementById(`rm-${m}-ufh-${f}`); if (el) el.value = "";
+    }));
     // Sealant — every room type has its own fields now
     ["rm-sealant-enabled","rm-f-sealant-enabled","rm-w-sealant-enabled","rm-sh-sealant-enabled"].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = "true";
@@ -9080,6 +9084,15 @@ function clearRoomInputs() {
     renderExtraSurfaces();
     // Close all collapsible panels
     ["sealant","extrawork","walltiles","extrawork-f","trim","trim-f"].forEach(closeCollapse);
+}
+
+/* UFH amounts weren't restored when a room was reopened (only the tick box), so saving the room
+   again silently dropped them from the quote. Put them back, blank where nothing was entered. */
+function restoreUfh(mode, floor) {
+    const put = (f, v) => { const el = document.getElementById(`rm-${mode}-ufh-${f}`); if (el) el.value = v || ""; };
+    put("mat", floor.ufhMat); put("stat", floor.ufhStat); put("other", floor.ufhOther);
+    put("labour", floor.ufhLabour); put("other-desc", floor.ufhOtherDesc);
+    if (typeof applyRegionUnitsRate === "function") applyRegionUnitsRate();   // per-ft² view for US users
 }
 
 /* Restore fields when editing an existing room */
@@ -9164,6 +9177,7 @@ function restoreRoomInputs(room) {
             set("rm-r-ftilethick", floors[0].tileThick || 10);
             set("rm-r-fgrout", floors[0].grout);
             setCb("rm-r-ufh", floors[0].ufh);
+            restoreUfh("r", floors[0]);
             setCb("rm-r-cementboard", floors[0].cementBoard);
             setCb("rm-r-membrane",    floors[0].membrane);
             setCb("rm-r-levelling",   floors[0].levelling);
@@ -9208,6 +9222,7 @@ function restoreRoomInputs(room) {
         set("rm-f-tilethick", floors[0].tileThick || 10);
         set("rm-f-grout",  floors[0].grout);
         setCb("rm-f-ufh",         floors[0].ufh);
+        restoreUfh("f", floors[0]);
         setCb("rm-f-cementboard", floors[0].cementBoard);
         setCb("rm-f-membrane",    floors[0].membrane);
         setCb("rm-f-levelling",   floors[0].levelling);
@@ -10356,8 +10371,10 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         s.labour = S.labourMarkup ? labRaw * mult : labRaw;
     }
 
+    // UFH adds only what the tiler entered (mat, stat, other, labour per m²). Blank = nothing:
+    // there used to be a hidden £15/m² labour default, so ticking UFH added money nobody typed in.
     s.ufhCost = (s.ufh && s.type === "floor") ? (
-        (s.ufhMat || 0) + (s.ufhStat || 0) + (s.ufhOther || 0) + s.area * (s.ufhLabour || 15)
+        (s.ufhMat || 0) + (s.ufhStat || 0) + (s.ufhOther || 0) + s.area * (s.ufhLabour || 0)
     ) : 0;
 
     // Wet room tray flat rate (per-job price overrides settings)
