@@ -69,4 +69,39 @@ test.describe("Web app", () => {
     expect(money(await row("Labour").textContent())).toBeCloseTo(lab, 1);
     expect(money(await quote.locator(".quote-grand span").last().textContent())).toBeCloseTo(total * 1.2, 1);
   });
+
+  test("tanking and anti-crack membrane: prep materials and fitting labour land on the right quote lines", async ({ page }) => {
+    await page.locator("#bnav-customers").click();
+    await page.locator("#screen-customers").getByText("+ Add").first().click();
+    await page.locator("#ac-name").fill("Sarah Thompson");
+    await page.locator("#screen-add-customer").getByRole("button", { name: "Save Customer" }).click();
+    await page.locator("#screen-customers").getByRole("button", { name: "+ Job" }).first().click();
+    await page.locator("#rm-name").fill("Main Bathroom");
+    await page.locator("#rm-r-length").fill("2.8");
+    await page.locator("#rm-r-width").fill("2.2");
+    await page.locator("#rm-r-height").fill("2.4");
+    await page.locator("#screen-room").getByRole("button", { name: "Wall Prep" }).click();
+    await page.locator("#rm-r-wtanking-a").check();
+    await page.locator("#rm-r-wtanking-b").check();
+    await page.locator("#screen-room").getByRole("button", { name: "Floor Prep" }).click();
+    await page.locator("#rm-r-membrane").check();
+    await page.locator("#screen-room").getByRole("button", { name: "Save Room" }).click();
+
+    const card = page.locator(".room-card").first();
+    const value = label => card.locator(".rcb-item", { has: page.locator(".rcb-label", { hasText: new RegExp(`^${label}$`) }) }).locator(".rcb-value");
+    const total = money(await card.locator(".room-card-total").textContent());
+    const mats = money(await value("Materials").textContent());
+    const lab = money(await value("Labour").textContent());
+    const prepMat = money(await value("Prep Materials").textContent());
+    const prepLab = money(await value("Prep Labour").textContent());
+    expect(prepMat).toBeGreaterThan(0);
+    expect(prepLab).toBeGreaterThan(0);
+    expect(mats + lab + prepMat + prepLab).toBeCloseTo(total, 1);
+
+    await page.locator("#job-quote-btn").click();
+    const quote = page.locator("#screen-quote");
+    const row = name => quote.locator("tr", { hasText: name }).first().locator("td").last();
+    expect(money(await row("Materials").textContent())).toBeCloseTo(mats + prepMat, 1);
+    expect(money(await row("Labour").textContent())).toBeCloseTo(lab + prepLab, 1);
+  });
 });
