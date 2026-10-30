@@ -24,3 +24,17 @@ Changes in this folder do not modify the TileIQ app.
 - `_redirects` — retained routing rules for `/app` when deployed alongside the existing app
 
 All main calls-to-action use the existing `/app` route. The app itself is not included here.
+
+## Tests
+
+Playwright end-to-end tests live in `tests/e2e/` and run against a local static server
+(`tests/static-server.mjs`) that serves pages the way Cloudflare Pages does. All requests
+to other sites (analytics, Formspree, Supabase) are blocked or mocked, so the tests run offline.
+
+```bash
+npm install
+npx playwright install chromium   # first time only
+npm test
+```
+
+They run on desktop and mobile (Pixel 7) viewports, and on every pull request via GitHub Actions.
