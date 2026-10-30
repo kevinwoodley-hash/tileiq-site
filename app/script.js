@@ -7847,8 +7847,9 @@ function renderJobView() {
             return `<span class="surf-chip">${icon} ${esc(s.label)} ${dim} · ${currencySymbol()}${s.total}</span>`;
         }).join("");
 
-        const mats       = surfaces.reduce((a, s) => a + (s.materialSell  || 0), 0);
-        const lab        = surfaces.reduce((a, s) => a + (s.labour        || 0), 0);
+        const extra      = roomExtraCosts(r);
+        const mats       = surfaces.reduce((a, s) => a + (s.materialSell  || 0), 0) + extra.materials;
+        const lab        = surfaces.reduce((a, s) => a + (s.labour        || 0), 0) + extra.labour;
         const prepMat    = surfaces.reduce((a, s) => a + (s.prepMatCost   || 0), 0);
         const prepLab    = surfaces.reduce((a, s) => a + (s.prepLabCost   || 0), 0);
         const ufh        = surfaces.reduce((a, s) => a + (s.ufhCost       || 0), 0);
@@ -7917,8 +7918,9 @@ function renderJobView() {
         const totalArea = (r.surfaces||[]).reduce((a,s) => a+(s.area||0), 0);
         const labourOpts = r.labourType === "day" ? {type:"day", days:r.days||1, dayRate:r.dayRate||settings.dayRate||200, totalArea} : null;
         (r.surfaces||[]).forEach(s => { s.tileType = s.tileType || r.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
-        totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0);
-        totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0);
+        const extra = roomExtraCosts(r);
+        totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0) + extra.materials;
+        totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0) + extra.labour;
         totalPrepMat += (r.surfaces||[]).reduce((a,s) => a+(s.prepMatCost||0), 0);
         totalPrepLab += (r.surfaces||[]).reduce((a,s) => a+(s.prepLabCost||0), 0);
     });
@@ -10948,6 +10950,18 @@ function roomPriceParts(room) {
     const materials = sum("materialSell") + prep + sum("trayCost") + parseFloat(room.trimCost || 0) + calcSealantCost(room);
     // Labour takes the remainder so the two lines add up to the penny (s.total is rounded per surface)
     return { total, materials, labour: total - materials, prep };
+}
+
+// The costs that belong to the room rather than to its surfaces' own materials/labour lines:
+// wet room trays, trim and sealant are materials; extra work and niches are labour. The room
+// card and Job Total breakdown add these on so their lines add up to roomGrandTotal().
+function roomExtraCosts(room) {
+    const trays = (room.surfaces || []).reduce((a, s) => a + (parseFloat(s.trayCost) || 0), 0);
+    const nicheCost = getNicheSurfaces(null, room.niches).reduce((a, n) => a + n.labourCost, 0);
+    return {
+        materials: trays + parseFloat(room.trimCost || 0) + calcSealantCost(room),
+        labour:    parseFloat(room.extraWorkCost || 0) + nicheCost
+    };
 }
 
 function roomGrandTotal(room) {
