@@ -952,7 +952,7 @@ const TQA = (() => {
         try {
             if (!currentUser) return;
             const real = getRealJobs();
-            const plan = isPaidPro() ? "paid" : isPro() ? "store_trial" : isGuest() ? "guest" : freeSendsLeft() > 0 ? "free" : "free_used";
+            const plan = isPaidPro() ? "paid" : isPro() ? "store_trial" : isGuest() ? "guest" : inFreeSendDays() ? "free" : "free_used";
             const props = {
                 plan, trial_days_left: trialDaysLeft(), region: regionOf(), platform_type: platform(),
                 app_version: jVersion || undefined, sign_in_method: currentUser.app_metadata?.provider || undefined,
@@ -3575,8 +3575,6 @@ function updatePrepPriceBadges() {
     document.querySelectorAll(".pc-primer").forEach(el => el.textContent = dispRate(S.primerPrice || 3.50));
     document.querySelectorAll(".pc-stone").forEach(el => el.textContent = dispRate(S.stoneSurcharge || 8.00));
     document.querySelectorAll(".pc-sealer").forEach(el => el.textContent = dispRate(S.sealerPrice || 5.00));
-    const trayEl = document.getElementById("pc-wet-tray");
-    if (trayEl) trayEl.textContent = S.wetRoomTrayRate || 150;
     updateLevelBadge("rm-r-leveldepth", ".pc-lev-r");
     updateLevelBadge("rm-f-leveldepth", ".pc-lev-f");
     updateLevelBadge("rm-sh-leveldepth", ".pc-lev-sh");
@@ -3957,15 +3955,15 @@ function renderHomeScreen() {
         } else if (isDemoAccount()) {
             tierEl.innerHTML = "";
         } else {
-            // Free plan: everything works; one job's quote/invoice can be sent free (see FREE PLAN)
-            const left = freeSendsLeft();
+            // Free plan: everything works; unlimited sending for the first FREE_SEND_DAYS days (see FREE PLAN)
+            const left = freeSendDaysLeft();
             const grace = inFreePlanGrace();
             const guestLine = isGuest() ? `<div onclick="showCreateAccountSheet(false)" style="font-size:12px;color:var(--text-muted);margin-top:6px;cursor:pointer;">👤 Using TileIQ as a guest · <span style="color:#f59e0b;font-weight:700;text-decoration:underline;">Create your free account</span> to keep your work safe</div>` : "";
             tierEl.innerHTML = grace
                 ? `<div style="font-size:12px;color:#f59e0b;font-weight:700;">From 31 October, sending more than one quote needs a subscription (30 days free to start).</div>
                    <div onclick="showPaywall('free_plan_notice')" style="font-size:12px;color:#f59e0b;margin-top:4px;text-decoration:underline;cursor:pointer;">Start your free trial now →</div>`
                 : (left > 0
-                    ? `<span style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;">🎁 Your first quote is free</span>`
+                    ? `<span style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;">🎁 Unlimited free quotes · ${left} day${left !== 1 ? "s" : ""} left</span>`
                     : `<span style="background:var(--surface);border:1px solid var(--border);color:var(--ink);font-size:11px;font-weight:700;padding:4px 12px;border-radius:99px;">Free plan</span>
                        <div onclick="isGuest() ? showCreateAccountSheet(true) : showPaywall('free_limit')" style="font-size:12px;color:#f59e0b;font-weight:700;margin-top:6px;text-decoration:underline;cursor:pointer;">Start your 30-day free trial to send more quotes →</div>`)
                 + guestLine;
@@ -8956,9 +8954,6 @@ function rmToggleWetRoomR() {
     // Show tray cost in floor prep
     const tankEl = document.getElementById("rm-r-ftanking");
     if (tankEl) tankEl.checked = on;
-    // Update wet tray rate display
-    const traySpan = document.getElementById("pc-wet-tray-r");
-    if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
     const tankSpan = document.getElementById("pc-tank-r");
     if (tankSpan) tankSpan.textContent = tankingKitPrice();
     rmCalc();
@@ -8980,8 +8975,6 @@ function rmToggleWetRoomF() {
     if (opts) opts.classList.toggle("hidden", !on);
     const tankEl = document.getElementById("rm-f-tanking");
     if (tankEl) tankEl.checked = on;
-    const traySpan = document.getElementById("pc-wet-tray-f");
-    if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
     const tankSpan = document.getElementById("pc-tank-f");
     if (tankSpan) tankSpan.textContent = tankingKitPrice();
     rmCalc();
@@ -15472,16 +15465,19 @@ function isTrialActive()   { return trialDaysElapsed() < TRIAL_DAYS; }
    Anyone can use TileIQ without subscribing, and without even creating an account
    (guest mode: Supabase anonymous sign-in, so their work is saved to the cloud like
    anyone else's). Everything works, with no time limit; the only limit is SENDING:
-   one job's quote (and that job's invoice) can be sent free. Sending for a second job
-   needs a subscription, which starts with a 30-day free trial (set on the store
-   subscription itself, via RevenueCat); a guest creates their account first, which keeps
-   all their work (the guest account simply becomes their account).
-   The jobs counted are settings.freeSentJobIds plus any job already sent, so deleting a
-   job doesn't give the free send back. Accounts created before FREE_PLAN_START keep
-   unlimited sending until FREE_PLAN_GRACE_END, with a notice. Subscribers (including
-   store free-trial periods), access-code holders and the shared demo account are never
-   limited. AI Receptionist still needs a genuinely paid subscription (isPaidPro). */
-const FREE_SEND_JOBS = 1;
+   for their first FREE_SEND_DAYS days (counted from when the account, guest or not, was
+   created) they can send as many quotes and invoices as they like. After that, sending
+   for a new job needs a subscription, which starts with a 30-day free trial (set on the
+   store subscription itself, via RevenueCat); a guest creates their account first, which
+   keeps all their work and their remaining free days (the guest account simply becomes
+   their account, same user id and created_at). Jobs already sent during the free days
+   (settings.freeSentJobIds plus any job with a quote or invoice sent) can still have their
+   quote re-sent or their invoice sent afterwards, so no one is left unable to bill a job
+   they quoted for free. Accounts created before FREE_PLAN_START kept unlimited sending
+   until FREE_PLAN_GRACE_END. Subscribers (including store free-trial periods),
+   access-code holders and the shared demo account are never limited. AI Receptionist
+   still needs a genuinely paid subscription (isPaidPro). */
+const FREE_SEND_DAYS = 14;
 const FREE_PLAN_START = "2026-10-17T00:00:00Z";
 const FREE_PLAN_GRACE_END = "2026-10-31T00:00:00Z";
 
@@ -15491,20 +15487,36 @@ function inFreePlanGrace() {
     const created = Date.parse(currentUser?.created_at || "");
     return !!created && created < Date.parse(FREE_PLAN_START) && Date.now() < Date.parse(FREE_PLAN_GRACE_END);
 }
+// When the free sending days end. Normally FREE_SEND_DAYS after the account was created; if
+// the account's creation date isn't known on this device, the days are counted from the first
+// time this app saw the account (stamped once into settings so it can't restart).
+function freeSendEndsAt() {
+    let start = Date.parse(currentUser?.created_at || "");
+    if (!start) {
+        start = Date.parse(settings?.freeSendStartedAt || "");
+        if (!start && currentUser) {
+            settings.freeSendStartedAt = new Date().toISOString();
+            start = Date.parse(settings.freeSendStartedAt);
+            try { portfolioSaveSettings(); } catch (_) {}
+        }
+    }
+    return start ? start + FREE_SEND_DAYS * 86400000 : 0;
+}
+function inFreeSendDays() { return Date.now() < freeSendEndsAt(); }
+// Whole days of free sending left, counting today (so the last day reads "1 day left")
+function freeSendDaysLeft() { return Math.max(0, Math.ceil((freeSendEndsAt() - Date.now()) / 86400000)); }
 function freeSentJobIds() {
     const ids = new Set(Array.isArray(settings?.freeSentJobIds) ? settings.freeSentJobIds : []);
     (jobs || []).forEach(j => { if (j && !j.isDemo && (j.quoteSentAt || j.invoicedAt)) ids.add(j.id); });
     return ids;
 }
-function freeSendsLeft() { return Math.max(0, FREE_SEND_JOBS - freeSentJobIds().size); }
-// Before sending a quote or invoice: true if it can go (subscribed, in the grace period, this
-// job's already the free one, or the free send is still unused); otherwise shows why and how.
+// Before sending a quote or invoice: true if it can go (subscribed, in the grace period, still
+// in the free days, or this job was already sent); otherwise shows why and how.
 async function requireSend(job, what) {
     if (!job || isDemoAccount()) return true;
     if (_proStatus === null && !checkAccessCodePro()) { try { await refreshProStatus(); } catch (_) {} }
-    if (!freePlanApplies() || inFreePlanGrace()) return true;
-    const ids = freeSentJobIds();
-    if (ids.has(job.id) || ids.size < FREE_SEND_JOBS) return true;
+    if (!freePlanApplies() || inFreePlanGrace() || inFreeSendDays()) return true;
+    if (freeSentJobIds().has(job.id)) return true;
     showFreeLimitSheet(what);
     return false;
 }
@@ -15526,7 +15538,7 @@ function showFreeLimitSheet(what) {
     sheet.id = "free-limit-sheet";
     sheet.style.cssText = "position:fixed;inset:0;z-index:9900;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;";
     sheet.innerHTML = `<div style="width:100%;background:var(--surface);border-radius:18px 18px 0 0;padding:20px 18px calc(env(safe-area-inset-bottom,0px) + 18px);">
-        <div style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px;">You've used your free ${what === "invoice" ? "send" : "quote"} 🎉</div>
+        <div style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:6px;">Your ${FREE_SEND_DAYS} free days are up 🎉</div>
         <div style="font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:14px;">${guest
             ? "Create your free account (everything you've done stays), then start your <b>30-day free trial</b> to send unlimited quotes and invoices."
             : "Start your <b>30-day free trial</b> to send unlimited quotes and invoices. Everything you've set up stays exactly as it is."}</div>
@@ -15715,8 +15727,8 @@ function updateProBadge() {
     const btn = document.getElementById("pro-badge-btn");
     if (!btn) return;
     if (_proStatus === false) {
-        // Free plan: only show "Go Pro" once the free send is used (until then the app just works)
-        if (isDemoAccount() || freeSendsLeft() > 0 || inFreePlanGrace()) {
+        // Free plan: only show "Go Pro" once the free days are over (until then the app just works)
+        if (isDemoAccount() || inFreeSendDays() || inFreePlanGrace()) {
             btn.style.display = "none";
             btn.onclick = null;
         } else {
@@ -15743,7 +15755,7 @@ async function showPaywall(source) {
         if (source === "ai_receptionist") {
             subtitleEl.textContent = "AI Receptionist needs a paid subscription";
         } else if (source === "free_limit") {
-            subtitleEl.textContent = "You've used your free quote — start your 30-day free trial to send unlimited quotes and invoices";
+            subtitleEl.textContent = `Your ${FREE_SEND_DAYS} free days are up — start your 30-day free trial to keep sending unlimited quotes and invoices`;
         } else {
             subtitleEl.textContent = "Start with 30 days free — send unlimited quotes and invoices";
         }
