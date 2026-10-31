@@ -1006,6 +1006,45 @@ function uid()     { return Date.now().toString(36) + Math.random().toString(36)
 // visitor tries themselves get a download prompt instead; background cloud
 // saves are skipped silently, so each visitor's edits stay in their browser.
 const DEMO_EMAIL = "demo@tile-iq.com";
+
+/* ── WEBSITE DEMO vs A REAL WEB SESSION ─────────────────────────
+   The website demo (tile-iq.com/app/demo loads /app/?demo=1 in a frame, and signs in as the
+   demo account itself once the sign-in screen shows) shares browser storage with the web app
+   at /app. So anyone who had signed in at /app with their own account got THEIR account inside
+   the demo, with Sign out hidden by the demo page. In demo mode a real account's saved session
+   is now set aside (signed out on this browser only, never on the server) so the sign-in screen
+   shows and the demo page signs in as the demo account. The next normal visit to /app puts the
+   real session back, unless they've signed in to something else there since. */
+const SB_SESSION_KEY = "sb-lzwmqabxpxuuznhbpewm-auth-token";
+const SESSION_BEFORE_DEMO_KEY = "tileiq-session-before-demo";
+function isWebDemo() {
+    return !window.Capacitor?.isNativePlatform?.() && new URLSearchParams(location.search).get("demo") === "1";
+}
+function savedSessionEmail() {
+    try { return JSON.parse(localStorage.getItem(SB_SESSION_KEY) || "{}").user?.email || null; } catch (_) { return null; }
+}
+async function setRealSessionAsideForDemo() {
+    try {
+        const raw = localStorage.getItem(SB_SESSION_KEY);
+        if (!raw || savedSessionEmail() === DEMO_EMAIL) return;
+        localStorage.setItem(SESSION_BEFORE_DEMO_KEY, raw);
+        try { await sb.auth.signOut({ scope: "local" }); } catch (_) {}
+        localStorage.removeItem(SB_SESSION_KEY);
+    } catch (e) { console.warn("Demo: couldn't set the saved session aside:", e.message); }
+}
+async function restoreSessionAfterDemo() {
+    try {
+        const saved = localStorage.getItem(SESSION_BEFORE_DEMO_KEY);
+        if (!saved) return;
+        localStorage.removeItem(SESSION_BEFORE_DEMO_KEY);
+        const current = savedSessionEmail();
+        if (current && current !== DEMO_EMAIL) return;   // signed in to a real account since: keep that one
+        // Drop the demo session first (this browser only), so it can't be written back over the real one
+        if (current) { try { await sb.auth.signOut({ scope: "local" }); } catch (_) {} }
+        localStorage.setItem(SB_SESSION_KEY, saved);
+        localStorage.removeItem("tileiq-signed-out");
+    } catch (e) { console.warn("Demo: couldn't restore the saved session:", e.message); }
+}
 // ── "Start here" guide ────────────────────────────────────────
 // A short checklist for web-demo visitors (tile-iq.com/app/demo), picked by
 // the landing page they came from: /app/demo?try=quoting|admin|reviews|social
@@ -2748,6 +2787,10 @@ async function loadUserData() {
     // end of the script, when every declaration exists.
     await null;
     const t0 = Date.now();
+
+    // The website demo must always open the shared demo account (see setRealSessionAsideForDemo)
+    if (isWebDemo()) await setRealSessionAsideForDemo();
+    else await restoreSessionAfterDemo();
 
     if (localStorage.getItem("tileiq-signed-out")) {
         show("screen-signin");
