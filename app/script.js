@@ -116,7 +116,7 @@ let settings = {
     level4:         9,
     compoundBagPrice: 12,
     compoundCoverage: 3,
-    tanking:        15,
+    tanking:        45,   // £ per tanking kit (each kit covers 6m²) — read it through tankingKitPrice()
     clipPrice:      12,   // £ per bag of 200 clips
     wedgePrice:      8,   // £ per bag of 200 wedges
     trimPrice:       3.50, // £ per 2.4m length of trim
@@ -146,6 +146,16 @@ const DEFAULT_SETTINGS = { ...settings }; // snapshot of defaults for reset on s
 const OLD_DEFAULT_TERMS = "Payment due within 14 days of invoice. All works guaranteed for 12 months against defects in workmanship.";
 function quoteTerms() {
     return settings.terms === OLD_DEFAULT_TERMS ? DEFAULT_SETTINGS.terms : (settings.terms || "");
+}
+
+// Tanking used to be priced per m² with a default of 15. It's now priced per kit (covering 6m²),
+// but that old 15 had already been saved into every account's settings, where it overrode the
+// new £45 default, so kits were quoted at £15. A stored 15 is read as the old default (£45) until
+// the tiler saves Settings; from then on their own figure is used as written, even if it's 15.
+function tankingKitPrice() {
+    const v = parseFloat(settings?.tanking);
+    if (v === 15 && !settings.tankingKitPriceSet) return 45;
+    return v > 0 ? v : 45;
 }
 
 // Invoice numbers run in sequence across all of the tiler's jobs (INV-1001, INV-1002, …).
@@ -3559,7 +3569,7 @@ function updatePrepPriceBadges() {
     const S = settings;
     document.querySelectorAll(".pc-cb").forEach(el   => el.textContent = dispRate(S.cementBoard));
     document.querySelectorAll(".pc-mem").forEach(el  => el.textContent = dispRate(S.membrane));
-    document.querySelectorAll(".pc-tank-r, .pc-tank-w, .pc-tank-f, .pc-tank-sh").forEach(el => el.textContent = (S.tanking || 45));
+    document.querySelectorAll(".pc-tank-r, .pc-tank-w, .pc-tank-f, .pc-tank-sh").forEach(el => el.textContent = tankingKitPrice());
     document.querySelectorAll(".pc-clips").forEach(el => el.textContent = S.clipPrice || 12);
     document.querySelectorAll(".pc-trim").forEach(el => el.textContent = `${currencySymbol()}${(S.trimPrice || 3.50).toFixed(2)}`);
     document.querySelectorAll(".pc-primer").forEach(el => el.textContent = dispRate(S.primerPrice || 3.50));
@@ -7847,13 +7857,8 @@ function renderJobView() {
             return `<span class="surf-chip">${icon} ${esc(s.label)} ${dim} · ${currencySymbol()}${s.total}</span>`;
         }).join("");
 
-        const extra      = roomExtraCosts(r);
-        const mats       = surfaces.reduce((a, s) => a + (s.materialSell  || 0), 0) + extra.materials;
-        const lab        = surfaces.reduce((a, s) => a + (s.labour        || 0), 0) + extra.labour;
-        const prepMat    = surfaces.reduce((a, s) => a + (s.prepMatCost   || 0), 0);
-        const prepLab    = surfaces.reduce((a, s) => a + (s.prepLabCost   || 0), 0);
-        const ufh        = surfaces.reduce((a, s) => a + (s.ufhCost       || 0), 0);
-        const adhKg      = surfaces.reduce((a, s) => a + (s.adhKg         || 0), 0);
+        const { mats, lab, prepMat, prepLab, ufh } = roomCostLines(r);
+        const adhKg     = surfaces.reduce((a, s) => a + (s.adhKg         || 0), 0);
         const adhBags    = Math.ceil(adhKg / 20);
         const groutKg    = surfaces.reduce((a, s) => a + (s.groutKg       || 0), 0);
         const groutBags  = Math.ceil(groutKg / (parseFloat(settings.groutBagSize) || 2.5));
@@ -7865,7 +7870,7 @@ function renderJobView() {
 
         const hasTanking  = surfaces.some(s => s.tanking);
         const hasPrimer   = surfaces.some(s => s.primer);
-        const tankingCost = surfaces.reduce((a,s) => { if (!s.tanking) return a; const kits = Math.ceil((s.area||0) / 6); return a + kits * (parseFloat(settings?.tanking)||45) + (s.area||0) * (parseFloat(settings?.tankingLabour)||8); }, 0);
+        const tankingCost = surfaces.reduce((a,s) => { if (!s.tanking) return a; const kits = Math.ceil((s.area||0) / 6); return a + kits * tankingKitPrice() + (s.area||0) * (parseFloat(settings?.tankingLabour)||8); }, 0);
         const primerCost  = surfaces.reduce((a,s) => a + (s.primer  ? (s.area||0) * (parseFloat(settings?.primerPrice)||3.5) : 0), 0);
         const matSchedule = [
             adhBags   > 0 ? `Adhesive: ${adhBags} × 20kg`                                       : "",
@@ -7918,11 +7923,11 @@ function renderJobView() {
         const totalArea = (r.surfaces||[]).reduce((a,s) => a+(s.area||0), 0);
         const labourOpts = r.labourType === "day" ? {type:"day", days:r.days||1, dayRate:r.dayRate||settings.dayRate||200, totalArea} : null;
         (r.surfaces||[]).forEach(s => { s.tileType = s.tileType || r.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
-        const extra = roomExtraCosts(r);
-        totalMats    += (r.surfaces||[]).reduce((a,s) => a+(s.materialSell||0), 0) + extra.materials;
-        totalLabour  += (r.surfaces||[]).reduce((a,s) => a+(s.labour||0)+(s.ufhCost||0), 0) + extra.labour;
-        totalPrepMat += (r.surfaces||[]).reduce((a,s) => a+(s.prepMatCost||0), 0);
-        totalPrepLab += (r.surfaces||[]).reduce((a,s) => a+(s.prepLabCost||0), 0);
+        const c = roomCostLines(r);
+        totalMats    += c.mats;
+        totalLabour  += c.lab + c.ufh;   // no separate UFH line on the Job Total, so it sits in Labour
+        totalPrepMat += c.prepMat;
+        totalPrepLab += c.prepLab;
     });
 
     const prepBreakdown = [
@@ -8955,7 +8960,7 @@ function rmToggleWetRoomR() {
     const traySpan = document.getElementById("pc-wet-tray-r");
     if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
     const tankSpan = document.getElementById("pc-tank-r");
-    if (tankSpan) tankSpan.textContent = settings?.tanking || 45;
+    if (tankSpan) tankSpan.textContent = tankingKitPrice();
     rmCalc();
 }
 function rmRTrayToggle() {
@@ -8978,7 +8983,7 @@ function rmToggleWetRoomF() {
     const traySpan = document.getElementById("pc-wet-tray-f");
     if (traySpan) traySpan.textContent = settings?.wetRoomTrayRate || 150;
     const tankSpan = document.getElementById("pc-tank-f");
-    if (tankSpan) tankSpan.textContent = settings?.tanking || 45;
+    if (tankSpan) tankSpan.textContent = tankingKitPrice();
     rmCalc();
 }
 function rmFTrayToggle() {
@@ -10445,7 +10450,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         }
     }
     if (s.tanking) {
-        const kitPrice   = parseFloat(S.tanking) || 45;
+        const kitPrice   = tankingKitPrice();
         const kitCoverM2 = 6;
         const kits       = Math.ceil(s.area / kitCoverM2);
         const kitCost    = kits * kitPrice;
@@ -10970,6 +10975,28 @@ function roomExtraCosts(room) {
 
 function roomGrandTotal(room) {
     return roomPriceParts(room).total;
+}
+
+// The tiler's own breakdown of a room's price on the job screen (room card and Job Total):
+// Materials, Labour, Prep Materials, Prep Labour and UFH. Built from roomPriceParts() so the
+// lines always add up to the room total. They used to leave out sealant, trim, the wet room
+// tray, niches and extra work, so the lines added up to less than the total shown above them.
+// Materials includes tray, trim and sealant and Labour includes niches and extra work, the
+// same split the customer's quote uses. Each line is rounded to the penny and Labour takes
+// the remainder, so the figures on screen add up exactly.
+// Callers run calcSurface() over the surfaces first, as for roomPriceParts().
+function roomCostLines(room) {
+    const surfaces = room.surfaces || [];
+    const sum   = key => surfaces.reduce((a, s) => a + (parseFloat(s[key]) || 0), 0);
+    const pence = n => Math.round(n * 100) / 100;
+    const parts   = roomPriceParts(room);
+    const total   = pence(parts.total);
+    const prepMat = pence(sum("prepMatCost"));
+    const prepLab = pence(sum("prepLabCost"));
+    const ufh     = pence(sum("ufhCost"));
+    const mats    = pence(parts.materials - parts.prep);
+    const lab     = pence(total - mats - prepMat - prepLab - ufh);
+    return { total, mats, lab, prepMat, prepLab, ufh };
 }
 
 /* Build a minimal room-like object from the current sealant form fields.
@@ -12408,7 +12435,7 @@ function goSettings() {
     document.getElementById("set-level4").value         = s.level4       || 9;
     if (document.getElementById("set-compound-bag-price"))  document.getElementById("set-compound-bag-price").value  = s.compoundBagPrice  || 12;
     if (document.getElementById("set-compound-coverage"))   document.getElementById("set-compound-coverage").value   = s.compoundCoverage   || 3;
-    document.getElementById("set-tanking").value        = s.tanking      || 45;
+    document.getElementById("set-tanking").value        = tankingKitPrice();
     if (document.getElementById("set-tanking-labour")) document.getElementById("set-tanking-labour").value = s.tankingLabour || 8;
     document.getElementById("set-clip-price").value     = s.clipPrice    || 12;
     document.getElementById("set-wedge-price").value    = s.wedgePrice   || 8;
@@ -12900,6 +12927,7 @@ function saveSettings() {
         compoundBagPrice:  parseFloat(document.getElementById("set-compound-bag-price")?.value) || 12,
         compoundCoverage:  parseFloat(document.getElementById("set-compound-coverage")?.value)  || 3,
         tanking:       parseFloat(document.getElementById("set-tanking").value)        || 45,
+        tankingKitPriceSet: true, // the tiler has now confirmed their own kit price (see tankingKitPrice())
         tankingLabour: parseFloat(document.getElementById("set-tanking-labour")?.value) || 8,
         clipPrice:     parseFloat(document.getElementById("set-clip-price").value)     || 12,
         wedgePrice:    parseFloat(document.getElementById("set-wedge-price").value)    || 8,
@@ -13125,7 +13153,7 @@ function renderMaterials() {
             if (s.cementBoards) prepItems.push(`${s.cementBoards} cement board${s.cementBoards!==1?"s":""}`);
             if (s.levelBags)    prepItems.push(`${s.levelBags} × 20kg levelling bag${s.levelBags!==1?"s":""}`);
             if (s.tanking) {
-                const kp = parseFloat(settings?.tanking||45);
+                const kp = tankingKitPrice();
                 const lr = parseFloat(settings?.tankingLabour||8);
                 const nk = s.tankingKits || Math.ceil(s.area/6);
                 prepItems.push(`Tanking: ${nk} kit${nk!==1?"s":""} ${currencySymbol()}${(nk*kp).toFixed(2)} + labour ${currencySymbol()}${(s.area*lr).toFixed(2)}`);
@@ -13215,7 +13243,7 @@ function renderMaterials() {
             <div class="mat-total-item"><span class="mat-total-label">Grout</span><span class="mat-total-value">Wall: ${grandWallGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br>Floor: ${grandFloorGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg<br><span style="font-size:11px;font-weight:600;">Total: ${grandWallGroutBags + grandFloorGroutBags} bag${(grandWallGroutBags + grandFloorGroutBags)!==1?"s":""}</span></span></div>
             ${grandSiliconeTubes > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Sealant</span><span class="mat-total-value">${grandSiliconeTubes} tube${grandSiliconeTubes!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${grandSiliconeMetres.toFixed(1)}m total</span><br><span style="font-size:11px;font-weight:400;">Floor perimeter bead: ${grandSiliconeFloor.toFixed(1)}m</span></span></div>` : ""}
             ${grandCBBoards  > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Cement Board</span><span class="mat-total-value">${grandCBBoards} board${grandCBBoards!==1?"s":""}</span></div>` : ""}
-            ${grandTankingM2 > 0 ? (() => { const kits = Math.ceil(grandTankingM2/6); const kitCost = kits*(parseFloat(settings?.tanking)||45); const labCost = grandTankingM2*(parseFloat(settings?.tankingLabour)||8); return `<div class="mat-total-item"><span class="mat-total-label">Tanking Kit</span><span class="mat-total-value">${kits} kit${kits!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${fmtArea(grandTankingM2)}${areaUnit()} · Kit ${currencySymbol()}${kitCost.toFixed(2)} + Labour ${currencySymbol()}${labCost.toFixed(2)}</span></span></div>`; })() : ""}
+            ${grandTankingM2 > 0 ? (() => { const kits = Math.ceil(grandTankingM2/6); const kitCost = kits*tankingKitPrice(); const labCost = grandTankingM2*(parseFloat(settings?.tankingLabour)||8); return `<div class="mat-total-item"><span class="mat-total-label">Tanking Kit</span><span class="mat-total-value">${kits} kit${kits!==1?"s":""}<br><span style="font-size:11px;font-weight:400;">${fmtArea(grandTankingM2)}${areaUnit()} · Kit ${currencySymbol()}${kitCost.toFixed(2)} + Labour ${currencySymbol()}${labCost.toFixed(2)}</span></span></div>`; })() : ""}
             ${grandLevelBags > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling</span><span class="mat-total-value">${grandLevelBags} × 20kg bag${grandLevelBags!==1?"s":""}</span></div>` : ""}
             ${grandClips     > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Levelling Clips</span><span class="mat-total-value">${grandClips}</span></div>` : ""}
             ${grandWedges    > 0 ? `<div class="mat-total-item"><span class="mat-total-label">Wedges</span><span class="mat-total-value">${grandWedges}</span></div>` : ""}
