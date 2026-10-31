@@ -70,7 +70,7 @@ def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, scrip
 {sections}
     <section class="cta-section">
       <div class="container cta-card">
-        <div><h2>Use your rates on every real quote.</h2><p>Try the real TileIQ app free. No sign-up needed, and your first quote is free.</p>
+        <div><h2>Use your rates on every real quote.</h2><p>Try the real TileIQ app free. No sign-up needed, and you can send unlimited quotes free for 2 weeks.</p>
           <p class="calc-demo-link">Just looking? <a href="/app/demo" data-cta-kind="demo">Try the demo</a> (no account, nothing saved).</p></div>
         <a class="btn btn-dark" href="{app}" data-cta-kind="app">Try TileIQ free →</a>
       </div>

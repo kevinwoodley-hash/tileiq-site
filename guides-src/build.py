@@ -30,7 +30,7 @@ BYLINE = 'By <a href="/about/">Kevin</a>, City &amp; Guilds Level 2 qualified ti
 CATEGORIES = ["Tiling prices", "Estimating & materials", "Running a tiling business", "Free calculators"]
 
 # The call to action at the end of each guide, matched to its subject. Every one offers the real
-# app first (free, no sign-up, first quote free), with the demo as a clearly separate option.
+# app first (free, no sign-up, 2 weeks of unlimited free quotes), with the demo as a clearly separate option.
 CTAS = {
     "quote": ("Tired of working out every tiling quote by hand?",
               "TileIQ measures the job, works out the materials and labour, and sends a professional quote your customer can accept online."),
@@ -117,7 +117,7 @@ def cta_block(key, source):
     return f"""<section class="guide-cta" data-cta="{e(source)}">
   <h2>{e(h)}</h2>
   <p>{e(p)}</p>
-  <p class="guide-cta-free"><strong>Try the real app free.</strong> No sign-up needed, and your first quote is free to send.</p>
+  <p class="guide-cta-free"><strong>Try the real app free.</strong> No sign-up needed, and you can send unlimited quotes free for 2 weeks.</p>
   <div class="guide-cta-actions">
     <a class="btn btn-primary" href="/app/?utm_source={src}&amp;utm_medium=guide" data-cta-kind="web_app">Start free in your browser</a>
     <a class="guide-store" href="{PLAY}" data-cta-kind="google_play">Get it on Google Play</a>
