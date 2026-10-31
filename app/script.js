@@ -10954,18 +10954,6 @@ function roomPriceParts(room) {
     return { total, materials, labour: total - materials, prep, prepMat, prepLab };
 }
 
-// The costs that belong to the room rather than to its surfaces' own materials/labour lines:
-// wet room trays, trim and sealant are materials; extra work and niches are labour. The room
-// card and Job Total breakdown add these on so their lines add up to roomGrandTotal().
-function roomExtraCosts(room) {
-    const trays = (room.surfaces || []).reduce((a, s) => a + (parseFloat(s.trayCost) || 0), 0);
-    const nicheCost = getNicheSurfaces(null, room.niches).reduce((a, n) => a + n.labourCost, 0);
-    return {
-        materials: trays + parseFloat(room.trimCost || 0) + calcSealantCost(room),
-        labour:    parseFloat(room.extraWorkCost || 0) + nicheCost
-    };
-}
-
 function roomGrandTotal(room) {
     return roomPriceParts(room).total;
 }
@@ -10975,7 +10963,8 @@ function roomGrandTotal(room) {
 // lines always add up to the room total. They used to leave out sealant, trim, the wet room
 // tray, niches and extra work, so the lines added up to less than the total shown above them.
 // Materials includes tray, trim and sealant and Labour includes niches and extra work, the
-// same split the customer's quote uses. Each line is rounded to the penny and Labour takes
+// same split the customer's quote uses: its Materials line is Materials + Prep Materials here,
+// and its Labour line is Labour + Prep Labour + UFH. Each line is rounded to the penny and Labour takes
 // the remainder, so the figures on screen add up exactly.
 // Callers run calcSurface() over the surfaces first, as for roomPriceParts().
 function roomCostLines(room) {
@@ -10987,7 +10976,7 @@ function roomCostLines(room) {
     const prepMat = pence(sum("prepMatCost"));
     const prepLab = pence(sum("prepLabCost"));
     const ufh     = pence(sum("ufhCost"));
-    const mats    = pence(parts.materials - parts.prep);
+    const mats    = pence(parts.materials - parts.prepMat); // parts.materials carries prep materials (not prep labour)
     const lab     = pence(total - mats - prepMat - prepLab - ufh);
     return { total, mats, lab, prepMat, prepLab, ufh };
 }
