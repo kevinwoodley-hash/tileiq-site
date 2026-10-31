@@ -96,6 +96,7 @@ let settings = {
     cisEnabled:    false,  // works for main contractors under CIS: shows the per-job CIS switch
     cisRatePct:    20,     // default CIS deduction rate for a CIS job (20, 30 or 0)
     finDefaultMethod: "bank_transfer", // pre-picked "paid by" when recording a payment
+    finCustomCategories: [], // the tiler's own expense categories: [{ key, label, job, kind }]
     staleEnquiryDays: 5, // days an enquiry can sit with no quote sent before Your Day flags it as going cold
     demoJobsSeeded: false, // one-shot flag — once true, the two demo jobs are never re-seeded even if all real jobs are later deleted
     // tile type labour multipliers
@@ -7773,6 +7774,7 @@ function renderJobView() {
     document.getElementById("job-header-title").textContent = job.customerName + (job.quoteOption ? ` · Option ${job.quoteOption}` : "");
     renderJobQuoteButton(job);
     renderJobMoneyCard(job);
+    renderJobCostsCard(job);
     renderJobPhotos(job);
     renderFinishedPhotos(job);
     renderPortfolioJobCard(job);
@@ -8194,7 +8196,9 @@ function deleteJob() {
     // Payments recorded on the job are never deleted with it: they stay in the tiler's money
     // records (with the customer's name copied onto each), so say so before going ahead.
     const paid = FinStore.forJob(job.id).filter(p => p.status !== "void").length;
-    if (paid && !confirm(`${job.customerName} has ${paid} payment${paid === 1 ? "" : "s"} recorded. Deleting the job keeps them in your money records but removes the job they belong to.\n\nCarry on?`)) return;
+    const costs = FinExpenses.forJob(job.id).filter(e => e.status !== "void").length;
+    const what = [paid ? `${paid} payment${paid === 1 ? "" : "s"}` : "", costs ? `${costs} job cost${costs === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
+    if (what && !confirm(`${job.customerName} has ${what} recorded. Deleting the job keeps them in your money records but removes the job they belong to.\n\nCarry on?`)) return;
     // Block deletion if a quote has been sent
     if (job.quoteToken) {
         const quoteRef = job.quoteRef ? ` (${job.quoteRef})` : "";
@@ -13030,6 +13034,7 @@ function saveSettings() {
         cisEnabled:        document.getElementById("set-cis-enabled")?.value === "true",
         cisRatePct:        numOr(document.getElementById("set-cis-rate")?.value, 20),
         finDefaultMethod:  document.getElementById("set-fin-default-method")?.value || "bank_transfer",
+        finCustomCategories: finCustomCats(),   // made in the expense sheet, not on this screen: keep them
         staleEnquiryDays:  parseInt(document.getElementById("set-stale-enquiry-days")?.value) || 5,
         bankName:          (document.getElementById("set-bank-name")?.value || "").trim(),
         bankAccountName:   (document.getElementById("set-bank-account-name")?.value || "").trim(),
@@ -15325,19 +15330,138 @@ const FinCore = (() => {
         return Math.round((sellPence || 0) / (1 + m / 100));
     }
 
+    /* ── Expenses ─────────────────────────────────────────────── */
+    // HMRC's self-employment expense headings, by their Making Tax Digital names, with the
+    // wording of the Self Assessment form. Recording an expense under one of these doesn't
+    // make it tax-deductible; that's for the tiler and their accountant.
+    const TAX_HEADINGS = {
+        costOfGoods:              "Cost of goods bought for resale or goods used",
+        paymentsToSubcontractors: "Construction industry – payments to subcontractors",
+        wagesAndStaffCosts:       "Wages, salaries and other staff costs",
+        carVanTravelExpenses:     "Car, van and travel expenses",
+        premisesRunningCosts:     "Rent, rates, power and insurance costs",
+        maintenanceCosts:         "Repairs and maintenance of property and equipment",
+        adminCosts:               "Phone, fax, stationery and other office costs",
+        businessEntertainmentCosts: "Business entertainment costs",
+        advertisingCosts:         "Advertising costs",
+        interestOnBankOtherLoans: "Interest on bank and other loans",
+        financeCharges:           "Bank, credit card and other financial charges",
+        irrecoverableDebts:       "Irrecoverable debts written off",
+        professionalFees:         "Accountancy, legal and other professional fees",
+        depreciation:             "Depreciation and loss or profit on sale of assets",
+        otherExpenses:            "Other business expenses"
+    };
+    // TileIQ's own categories. job: offered when adding a cost to a job (kept short: on site
+    // the tiler wants three taps, not a list); otherwise offered as a business cost. hidden:
+    // no longer offered but still named, so expenses recorded under it before keep their label.
+    // capital: may be a capital item (claimed through capital allowances) if it's a big purchase.
+    const EXPENSE_CATEGORIES = [
+        { key: "materials",        label: "Materials",              icon: "📦", tax: "costOfGoods",              job: true },
+        { key: "skip_hire",        label: "Skip hire",              icon: "🗑", tax: "otherExpenses",            job: true },
+        { key: "parking",          label: "Parking",                icon: "🅿️", tax: "carVanTravelExpenses",     job: true },
+        { key: "fuel",             label: "Fuel",                   icon: "⛽", tax: "carVanTravelExpenses" },
+        { key: "van",              label: "Van costs",              icon: "🚐", tax: "carVanTravelExpenses" },
+        { key: "insurance",        label: "Insurance",              icon: "🛡", tax: "premisesRunningCosts" },
+        { key: "tools",            label: "Tools",                  icon: "🛠", tax: "otherExpenses", capital: true },
+        { key: "workwear",         label: "Workwear & PPE",         icon: "🦺", tax: "otherExpenses" },
+        { key: "phone",            label: "Phone & internet",       icon: "📱", tax: "adminCosts" },
+        { key: "software",         label: "Software & apps",        icon: "💻", tax: "adminCosts" },
+        { key: "advertising",      label: "Advertising",            icon: "📣", tax: "advertisingCosts" },
+        { key: "accountancy",      label: "Accountant & legal",     icon: "📒", tax: "professionalFees" },
+        { key: "training",         label: "Training & cards",       icon: "🎓", tax: "otherExpenses" },
+        { key: "bank_charges",     label: "Bank charges",           icon: "🏦", tax: "financeCharges" },
+        { key: "other",            label: "Other",                  icon: "•",  tax: "otherExpenses" },
+        // Earlier categories (Nov 2026 first release), kept for records already made with them.
+        { key: "tiles",            label: "Tiles",                  icon: "📦", tax: "costOfGoods",              job: true, hidden: true },
+        { key: "adhesive_grout",   label: "Adhesive & grout",       icon: "📦", tax: "costOfGoods",              job: true, hidden: true },
+        { key: "trims_sealant",    label: "Trims & sealant",        icon: "📦", tax: "costOfGoods",              job: true, hidden: true },
+        { key: "boards_membranes", label: "Boards & membranes",     icon: "📦", tax: "costOfGoods",              job: true, hidden: true },
+        { key: "tanking_levelling",label: "Tanking & levelling",    icon: "📦", tax: "costOfGoods",              job: true, hidden: true },
+        { key: "other_materials",  label: "Other materials",        icon: "📦", tax: "costOfGoods",              job: true, hidden: true },
+        { key: "equipment_hire",   label: "Equipment hire",         icon: "🔧", tax: "otherExpenses",            job: true, hidden: true },
+        { key: "waste_disposal",   label: "Skip & waste",           icon: "🗑", tax: "otherExpenses",            job: true, hidden: true },
+        { key: "subcontractor",    label: "Subcontractor",          icon: "👷", tax: "paymentsToSubcontractors", job: true, hidden: true },
+        { key: "tool_repairs",     label: "Tool repairs",           icon: "🔩", tax: "maintenanceCosts",                    hidden: true },
+        { key: "office",           label: "Office & stationery",    icon: "📎", tax: "adminCosts",                          hidden: true }
+    ];
+    // A tiler's own category is named by them and given one of these plain kinds, which decides
+    // the HMRC heading it files under. custom: [{ key, label, job, kind }] from settings.
+    const CUSTOM_KINDS = {
+        materials: { label: "Materials or goods",   tax: "costOfGoods" },
+        travel:    { label: "Van, fuel or travel",  tax: "carVanTravelExpenses" },
+        office:    { label: "Phone, office or software", tax: "adminCosts" },
+        labour:    { label: "Paying someone to help",    tax: "paymentsToSubcontractors" },
+        other:     { label: "Something else",       tax: "otherExpenses" }
+    };
+    function customCategory(c) {
+        const k = CUSTOM_KINDS[c.kind] || CUSTOM_KINDS.other;
+        return { key: c.key, label: c.label, icon: "🏷", tax: k.tax, job: !!c.job, custom: true, kind: c.kind };
+    }
+    function categoryOf(key, custom) {
+        const own = (custom || []).find(c => c.key === key);
+        if (own) return customCategory(own);
+        return EXPENSE_CATEGORIES.find(c => c.key === key) || EXPENSE_CATEGORIES.find(c => c.key === "other");
+    }
+    // What to offer: job costs or business costs, the tiler's own ones included.
+    function categoriesFor(forJob, custom) {
+        const builtIn = EXPENSE_CATEGORIES.filter(c => !c.hidden && !!c.job === !!forJob);
+        const own = (custom || []).filter(c => !!c.job === !!forJob).map(customCategory);
+        if (forJob) return builtIn.concat(own);
+        const other = builtIn.pop();                         // keep "Other" last
+        return builtIn.concat(own, [other]);
+    }
+    // The UK tax-year quarter a date falls in (the standard Making Tax Digital quarters):
+    // Q1 6 Apr-5 Jul, Q2 6 Jul-5 Oct, Q3 6 Oct-5 Jan, Q4 6 Jan-5 Apr.
+    function ukTaxQuarter(dateStr) {
+        const ty = ukTaxYear(dateStr), y = parseInt(ty.start.slice(0, 4), 10);
+        const bounds = [[y + "-04-06", y + "-07-05"], [y + "-07-06", y + "-10-05"], [y + "-10-06", (y + 1) + "-01-05"], [(y + 1) + "-01-06", (y + 1) + "-04-05"]];
+        const i = bounds.findIndex(([a, b]) => dateStr >= a && dateStr <= b);
+        const names = ["6 Apr – 5 Jul", "6 Jul – 5 Oct", "6 Oct – 5 Jan", "6 Jan – 5 Apr"];
+        return { n: i + 1, label: `Q${i + 1} ${ty.label}`, range: names[i], start: bounds[i][0], end: bounds[i][1], taxYear: ty.label };
+    }
+
+    // The VAT inside a VAT-inclusive price (20% standard, 5% reduced).
+    function vatFromGross(grossPence, ratePct) {
+        const r = ratePct == null ? 20 : Number(ratePct);
+        return r > 0 ? Math.round((grossPence || 0) * r / (100 + r)) : 0;
+    }
+    // The business share of an amount used partly privately (van, phone).
+    function businessShare(pence, pct) {
+        const n = pct == null || pct === "" ? 100 : Number(pct);
+        const p = Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 100;
+        return Math.round((pence || 0) * p / 100);
+    }
+    const inPeriod = (date, from, to) => (!from || date >= from) && (!to || date <= to);
+    // Totals of active expenses, optionally within a date range (inclusive).
+    // business = the business-use share of each, which is what the money summaries use.
+    function expenseTotals(expenses, from, to) {
+        let total = 0, vat = 0, business = 0, count = 0;
+        (expenses || []).filter(e => isActive(e) && inPeriod(e.spent_on, from, to)).forEach(e => {
+            count++;
+            total += e.amount_pence;
+            vat += e.vat_pence || 0;
+            business += businessShare(e.amount_pence, e.business_use_pct);
+        });
+        return { total, vat, business, count };
+    }
+
     return { METHODS, parsePence, toPence, formatPence, localDate, ukTaxYear, totals, invoiceState,
-             cisTotalDeduction, cisSuggest, paidInFull, cisLiable, costFromSell };
+             cisTotalDeduction, cisSuggest, paidInFull, cisLiable, costFromSell,
+             TAX_HEADINGS, EXPENSE_CATEGORIES, CUSTOM_KINDS, categoryOf, categoriesFor, ukTaxQuarter,
+             vatFromGross, businessShare, expenseTotals };
 })();
 /* FIN-CORE END */
 
-/* ── Payment records: kept on the phone first, then sent to Supabase ──
+/* ── Finance records (payments, expenses): kept on the phone first, then sent to Supabase ──
    Each record gets its id on the phone, so sending it twice (a double tap, a retry
    after losing signal) updates the same row instead of making a second payment.
    The demo account never sends anything; its records stay on the device. */
-const FinStore = (() => {
+// One store per finance table. opts: table, storageKey (local copy, per user), dateCol (sort
+// order), cols (the table's columns; anything else on a record is local bookkeeping).
+function makeFinStore(opts) {
     let uid = null, rows = [], fresh = false, loading = null, flushing = false, timer = null;
     let lastError = null, listeners = [];
-    const key = () => `tileiq-fin-payments-${uid || "anon"}`;
+    const key = () => `${opts.storageKey}-${uid || "anon"}`;
     function readLocal() { try { const r = JSON.parse(localStorage.getItem(key()) || "[]"); return Array.isArray(r) ? r : []; } catch(e) { return []; } }
     function writeLocal() { try { localStorage.setItem(key(), JSON.stringify(rows)); } catch(e) { console.warn("fin local save failed", e); } }
     function sync() {                                   // follow sign-in / sign-out / account switch
@@ -15358,8 +15482,7 @@ const FinStore = (() => {
         return r.status === 204 ? null : r.json().catch(() => null);
     }
     // The columns of fin_payments; anything starting "_" is local bookkeeping only.
-    const COLS = ["id","user_id","job_id","kind","amount_pence","cis_deduction_pence","cis_statement_ref","received_on","method",
-                  "reference","notes","customer_name","job_label","invoice_ref","status","void_reason","is_demo","created_at","updated_at"];
+    const COLS = opts.cols;
     const clean = r => Object.fromEntries(COLS.map(c => [c, r[c] === undefined ? null : r[c]]).filter(([c, v]) => v !== null || c === "job_id"));
 
     async function load() {
@@ -15370,7 +15493,7 @@ const FinStore = (() => {
         if (loading) return loading;
         loading = (async () => {
             try {
-                const server = await rest("GET", `fin_payments?select=*&user_id=eq.${uid}&order=received_on.asc,created_at.asc`) || [];
+                const server = await rest("GET", `${opts.table}?select=*&user_id=eq.${uid}&order=${opts.dateCol}.asc,created_at.asc`) || [];
                 const pending = rows.filter(r => r._dirty);
                 rows = server.filter(s => !pending.some(p => p.id === s.id)).concat(pending);
                 fresh = true; lastError = null;
@@ -15391,7 +15514,7 @@ const FinStore = (() => {
         flushing = true;
         const sent = new Map(dirty.map(r => [r.id, r._v]));
         try {
-            const saved = await rest("POST", "fin_payments?on_conflict=id", dirty.map(clean), "resolution=merge-duplicates,return=representation") || [];
+            const saved = await rest("POST", `${opts.table}?on_conflict=id`, dirty.map(clean), "resolution=merge-duplicates,return=representation") || [];
             saved.forEach(s => {
                 const i = rows.findIndex(r => r.id === s.id);
                 // Keep the local copy if it was edited again while this was being sent.
@@ -15425,8 +15548,19 @@ const FinStore = (() => {
         lastError() { return lastError; },
         onChange(fn) { listeners.push(fn); }
     };
-})();
-window.addEventListener("online", () => FinStore.flush());
+}
+const FinStore = makeFinStore({
+    table: "fin_payments", storageKey: "tileiq-fin-payments", dateCol: "received_on",
+    cols: ["id","user_id","job_id","kind","amount_pence","cis_deduction_pence","cis_statement_ref","received_on","method",
+           "reference","notes","customer_name","job_label","invoice_ref","status","void_reason","is_demo","created_at","updated_at"]
+});
+const FinExpenses = makeFinStore({
+    table: "fin_expenses", storageKey: "tileiq-fin-expenses", dateCol: "spent_on",
+    cols: ["id","user_id","job_id","job_label","spent_on","supplier","description","category","tax_category","amount_pence",
+           "vat_pence","vat_treatment","business_use_pct","payment_method","source","material_lines","receipt_path","receipt_mime",
+           "notes","status","void_reason","is_demo","created_at","updated_at"]
+});
+window.addEventListener("online", () => { FinStore.flush(); FinExpenses.flush(); FinReceipts.flush(); });
 
 function finNewId() {
     if (window.crypto?.randomUUID) return crypto.randomUUID();
@@ -15511,8 +15645,12 @@ function finRefreshViews() {
     if (j && job && !job.classList.contains("hidden")) renderJobMoneyCard(j);
     const quote = document.getElementById("screen-quote");
     if (j && quote && !quote.classList.contains("hidden")) renderInvoiceStatusBar();
+    if (j && job && !job.classList.contains("hidden")) renderJobCostsCard(j);
+    const money = document.getElementById("screen-money");
+    if (money && !money.classList.contains("hidden")) renderMoneyScreen();
 }
 FinStore.onChange(finRefreshViews);
+FinExpenses.onChange(finRefreshViews);
 
 const FIN_STATUS = {
     none:        { label: "No invoice yet",  bg: "var(--bg)",        fg: "var(--muted)" },
@@ -15803,6 +15941,529 @@ function finVoidPayment(jobId, id) {
     FinStore.save({ ...p, status: "void", void_reason: reason.trim().slice(0, 200) });
     TQA.feature("payment_voided");
     closePaymentSheet();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   FINANCE — expenses and receipts (phase C)
+   Job costs (job_id set) and general business costs (job_id null) in
+   fin_expenses. Receipts go to the private "receipts" bucket under the
+   tiler's own folder; while there's no signal the photo waits in the
+   phone's IndexedDB, and the expense points at it once it's uploaded.
+════════════════════════════════════════════════════════════════ */
+const FinReceipts = (() => {
+    const DB = "tileiq-receipts", STORE = "pending", MAX_PDF = 10 * 1024 * 1024;
+    let busy = false;
+    function db() {
+        return new Promise((res, rej) => {
+            const r = indexedDB.open(DB, 1);
+            r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+        });
+    }
+    async function run(mode, fn) {
+        const d = await db();
+        return new Promise((res, rej) => {
+            const t = d.transaction(STORE, mode), req = fn(t.objectStore(STORE));
+            t.oncomplete = () => res(req ? req.result : undefined);
+            t.onerror = () => rej(t.error);
+        });
+    }
+    const put = (id, v) => run("readwrite", st => st.put(v, id));
+    const get = id => run("readonly", st => st.get(id));
+    const del = id => run("readwrite", st => st.delete(id));
+    const keys = () => run("readonly", st => st.getAllKeys());
+
+    // A photo is decoded, scaled to at most 2000px and re-encoded as JPEG, which drops its
+    // location and camera details; a PDF is kept as it is (up to 10 MB). Nothing else.
+    async function prepare(file) {
+        if (!file) throw new Error("No file chosen.");
+        if (file.type === "application/pdf" || /\.pdf$/i.test(file.name || "")) {
+            if (file.size > MAX_PDF) throw new Error("That PDF is over 10 MB.");
+            return { blob: file, mime: "application/pdf" };
+        }
+        if (!/^image\//.test(file.type || "") && !/\.(jpe?g|png|heic|heif|webp)$/i.test(file.name || "")) throw new Error("Receipts can be a photo or a PDF.");
+        const out = await Portfolio._encode(file, 2000, 0.82);
+        return { blob: out.blob, mime: "image/jpeg" };
+    }
+    // Keep the receipt for this expense on the phone and send it when there's signal.
+    async function attach(expenseId, file) {
+        const { blob, mime } = await prepare(file);
+        await put(expenseId, { blob, mime, uid: currentUser?.id || null, at: Date.now() });
+        const rec = FinExpenses.get(expenseId);
+        if (rec) FinExpenses.save({ ...rec, _receiptPending: true, _receiptMime: mime });
+        flush();
+        return mime;
+    }
+    async function flush() {
+        if (busy || !currentUser || isDemoAccount() || !navigator.onLine) return;
+        busy = true;
+        try {
+            for (const id of await keys()) {
+                const item = await get(id);
+                if (!item || item.uid !== currentUser.id) continue;
+                const rec = FinExpenses.get(id);
+                if (!rec) continue;                                  // expense not on this phone (yet)
+                let tok = "";
+                try { const { data } = await sb.auth.getSession(); tok = data?.session?.access_token || ""; } catch(e) {}
+                if (!tok) break;
+                const path = `${currentUser.id}/${id}/${Date.now()}.${item.mime === "application/pdf" ? "pdf" : "jpg"}`;
+                const r = await fetch(`${SB_URL}/storage/v1/object/receipts/${path}`, {
+                    method: "POST", headers: { "apikey": SB_KEY, "Authorization": "Bearer " + tok, "Content-Type": item.mime, "x-upsert": "false" },
+                    body: item.blob
+                });
+                if (!r.ok) { console.warn("receipt upload failed", r.status); break; }
+                const now = FinExpenses.get(id) || rec;
+                FinExpenses.save({ ...now, receipt_path: path, receipt_mime: item.mime, _receiptPending: false, _receiptMime: null });
+                await del(id);
+            }
+        } catch(e) { console.warn("receipt sync failed:", e.message); }
+        busy = false;
+    }
+    // Something to open: the copy still on the phone, or a 10-minute private link to the stored one.
+    async function openUrl(rec) {
+        const local = await get(rec.id).catch(() => null);
+        if (local && local.blob) return URL.createObjectURL(local.blob);
+        if (!rec.receipt_path) return null;
+        const { data } = await sb.auth.getSession();
+        const r = await fetch(`${SB_URL}/storage/v1/object/sign/receipts/${rec.receipt_path}`, {
+            method: "POST", headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (data?.session?.access_token || ""), "Content-Type": "application/json" },
+            body: JSON.stringify({ expiresIn: 600 })
+        });
+        if (!r.ok) throw new Error("Couldn't open the receipt (" + r.status + ").");
+        const j = await r.json();
+        return `${SB_URL}/storage/v1${j.signedURL || j.signedUrl}`;
+    }
+    return { prepare, attach, flush, openUrl, hasLocal: async id => !!(await get(id).catch(() => null)) };
+})();
+
+const finExpenseHasReceipt = e => !!(e && (e.receipt_path || e._receiptPending));
+
+async function finOpenReceipt(expenseId) {
+    const rec = FinExpenses.get(expenseId);
+    if (!rec) return;
+    try {
+        const url = await FinReceipts.openUrl(rec);
+        if (!url) { alert("No receipt on this expense yet."); return; }
+        const { Browser } = window.Capacitor?.Plugins || {};
+        if (Browser?.open && /^https:/.test(url)) Browser.open({ url });
+        else window.open(url, "_blank");
+    } catch(e) { alert(e.message); }
+}
+
+// Choose a receipt: on the phone app, camera / gallery / a PDF from files; in a browser, the
+// file picker (which also offers the camera on a phone). Resolves to a File/Blob or null.
+function finPickReceipt() {
+    return new Promise(resolve => {
+        const viaInput = () => {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = "image/*,application/pdf";
+            input.style.display = "none";
+            input.onchange = () => { resolve(input.files && input.files[0] || null); input.remove(); };
+            document.body.appendChild(input);
+            input.click();
+        };
+        const cam = window.Capacitor?.isNativePlatform?.() ? window.Capacitor?.Plugins?.Camera : null;
+        if (!cam) return viaInput();
+        document.getElementById("fin-receipt-pick")?.remove();
+        const sheet = document.createElement("div");
+        sheet.id = "fin-receipt-pick";
+        sheet.style.cssText = "position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;";
+        sheet.innerHTML = `<div style="width:100%;background:var(--surface);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:8px;">
+            <button type="button" data-c="CAMERA" class="btn-primary" style="width:100%;padding:14px;">📷 Photograph the receipt</button>
+            <button type="button" data-c="PHOTOS" class="btn-secondary" style="width:100%;padding:14px;">🖼 Choose a photo</button>
+            <button type="button" data-c="file" class="btn-secondary" style="width:100%;padding:14px;">📄 Choose a PDF</button>
+            <button type="button" data-c="" class="btn-secondary" style="width:100%;padding:12px;">Cancel</button></div>`;
+        sheet.addEventListener("click", async ev => {
+            const c = ev.target.closest("[data-c]")?.getAttribute("data-c");
+            if (c == null) { if (ev.target === sheet) { sheet.remove(); resolve(null); } return; }
+            sheet.remove();
+            if (!c) return resolve(null);
+            if (c === "file") return viaInput();
+            try {
+                const photo = await cam.getPhoto({ quality: 85, allowEditing: false, resultType: "uri", source: c, saveToGallery: false });
+                resolve(photo?.webPath ? await (await fetch(photo.webPath)).blob() : null);
+            } catch(e) {
+                if (!/cancel/i.test(e?.message || "")) alert(/denied|permission/i.test(e?.message || "") ? "TileIQ isn't allowed to use the camera or photos. You can allow it in your phone's Settings." : "Couldn't open the camera: " + (e?.message || "unknown error"));
+                resolve(null);
+            }
+        });
+        document.body.appendChild(sheet);
+    });
+}
+
+/* ── Job costs card on the job screen ───────────────────────── */
+function finExpenseRowHtml(e, showJob) {
+    const f = FinCore.formatPence, c = FinCore.categoryOf(e.category, finCustomCats()), isVoid = e.status === "void";
+    const job = showJob && e.job_id ? (jobs.find(x => x.id === e.job_id)?.customerName || e.job_label || "a job") : "";
+    const sub = [finFmtDate(e.spent_on), e.supplier ? esc(e.supplier) : "", job ? esc(job) : (showJob ? "General" : ""),
+                 isVoid ? `void${e.void_reason ? ": " + esc(e.void_reason) : ""}` : ""].filter(Boolean).join(" · ");
+    const marks = (finExpenseHasReceipt(e) ? "📎" : "") + (e._dirty ? " ⏳" : "");
+    return `<button onclick="openExpenseSheet({editId:'${e.id}'})" style="display:flex;width:100%;align-items:center;gap:10px;background:none;border:none;border-radius:0;border-top:1px solid var(--border);padding:10px 0;text-align:left;cursor:pointer;color:var(--ink);${isVoid ? "opacity:.55;" : ""}">
+        <span style="font-size:18px;width:24px;flex:none;text-align:center;">${c.icon}</span>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:14px;font-weight:600;line-height:1.3;${isVoid ? "text-decoration:line-through;" : ""}">${esc(e.description || c.label)}</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.35;">${sub}</div>
+        </div>
+        <div style="flex:none;text-align:right;">
+            <div style="font-size:15px;font-weight:700;${isVoid ? "text-decoration:line-through;" : ""}">${f(e.amount_pence)}</div>
+            ${marks ? `<div style="font-size:12px;margin-top:2px;" title="${finExpenseHasReceipt(e) ? "Receipt attached" : ""}${e._dirty ? " · not synced yet" : ""}">${marks}</div>` : ""}
+        </div>
+    </button>`;
+}
+
+function renderJobCostsCard(j) {
+    const card = document.getElementById("job-costs-card");
+    if (!card) return;
+    if (!finJobShowsMoney(j)) { card.style.display = "none"; return; }
+    const list = FinExpenses.forJob(j.id).slice().sort((a, b) => (b.spent_on + b.created_at).localeCompare(a.spent_on + a.created_at));
+    const t = FinCore.expenseTotals(list);
+    card.style.display = "block";
+    card.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="font-size:15px;font-weight:700;color:var(--ink);">🧾 Job costs</div>
+            <div style="font-size:15px;font-weight:800;color:var(--ink);">${FinCore.formatPence(t.total)}</div>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${t.count ? `${t.count} cost${t.count === 1 ? "" : "s"} on this job` : "Materials, skip hire, parking — anything you spend on this job."}</div>
+        <button onclick="openExpenseSheet({jobId:'${j.id}'})" class="btn-secondary" style="width:100%;padding:12px;margin-top:12px;">+ Add job cost</button>
+        ${list.length ? `<div style="margin-top:10px;">${list.map(e => finExpenseRowHtml(e, false)).join("")}</div>` : ""}`;
+    if (!FinExpenses.isFresh()) FinExpenses.load();
+}
+
+/* ── Add / edit / void an expense ───────────────────────────── */
+function closeExpenseSheet() { document.getElementById("fin-expense-sheet")?.remove(); }
+
+// The tiler's own categories (Settings sync them between devices).
+const finCustomCats = () => Array.isArray(settings.finCustomCategories) ? settings.finCustomCategories : [];
+function finSaveSettingsQuietly() {
+    saveSettingsLocal();
+    if (currentUser && !isDemoAccount()) sb.from("settings").upsert(
+        { user_id: currentUser.id, data: settings, updated_at: new Date().toISOString() }, { onConflict: "user_id" }
+    ).then(({ error }) => { if (error) console.warn("settings save failed:", error.message); });
+}
+// What to offer in the sheet: job costs or business costs, most used first, and the
+// expense's own category even if it's an old one no longer offered.
+function finExpenseCategoryOrder(forJob, current) {
+    const used = {};
+    FinExpenses.all().forEach(e => { if (e.status !== "void") used[e.category] = (used[e.category] || 0) + 1; });
+    let list = FinCore.categoriesFor(forJob, finCustomCats());
+    if (forJob) list = list.slice().sort((a, b) => (used[b.key] || 0) - (used[a.key] || 0));
+    if (current && !list.some(c => c.key === current)) list = [FinCore.categoryOf(current, finCustomCats())].concat(list);
+    return list;
+}
+const FIN_PART_PRIVATE = ["fuel", "van", "phone"];   // ask about business use for these
+
+function openExpenseSheet(opts) {
+    opts = opts || {};
+    const editing = opts.editId ? FinExpenses.get(opts.editId) : null;
+    const jobId = editing ? editing.job_id : (opts.jobId || null);
+    const job = jobId ? jobs.find(x => x.id === jobId) : null;
+    if (job && job.isDemo) { alert("This is a demo job — costs can only be added to your real jobs."); return; }
+    closeExpenseSheet();
+    const today = FinCore.localDate();
+    const v = editing || { id: finNewId(), category: null, spent_on: today, payment_method: "card", business_use_pct: 100, vat_treatment: "unknown", vat_pence: 0 };
+    const locked = editing && editing.status === "void";
+    const amt = p => p ? (p / 100).toFixed(2) : "";
+    const dis = locked ? "disabled" : "";
+    const inputStyle = "width:100%;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:16px;";
+    const field = (label, html, hint, id) => `<div ${id ? `id="${id}"` : ""} style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">${label}${hint ? ` <span style="font-weight:400;">${hint}</span>` : ""}</div>${html}</div>`;
+    const input = (id, val, attrs) => `<input id="${id}" value="${esc(val == null ? "" : val)}" ${attrs || ""} ${dis} style="${inputStyle}">`;
+    const cats = finExpenseCategoryOrder(!!jobId || !!opts.forJob, v.category);
+    const chips = cats.map(c => `<label style="display:inline-flex;" class="fin-cat-wrap"><input type="radio" name="fin-cat" value="${c.key}" ${v.category === c.key ? "checked" : ""} ${dis} style="position:absolute;opacity:0;width:0;height:0;" onchange="finExpenseCatChanged()">
+        <span class="fin-chip" style="padding:8px 11px;border-radius:999px;border:1px solid var(--border);font-size:13.5px;font-weight:600;cursor:pointer;">${c.icon} ${c.label}</span></label>`).join("");
+    const methods = Object.entries(FinCore.METHODS).map(([k, label]) =>
+        `<label style="display:inline-flex;"><input type="radio" name="fin-exp-method" value="${k}" ${v.payment_method === k ? "checked" : ""} ${dis} style="position:absolute;opacity:0;width:0;height:0;" onchange="finChipStyles()">
+         <span class="fin-chip" style="padding:8px 12px;border-radius:999px;border:1px solid var(--border);font-size:13.5px;font-weight:600;cursor:pointer;">${label}</span></label>`).join("");
+    const realJobs = getRealJobs().filter(x => !x.jobArchived).slice().sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))).slice(0, 40);
+    if (job && !realJobs.includes(job)) realJobs.unshift(job);
+    const jobOptions = (opts.forJob && !jobId ? `<option value="" selected>Choose the job…</option>` : `<option value="">Business cost (not one job)</option>`) +
+        realJobs.map(x => `<option value="${x.id}" ${x.id === jobId ? "selected" : ""}>${esc(x.customerName || "Job")}${x.description ? " – " + esc(x.description).slice(0, 40) : ""}</option>`).join("");
+    const suppliers = [...new Set(FinExpenses.all().map(e => (e.supplier || "").trim()).filter(Boolean))].slice(0, 30);
+    const hasDetail = editing && (editing.vat_pence || editing.description || editing.notes || (editing.business_use_pct || 100) !== 100);
+    const title = editing ? (locked ? "Expense (void)" : "Expense") : (job || opts.forJob ? "Add a job cost" : "Add a business cost");
+
+    const sheet = document.createElement("div");
+    sheet.id = "fin-expense-sheet";
+    sheet.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end;";
+    sheet.innerHTML = `
+        <div onclick="closeExpenseSheet()" style="flex:1;background:rgba(0,0,0,0.5);"></div>
+        <div style="background:var(--surface);color:var(--ink);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom));max-height:90vh;overflow-y:auto;">
+            <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;"></div>
+            <div style="font-size:17px;font-weight:700;margin-bottom:${job ? 2 : 16}px;">${title}</div>
+            ${job ? `<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">${esc(job.customerName || "")}</div>` : ""}
+            ${locked && editing.void_reason ? `<div style="font-size:13px;background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:12px;">Voided: ${esc(editing.void_reason)}</div>` : ""}
+            ${field("Amount paid", input("fin-exp-amount", amt(v.amount_pence), 'inputmode="decimal" placeholder="0.00"'), "— as on the receipt, VAT included")}
+            ${field("What for", `<div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}
+                ${locked ? "" : `<button type="button" id="fin-cat-own" onclick="finAddOwnCategory()" style="padding:8px 11px;border-radius:999px;border:1px dashed var(--border);background:none;color:var(--muted);font-size:13.5px;font-weight:600;cursor:pointer;">+ Your own</button>`}</div>
+                <div id="fin-own-cat" style="display:none;margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;"></div>
+                <div id="fin-capital-note" style="display:none;font-size:12px;color:var(--muted);margin-top:6px;">Bigger tools (a wet saw, a mixer) can count as equipment rather than a running cost — your accountant will sort out how they're claimed.</div>`)}
+            ${field("Supplier", input("fin-exp-supplier", v.supplier, 'placeholder="e.g. Topps Tiles, Shell" list="fin-supplier-list" autocomplete="off"') + `<datalist id="fin-supplier-list">${suppliers.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`)}
+            ${field("Date", input("fin-exp-date", v.spent_on, `type="date" max="${today}"`))}
+            ${field("Receipt", `<div id="fin-receipt-box"></div>`)}
+            ${field("Job", `<select id="fin-exp-job" ${dis} style="${inputStyle}">${jobOptions}</select>`)}
+            ${field("Business use", `<div style="display:flex;align-items:center;gap:8px;"><input id="fin-exp-business" value="${v.business_use_pct || 100}" inputmode="numeric" ${dis} style="${inputStyle}width:90px;"><span style="font-size:14px;color:var(--muted);">% for the business — lower it if you also use this privately</span></div>`, "", "fin-business-row")}
+            <button type="button" id="fin-exp-more-btn" onclick="document.getElementById('fin-exp-more').style.display='block';this.remove();" style="${hasDetail ? "display:none;" : ""}width:100%;background:none;border:1px dashed var(--border);border-radius:10px;color:var(--muted);padding:10px;font-size:14px;font-weight:600;margin-bottom:12px;cursor:pointer;">+ VAT, how you paid, notes</button>
+            <div id="fin-exp-more" style="display:${hasDetail ? "block" : "none"};">
+                ${field("Description", input("fin-exp-desc", v.description, 'placeholder="Optional — e.g. 3 bags flexible adhesive"'))}
+                ${field("VAT in that amount", `<div style="display:flex;gap:8px;">${input("fin-exp-vat", amt(v.vat_pence), 'inputmode="decimal" placeholder="0.00" style="flex:1"')}
+                    <button type="button" ${dis} onclick="finExpenseVat20()" class="btn-secondary" style="white-space:nowrap;padding:0 12px;">20% incl.</button></div>`, "— only if the receipt shows VAT")}
+                ${field("Paid by", `<div style="display:flex;flex-wrap:wrap;gap:6px;">${methods}</div>`)}
+                ${field("Notes", input("fin-exp-notes", v.notes, 'placeholder="Optional"'))}
+            </div>
+            <div id="fin-exp-error" style="display:none;color:var(--red);font-size:13px;font-weight:600;margin-bottom:10px;"></div>
+            ${locked ? "" : `<button id="fin-exp-save" onclick="finSaveExpenseSheet()" class="btn-primary" style="width:100%;padding:14px;font-size:15px;">${editing ? "Save changes" : "Save"}</button>`}
+            ${editing && !locked ? `<button onclick="finVoidExpense('${v.id}')" style="width:100%;background:none;border:none;color:var(--red);padding:14px;font-size:14px;font-weight:600;cursor:pointer;">Void this expense</button>` : ""}
+            <button onclick="closeExpenseSheet()" style="width:100%;background:none;border:none;color:var(--muted);padding:12px;font-size:15px;font-weight:600;cursor:pointer;">${locked ? "Close" : "Cancel"}</button>
+        </div>`;
+    sheet._editing = editing;
+    sheet._id = v.id;
+    sheet._receipt = null;          // a file chosen in this sheet, kept until Save
+    sheet._forJob = !!jobId || !!opts.forJob;   // which list of categories it offers (job costs or business costs)
+    sheet._needsJob = !editing && !!opts.forJob && !jobId;
+    document.body.appendChild(sheet);
+    finChipStyles();
+    finExpenseCatChanged(true);
+    finRenderReceiptBox();
+}
+
+function finChipStyles() {
+    document.querySelectorAll("#fin-expense-sheet input[type=radio], #fin-payment-sheet input[type=radio]").forEach(r => {
+        const chip = r.nextElementSibling;
+        if (!chip) return;
+        chip.style.background = r.checked ? "var(--amber)" : "transparent";
+        chip.style.color = r.checked ? "#000" : "var(--ink)";
+        chip.style.borderColor = r.checked ? "var(--amber)" : "var(--border)";
+    });
+}
+
+function finExpenseCatChanged(initial) {
+    finChipStyles();
+    const cat = document.querySelector("#fin-expense-sheet input[name=fin-cat]:checked")?.value;
+    const row = document.getElementById("fin-business-row");
+    const sheet = document.getElementById("fin-expense-sheet");
+    const pct = parseInt(document.getElementById("fin-exp-business")?.value, 10) || 100;
+    if (row) row.style.display = (FIN_PART_PRIVATE.includes(cat) || pct !== 100) ? "" : "none";
+    const note = document.getElementById("fin-capital-note");
+    if (note) note.style.display = cat && FinCore.categoryOf(cat, finCustomCats()).capital ? "" : "none";
+    // A job cost of a non-job kind (fuel, insurance) is allowed, but nudge it towards "General".
+    if (!initial && sheet && !sheet._editing && cat && !FinCore.categoryOf(cat, finCustomCats()).job && document.getElementById("fin-exp-job").value) {
+        document.getElementById("fin-exp-job").style.borderColor = "var(--amber)";
+    }
+}
+
+// "+ Your own": a category the tiler names, with a plain kind that decides its HMRC heading.
+// It joins the job-cost list or the business-cost list, whichever this sheet is showing.
+function finAddOwnCategory() {
+    const box = document.getElementById("fin-own-cat");
+    if (!box) return;
+    const kinds = Object.entries(FinCore.CUSTOM_KINDS).map(([k, v]) =>
+        `<label style="display:inline-flex;"><input type="radio" name="fin-own-kind" value="${k}" style="position:absolute;opacity:0;width:0;height:0;" onchange="finChipStyles()">
+         <span class="fin-chip" style="padding:7px 10px;border-radius:999px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;">${v.label}</span></label>`).join("");
+    box.innerHTML = `
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">Name it</div>
+        <input id="fin-own-name" maxlength="40" placeholder="e.g. Diamond blades" style="width:100%;box-sizing:border-box;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:16px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 5px;">What kind of cost is it? <span style="font-weight:400;">— so it's filed under the right tax heading</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">${kinds}</div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+            <button type="button" onclick="finSaveOwnCategory()" class="btn-primary" style="flex:1;padding:10px;">Add</button>
+            <button type="button" onclick="document.getElementById('fin-own-cat').style.display='none'" class="btn-secondary" style="flex:1;padding:10px;">Cancel</button>
+        </div>`;
+    box.style.display = "block";
+    finChipStyles();
+    document.getElementById("fin-own-name").focus();
+}
+
+function finSaveOwnCategory() {
+    const sheet = document.getElementById("fin-expense-sheet");
+    const name = (document.getElementById("fin-own-name")?.value || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const kind = document.querySelector("#fin-own-cat input[name=fin-own-kind]:checked")?.value;
+    if (!name) { alert("Give it a name."); return; }
+    if (!kind) { alert("Choose what kind of cost it is."); return; }
+    const forJob = !!sheet._forJob;
+    const existing = finExpenseCategoryOrder(forJob).find(c => c.label.toLowerCase() === name.toLowerCase());
+    let key = existing && existing.key;
+    if (!key) {
+        key = "own_" + finNewId().slice(0, 8);
+        settings.finCustomCategories = finCustomCats().concat([{ key, label: name, job: forJob, kind }]);
+        finSaveSettingsQuietly();
+        const c = FinCore.categoryOf(key, finCustomCats());
+        const own = document.getElementById("fin-cat-own");
+        own.insertAdjacentHTML("beforebegin", `<label style="display:inline-flex;" class="fin-cat-wrap"><input type="radio" name="fin-cat" value="${key}" style="position:absolute;opacity:0;width:0;height:0;" onchange="finExpenseCatChanged()">
+            <span class="fin-chip" style="padding:8px 11px;border-radius:999px;border:1px solid var(--border);font-size:13.5px;font-weight:600;cursor:pointer;">${c.icon} ${esc(c.label)}</span></label>`);
+        TQA.feature("expense_category_added");
+    }
+    document.querySelector(`#fin-expense-sheet input[name=fin-cat][value="${key}"]`).checked = true;
+    document.getElementById("fin-own-cat").style.display = "none";
+    finExpenseCatChanged();
+}
+
+function finExpenseVat20() {
+    const gross = FinCore.parsePence(document.getElementById("fin-exp-amount").value);
+    if (!gross) { alert("Enter the amount first."); return; }
+    document.getElementById("fin-exp-vat").value = (FinCore.vatFromGross(gross, 20) / 100).toFixed(2);
+}
+
+async function finRenderReceiptBox() {
+    const box = document.getElementById("fin-receipt-box");
+    const sheet = document.getElementById("fin-expense-sheet");
+    if (!box || !sheet) return;
+    const rec = sheet._editing ? FinExpenses.get(sheet._editing.id) : null;
+    const locked = rec && rec.status === "void";
+    const chosen = sheet._receipt;
+    const has = !!chosen || finExpenseHasReceipt(rec);
+    const label = chosen ? (chosen.type === "application/pdf" ? "PDF ready to save" : "Photo ready to save")
+        : rec && rec._receiptPending ? "Saved on this phone — uploads when you're online"
+        : rec && rec.receipt_path ? (rec.receipt_mime === "application/pdf" ? "PDF attached" : "Photo attached") : "";
+    box.innerHTML = has
+        ? `<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
+             <span style="font-size:18px;">📎</span><div style="flex:1;font-size:14px;font-weight:600;">${label}</div>
+             ${rec && finExpenseHasReceipt(rec) && !chosen ? `<button type="button" onclick="finOpenReceipt('${rec.id}')" class="btn-secondary" style="padding:6px 10px;font-size:13px;">View</button>` : ""}
+             ${locked ? "" : `<button type="button" onclick="finChooseReceipt()" class="btn-secondary" style="padding:6px 10px;font-size:13px;">Replace</button>`}
+           </div>`
+        : locked ? `<div style="font-size:14px;color:var(--muted);">None</div>`
+        : `<button type="button" onclick="finChooseReceipt()" class="btn-secondary" style="width:100%;padding:12px;">📷 Add receipt</button>`;
+}
+
+async function finChooseReceipt() {
+    const sheet = document.getElementById("fin-expense-sheet");
+    const file = await finPickReceipt();
+    if (!file || !document.getElementById("fin-expense-sheet")) return;
+    try {
+        await FinReceipts.prepare(file);              // checks type and size now, so the tiler hears about it here
+        sheet._receipt = file;
+        finRenderReceiptBox();
+    } catch(e) { alert(e.message); }
+}
+
+async function finSaveExpenseSheet() {
+    const btn = document.getElementById("fin-exp-save");
+    const err = document.getElementById("fin-exp-error");
+    const fail = m => { err.textContent = m; err.style.display = "block"; if (btn) btn.disabled = false; };
+    if (btn) { if (btn.disabled) return; btn.disabled = true; }
+    const sheet = document.getElementById("fin-expense-sheet");
+    const editing = sheet._editing;
+    const val = id => (document.getElementById(id)?.value || "").trim();
+    const amount = FinCore.parsePence(val("fin-exp-amount"));
+    if (!amount) return fail("Enter the amount paid.");
+    const category = document.querySelector("#fin-expense-sheet input[name=fin-cat]:checked")?.value;
+    if (!category) return fail("Choose what it was for.");
+    const date = val("fin-exp-date");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Pick the date.");
+    if (date > FinCore.localDate()) return fail("That date is in the future.");
+    let vat = 0;
+    if (val("fin-exp-vat")) {
+        vat = FinCore.parsePence(val("fin-exp-vat"), true);
+        if (vat == null) return fail("The VAT isn't an amount.");
+        if (vat > amount) return fail("The VAT can't be more than the amount paid.");
+    }
+    const pct = parseInt(val("fin-exp-business") || "100", 10);
+    if (!(pct >= 1 && pct <= 100)) return fail("Business use is a percentage from 1 to 100.");
+    const jobId = val("fin-exp-job") || null;
+    if (!jobId && sheet._needsJob) return fail("Choose the job this was for.");
+    const job = jobId ? jobs.find(x => x.id === jobId) : null;
+    if (job && job.isDemo) return fail("Costs can't go on a demo job.");
+    const method = document.querySelector("#fin-expense-sheet input[name=fin-exp-method]:checked")?.value || "card";
+    const supplier = val("fin-exp-supplier");
+
+    if (!editing) {
+        const twin = FinExpenses.all().find(e => e.status !== "void" && e.amount_pence === amount && e.spent_on === date &&
+            (e.supplier || "").toLowerCase() === supplier.toLowerCase());
+        if (twin && !confirm(`You've already added ${FinCore.formatPence(amount)}${supplier ? " at " + supplier : ""} on ${finFmtDate(date)}. Add another one?`)) { btn.disabled = false; return; }
+    }
+    const cat = FinCore.categoryOf(category, finCustomCats());
+    const keepTax = editing && editing.category === category ? editing.tax_category : cat.tax;
+    const rec = FinExpenses.save({
+        ...(editing || {}),
+        id: sheet._id,
+        job_id: jobId,
+        job_label: job ? (job.customerName || null) : null,
+        spent_on: date, supplier: supplier || null, description: val("fin-exp-desc") || null,
+        category, tax_category: keepTax,
+        amount_pence: amount, vat_pence: vat,
+        vat_treatment: vat > 0 ? "standard" : (editing ? editing.vat_treatment : "unknown"),
+        business_use_pct: pct, payment_method: method, source: editing ? editing.source || "manual" : "manual",
+        notes: val("fin-exp-notes") || null,
+        status: "active",
+        is_demo: isDemoAccount()
+    });
+    if (sheet._receipt) {
+        try { await FinReceipts.attach(rec.id, sheet._receipt); }
+        catch(e) { alert("The expense is saved, but the receipt couldn't be kept: " + e.message); }
+    }
+    if (!editing) TQA.feature(job ? "job_cost_added" : "expense_added");
+    closeExpenseSheet();
+}
+
+function finVoidExpense(id) {
+    const e = FinExpenses.get(id);
+    if (!e || e.status === "void") return;
+    const reason = prompt(`Void this expense of ${FinCore.formatPence(e.amount_pence)}?\n\nIt stays in your records, crossed out, and stops counting. Say why (e.g. "added twice", "returned to shop"):`);
+    if (reason == null) return;
+    if (!reason.trim()) { alert("Please give a short reason, so the record makes sense later."); return; }
+    FinExpenses.save({ ...e, status: "void", void_reason: reason.trim().slice(0, 200) });
+    TQA.feature("expense_voided");
+    closeExpenseSheet();
+}
+
+/* ── Money screen (from Home): every expense, with this month / tax year totals ── */
+let finMoneyTab = "business";
+function goMoney() {
+    show("screen-money");
+    renderMoneyScreen();
+    FinExpenses.load();
+    FinStore.load();
+    FinReceipts.flush();
+    TQA.feature("money_screen");
+}
+// Business costs (no job) by tax-year quarter, the periods Making Tax Digital reports in;
+// job costs by job. Totals are what was paid; the business share (after private use of the
+// van or phone) is shown where it differs.
+function renderMoneyScreen() {
+    const el = document.getElementById("money-body");
+    if (!el) return;
+    const f = FinCore.formatPence, today = FinCore.localDate();
+    const ty = FinCore.ukTaxYear(today), q = FinCore.ukTaxQuarter(today);
+    const isJobs = finMoneyTab === "jobs";
+    const all = FinExpenses.all().filter(e => (!e.is_demo || isDemoAccount()) && (isJobs ? !!e.job_id : !e.job_id));
+    const newest = (a, b) => (b.spent_on + b.created_at).localeCompare(a.spent_on + a.created_at);
+    const quarterTotal = FinCore.expenseTotals(all, q.start, q.end), yearTotal = FinCore.expenseTotals(all, ty.start, ty.end);
+    const head = (title, sub, total) => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:16px 0 2px;">
+            <div><div style="font-size:13px;font-weight:800;color:var(--ink);">${title}</div>${sub ? `<div style="font-size:11.5px;color:var(--muted);">${sub}</div>` : ""}</div>
+            <div style="font-size:14px;font-weight:800;color:var(--ink);">${f(total)}</div></div>`;
+    let groups = "";
+    if (isJobs) {
+        const byJob = {};
+        all.forEach(e => { (byJob[e.job_id] = byJob[e.job_id] || []).push(e); });
+        Object.entries(byJob)
+            .sort(([, a], [, b]) => newest(a.slice().sort(newest)[0], b.slice().sort(newest)[0]))
+            .forEach(([jobId, list]) => {
+                const j = jobs.find(x => x.id === jobId);
+                const name = esc((j && j.customerName) || list[0].job_label || "Deleted job");
+                groups += `<div class="form-card" style="margin-top:12px;">${head(name, j && j.description ? esc(j.description) : "", FinCore.expenseTotals(list).total)}
+                    ${list.sort(newest).map(e => finExpenseRowHtml(e, false)).join("")}</div>`;
+            });
+    } else {
+        const byQ = {};
+        all.forEach(e => { const k = FinCore.ukTaxQuarter(e.spent_on); (byQ[k.start] = byQ[k.start] || { q: k, list: [] }).list.push(e); });
+        Object.values(byQ).sort((a, b) => b.q.start.localeCompare(a.q.start)).forEach(({ q: k, list }) => {
+            const t = FinCore.expenseTotals(list);
+            groups += `<div class="form-card" style="margin-top:12px;">${head(k.label, k.range + (t.business !== t.total ? ` · business share ${f(t.business)}` : ""), t.total)}
+                ${list.sort(newest).map(e => finExpenseRowHtml(e, false)).join("")}</div>`;
+        });
+    }
+    const tab = (k, label) => `<button onclick="finMoneyTab='${k}';renderMoneyScreen();" style="flex:1;padding:10px 6px;border-radius:999px;border:1px solid ${finMoneyTab === k ? "var(--amber)" : "var(--border)"};background:${finMoneyTab === k ? "var(--amber)" : "transparent"};color:${finMoneyTab === k ? "#000" : "var(--ink)"};font-size:14px;font-weight:700;cursor:pointer;">${label}</button>`;
+    const card = (label, t) => `<div class="form-card" style="flex:1;margin:0;"><div style="font-size:11px;color:var(--muted);font-weight:600;">${label}</div><div style="font-size:19px;font-weight:800;color:var(--ink);margin-top:2px;">${f(t.total)}</div></div>`;
+    const pending = FinExpenses.pendingCount();
+    const empty = isJobs
+        ? "No job costs yet. Add materials, skip hire or parking from a job's Job costs card, or here."
+        : "No business costs yet. Add fuel, insurance, tools, your phone — anything the business pays for that isn't one job. Snap the receipt and it's kept safe for your accountant.";
+    el.innerHTML = `
+        <div style="display:flex;gap:6px;">${tab("business", "Business costs")}${tab("jobs", "Job costs")}</div>
+        <div style="display:flex;gap:10px;margin-top:14px;">${card(`This quarter · Q${q.n}`, quarterTotal)}${card(`Tax year ${ty.label}`, yearTotal)}</div>
+        <button onclick="openExpenseSheet(${isJobs ? "{forJob:true}" : ""})" class="btn-primary" style="width:100%;padding:14px;font-size:15px;margin-top:14px;">${isJobs ? "+ Add job cost" : "+ Add business cost"}</button>
+        ${groups || `<div class="form-card" style="margin-top:12px;"><div style="font-size:14px;color:var(--muted);padding:6px 0;">${empty}</div></div>`}
+        ${pending ? `<div style="font-size:12px;color:var(--muted);margin-top:10px;">⏳ ${pending} saved on this phone${navigator.onLine ? " — sending…" : " — will sync when you're back online"}.</div>` : ""}`;
 }
 
 async function sendInvoiceShare() {

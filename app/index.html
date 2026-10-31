@@ -587,6 +587,17 @@
                 <span style="color:var(--muted);">→</span>
             </div>
 
+            <div onclick="goMoney()" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:16px;">💷</span>
+                    <div>
+                        <div style="font-size:13px;font-weight:800;color:var(--ink);">Money</div>
+                        <div style="font-size:11px;color:var(--muted);margin-top:1px;">Business costs by quarter, receipts</div>
+                    </div>
+                </div>
+                <span style="color:var(--muted);">→</span>
+            </div>
+
             <div onclick="goVoicemails()" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 12px;justify-content:space-between;align-items:center;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span style="font-size:16px;">📞</span>
@@ -1017,6 +1028,7 @@
             <button id="job-copy-quote-btn" onclick="copyQuote()" class="btn-secondary" style="width:100%;margin-top:8px;display:none;">⧉ Copy Quote as a New Option</button>
         </div>
         <div id="job-money-card" class="form-card" style="margin-top:14px;display:none;"></div>
+        <div id="job-costs-card" class="form-card" style="margin-top:14px;display:none;"></div>
         <div id="job-photos-card" class="form-card" style="margin-top:14px;">
             <div class="form-section-label">📷 Job Photos <span style="font-weight:400;color:var(--muted);font-size:11px;">(your own reference — not shown to the customer)</span></div>
             <div id="job-photos-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
@@ -1049,6 +1061,16 @@
 
         <button onclick="deleteJob()" class="btn-danger" style="margin-top:14px;">🗑 Delete Job</button>
     </div>
+</div>
+
+<!-- MONEY: expenses and receipts (finance phase C; the full finances dashboard joins it in phase E) -->
+<div id="screen-money" class="screen hidden">
+    <header class="app-header"><div class="header-row">
+        <button onclick="goHome()" class="btn-back">← Home</button>
+        <h2 class="header-title">Money</h2>
+        <div></div>
+    </div></header>
+    <div class="page-body"><div id="money-body" style="padding-bottom:calc(90px + env(safe-area-inset-bottom));"></div></div>
 </div>
 
 <!-- CUSTOMER MESSAGES SCREEN -->
