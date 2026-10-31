@@ -93,6 +93,9 @@ let settings = {
     googleReviewLink: "",     // the tiler's own "leave a review" link, required for autoRequestReview to actually send
     reviewRequestDelayDays: 3, // days to wait after completion before sending — 0 sends as soon as the app next checks
     paymentTermsDays: 30, // days after invoicedAt before an unpaid invoice counts as overdue
+    cisEnabled:    false,  // works for main contractors under CIS: shows the per-job CIS switch
+    cisRatePct:    20,     // default CIS deduction rate for a CIS job (20, 30 or 0)
+    finDefaultMethod: "bank_transfer", // pre-picked "paid by" when recording a payment
     staleEnquiryDays: 5, // days an enquiry can sit with no quote sent before Your Day flags it as going cold
     demoJobsSeeded: false, // one-shot flag — once true, the two demo jobs are never re-seeded even if all real jobs are later deleted
     // tile type labour multipliers
@@ -346,10 +349,11 @@ async function _syncToCloud() {
             body: JSON.stringify({ action: "d1_save_jobs", user_id: currentUser.id, jobs })
         });
         if (!resp.ok) console.warn("D1 save failed:", resp.status);
-        // Save to Supabase via worker (uses service key, bypasses RLS issues)
+        // Save to Supabase via worker (uses service key, bypasses RLS issues). The worker
+        // only saves to the account the sign-in token belongs to, so the token goes with it.
         fetch(AI_PROXY_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: await jobsAuthHeaders(),
             body: JSON.stringify({ action: "save_jobs", user_id: currentUser.id, jobs })
         }).catch(e => console.warn("save_jobs failed:", e.message));
 
@@ -1173,6 +1177,18 @@ function emailAuthHeaders() {
     const h = { "Content-Type": "application/json" };
     try {
         const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+        if (tok) h["Authorization"] = "Bearer " + tok;
+    } catch(e) {}
+    return h;
+}
+// Headers for save_jobs: like emailAuthHeaders(), but asks the Supabase client for the
+// session first, which renews a token that ran out while the app sat in the background.
+// Falls back to the stored token (and then to none) so a save is never held up by this.
+async function jobsAuthHeaders() {
+    const h = emailAuthHeaders();
+    try {
+        const { data } = await sb.auth.getSession();
+        const tok = data?.session?.access_token;
         if (tok) h["Authorization"] = "Bearer " + tok;
     } catch(e) {}
     return h;
@@ -7756,6 +7772,7 @@ function renderJobView() {
 
     document.getElementById("job-header-title").textContent = job.customerName + (job.quoteOption ? ` · Option ${job.quoteOption}` : "");
     renderJobQuoteButton(job);
+    renderJobMoneyCard(job);
     renderJobPhotos(job);
     renderFinishedPhotos(job);
     renderPortfolioJobCard(job);
@@ -8174,6 +8191,10 @@ function deleteRoom(idx) {
 function deleteJob() {
     const job = getJob();
     if (!job) return;
+    // Payments recorded on the job are never deleted with it: they stay in the tiler's money
+    // records (with the customer's name copied onto each), so say so before going ahead.
+    const paid = FinStore.forJob(job.id).filter(p => p.status !== "void").length;
+    if (paid && !confirm(`${job.customerName} has ${paid} payment${paid === 1 ? "" : "s"} recorded. Deleting the job keeps them in your money records but removes the job they belong to.\n\nCarry on?`)) return;
     // Block deletion if a quote has been sent
     if (job.quoteToken) {
         const quoteRef = job.quoteRef ? ` (${job.quoteRef})` : "";
@@ -8227,6 +8248,13 @@ function goEditJob() {
     document.getElementById("ej-supply").value  = j.tileSupply   || "customer";
     document.getElementById("ej-area").value    = j.areaMeta     || "";
     document.getElementById("ej-worktype").value= j.workType     || "";
+    // CIS: only offered once the tiler has said in Settings that they work under CIS
+    // (or this job is already a CIS job). Off by default: most jobs are for homeowners.
+    const cisOn = !!(j.cis && j.cis.applies);
+    document.getElementById("ej-cis-row").style.display = (settings.cisEnabled || cisOn) ? "" : "none";
+    document.getElementById("ej-cis").value = cisOn ? "true" : "false";
+    document.getElementById("ej-cis-rate").value = String(cisOn ? j.cis.ratePct : (settings.cisRatePct ?? 20));
+    document.getElementById("ej-cis-rate-wrap").style.display = cisOn ? "" : "none";
     applyRegionUnitsArea();
     show("screen-edit-job");
 }
@@ -8246,6 +8274,11 @@ function saveEditJob() {
     j.tileSupply   = document.getElementById("ej-supply").value;
     j.areaMeta     = parseFloat(document.getElementById("ej-area").value) || null;
     j.workType     = document.getElementById("ej-worktype").value || null;
+    if (document.getElementById("ej-cis-row").style.display !== "none") {
+        const cisOn = document.getElementById("ej-cis").value === "true";
+        if (cisOn) j.cis = { applies: true, ratePct: numOr(document.getElementById("ej-cis-rate").value, 20) };
+        else if (j.cis) j.cis = { ...j.cis, applies: false };
+    }
     saveAll();
     goJob();
 }
@@ -12537,6 +12570,14 @@ function goSettings() {
     if (reviewDelayEl) reviewDelayEl.value = s.reviewRequestDelayDays ?? 3;
     const paymentTermsEl = document.getElementById("set-payment-terms-days");
     if (paymentTermsEl) paymentTermsEl.value = s.paymentTermsDays ?? 30;
+    const cisEnabledEl = document.getElementById("set-cis-enabled");
+    if (cisEnabledEl) cisEnabledEl.value = s.cisEnabled ? "true" : "false";
+    const cisRateWrap = document.getElementById("set-cis-rate-wrap");
+    if (cisRateWrap) cisRateWrap.style.display = s.cisEnabled ? "" : "none";
+    const cisRateEl = document.getElementById("set-cis-rate");
+    if (cisRateEl) cisRateEl.value = String(s.cisRatePct ?? 20);
+    const finMethodEl = document.getElementById("set-fin-default-method");
+    if (finMethodEl) finMethodEl.value = s.finDefaultMethod || "bank_transfer";
     const staleEnquiryEl = document.getElementById("set-stale-enquiry-days");
     if (staleEnquiryEl) staleEnquiryEl.value = s.staleEnquiryDays ?? 5;
     document.getElementById("set-bank-name")?.setAttribute("value", s.bankName || "");
@@ -12986,6 +13027,9 @@ function saveSettings() {
         googleReviewLink:  (document.getElementById("set-google-review-link")?.value || "").trim(),
         reviewRequestDelayDays: parseInt(document.getElementById("set-review-delay-days")?.value) || 0,
         paymentTermsDays:  parseInt(document.getElementById("set-payment-terms-days")?.value) || 30,
+        cisEnabled:        document.getElementById("set-cis-enabled")?.value === "true",
+        cisRatePct:        numOr(document.getElementById("set-cis-rate")?.value, 20),
+        finDefaultMethod:  document.getElementById("set-fin-default-method")?.value || "bank_transfer",
         staleEnquiryDays:  parseInt(document.getElementById("set-stale-enquiry-days")?.value) || 5,
         bankName:          (document.getElementById("set-bank-name")?.value || "").trim(),
         bankAccountName:   (document.getElementById("set-bank-account-name")?.value || "").trim(),
@@ -14270,7 +14314,10 @@ function buildPDFDoc() {
     doc.text(`${settings.companyName || ""} · Powered by TileIQ Pro`, W - 12, pageH - 5, { align:"right" });
 
     const safeName = (j.customerName || "quote").replace(/[^a-z0-9]+/gi,"-").replace(/(^-|-$)/g,"");
-    return { doc, safeName, customerName: j.customerName, email: j.email };
+    // The figures this PDF printed, so payment tracking can hold the invoice to exactly this amount.
+    // Read-only: nothing above changes because of it.
+    const totals = { subtotal, applyVat, grand, materials: grandMaterials, labour: grandLabour };
+    return { doc, safeName, customerName: j.customerName, email: j.email, totals };
 }
 
 function downloadPDF() {
@@ -14292,7 +14339,8 @@ function buildPDFBase64() {
             base64:       result.doc.output("datauristring").split(",")[1],
             fileName:     result.safeName + (docTypeNow() === "invoice" ? "-invoice.pdf" : "-quote.pdf"),
             customerName: result.customerName,
-            email:        result.email
+            email:        result.email,
+            totals:       result.totals
         };
     } catch(e) { return null; }
 }
@@ -15001,23 +15049,15 @@ function renderInvoiceStatusBar() {
     if (!bar) return;
     const j = getJob();
     if (!j || !j.invoicedAt) { bar.style.display = "none"; return; }
-    bar.style.display = "block";
-    if (j.invoicePaidAt) {
-        bar.style.background = "#065f46"; bar.style.color = "#6ee7b7";
-        bar.style.cssText += "border-radius:10px;padding:12px 14px;text-align:center;font-weight:700;font-size:15px;";
-        bar.innerHTML = `✅ Paid · ${new Date(j.invoicePaidAt).toLocaleDateString("en-GB")}`;
+    // Payments for this invoice — the same block as the job screen's Payments card
+    // (replaces the old single "Mark as Paid" button).
+    bar.style.cssText = "display:block;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;";
+    if (j.isDemo) {
+        bar.innerHTML = `<div style="font-size:14px;font-weight:700;color:var(--ink);">🧾 Invoiced · ${new Date(j.invoicedAt).toLocaleDateString("en-GB")}</div>`;
         return;
     }
-    const due = invoiceDueDate(j);
-    const overdue = due && due.getTime() < Date.now();
-    bar.style.background = overdue ? "#7f1d1d" : "#1e293b";
-    bar.style.color = overdue ? "#fca5a5" : "#94a3b8";
-    bar.style.cssText += "border-radius:10px;padding:12px 14px;text-align:center;font-weight:700;font-size:15px;";
-    const dueText = due ? `Due ${due.toLocaleDateString("en-GB")}` : "";
-    bar.innerHTML = `
-        ${overdue ? "⚠️ Payment overdue" : "🧾 Invoiced"} · ${new Date(j.invoicedAt).toLocaleDateString("en-GB")}${dueText ? " · " + dueText : ""}
-        <button onclick="markJobPaid('${j.id}')" style="display:block;width:100%;margin-top:10px;background:#f59e0b;color:#000;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;">✓ Mark as Paid</button>
-    `;
+    bar.innerHTML = finMoneyHtml(j);
+    if (!FinStore.isFresh()) FinStore.load();
 }
 
 async function copyQuoteLink() {
@@ -15114,7 +15154,7 @@ async function sendInvoiceByEmail(jobId) {
                 })
             });
             if (resp.ok) {
-                markJobInvoiced(jobId, "email");
+                markJobInvoiced(jobId, "email", pdf.totals);
                 alert("\u2705 Invoice sent to " + j.email);
                 return;
             }
@@ -15125,12 +15165,16 @@ async function sendInvoiceByEmail(jobId) {
     const subject = encodeURIComponent(`Invoice \u2013 ${j.customerName}`);
     const body = encodeURIComponent(`Hi ${j.customerName},\n\nPlease find your invoice attached.\n\nKind regards,\n${settings.companyName || ""}`);
     window.open(`mailto:${j.email ? encodeURIComponent(j.email) : ""}?subject=${subject}&body=${body}`, "_system");
-    markJobInvoiced(jobId, "email_app");
+    markJobInvoiced(jobId, "email_app", pdf.totals);
 }
 
-function markJobInvoiced(jobId, method) {
+function markJobInvoiced(jobId, method, totals) {
     const j = jobs.find(x => x.id === jobId);
-    if (!j || j.invoicedAt) return;
+    if (!j) return;
+    // Every send (including a re-send after changes) records what that invoice said. All four
+    // callers are on the Send Invoice sheet, whose PDF is always the invoice.
+    if (totals) { captureInvoiceTotals(j, totals); saveAll(); }
+    if (j.invoicedAt) { renderInvoiceStatusBar(); return; }
     j.invoicedAt = new Date().toISOString();
     saveAll();
     recordFreeSend(j);
@@ -15166,6 +15210,601 @@ function getOverdueInvoices() {
     });
 }
 
+/* ════════════════════════════════════════════════════════════════
+   FINANCE — customer payments, deposits, refunds, CIS deductions
+   Payments live in their own Supabase table (fin_payments, see
+   sql/2026-11-finance-payments.sql), written one record at a time
+   with the tiler's own token — never inside the job record, which
+   is saved whole and would lose a payment made on another device.
+   A job has one invoice, so a payment belongs to the job: a deposit
+   taken before the invoice is just an earlier payment on it.
+   Money is whole pence (integers) from end to end; dates are local
+   "YYYY-MM-DD" strings (never toISOString, which is a day out
+   before 1am in summer). Nothing here changes how quotes, invoices
+   or materials are priced.
+════════════════════════════════════════════════════════════════ */
+
+/* FIN-CORE START — pure money maths: no DOM, no app state. Tested by tests/finance-core.test.mjs */
+const FinCore = (() => {
+    const METHODS = { bank_transfer: "Bank transfer", cash: "Cash", card: "Card", cheque: "Cheque", other: "Other" };
+
+    // What the tiler typed ("1,234.50", "£1234.5", "40") -> pence, or null if it isn't an amount.
+    // allowZero is for the CIS field, where 0 is a real answer.
+    function parsePence(v, allowZero) {
+        const s = String(v == null ? "" : v).replace(/[£,\s]/g, "");
+        if (!/^(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(s)) return null;
+        const [w, f = ""] = s.split(".");
+        const p = parseInt(w || "0", 10) * 100 + parseInt((f + "00").slice(0, 2), 10);
+        if (p >= 1e11) return null;
+        return p > 0 || (allowZero && p === 0) ? p : null;
+    }
+    // A pounds figure from the pricing engine (a float) -> pence, rounded to the nearest penny.
+    function toPence(n) {
+        const x = Number(n);
+        return Number.isFinite(x) ? Math.round(Number((x * 100).toFixed(6))) : 0;
+    }
+    function formatPence(p) {
+        const n = Math.abs(Math.round(p || 0));
+        const s = "£" + Math.floor(n / 100).toLocaleString("en-GB") + "." + String(n % 100).padStart(2, "0");
+        return p < 0 ? "−" + s : s;
+    }
+    // Local calendar date as YYYY-MM-DD.
+    function localDate(d) {
+        d = d || new Date();
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    // The UK tax year (6 April to 5 April) a date falls in.
+    function ukTaxYear(dateStr) {
+        const y = parseInt(dateStr.slice(0, 4), 10), md = dateStr.slice(5);
+        const start = md >= "04-06" ? y : y - 1;
+        return { label: start + "/" + String(start + 1).slice(2), start: start + "-04-06", end: (start + 1) + "-04-05" };
+    }
+    const isActive = p => p && p.status !== "void";
+
+    // Totals of a job's payments. "settled" is what has come off the invoice: cash received
+    // plus CIS the contractor kept back, less anything refunded.
+    function totals(payments) {
+        let received = 0, cis = 0, refunded = 0, count = 0;
+        (payments || []).filter(isActive).forEach(p => {
+            count++;
+            if (p.kind === "refund") refunded += p.amount_pence;
+            else { received += p.amount_pence; cis += p.cis_deduction_pence || 0; }
+        });
+        return { received, cis, refunded, settled: received + cis - refunded, count };
+    }
+
+    // Where an invoice stands, from its frozen total and the payments actually recorded.
+    // inv: { invoiced, grossPence (null if never captured), dueOn "YYYY-MM-DD" | null,
+    //        paidLegacy (marked paid before payment tracking existed) }
+    // status: none (no invoice yet) | needs_total (older invoice, amount not confirmed) |
+    //         paid_legacy | unpaid | part_paid | overdue | paid | refunded
+    function invoiceState(inv, payments, today) {
+        const t = totals(payments);
+        const base = { ...t, gross: inv.grossPence, balance: null, overpaid: 0 };
+        if (!inv.invoiced) return { ...base, status: "none" };
+        if (inv.grossPence == null) {
+            return { ...base, status: inv.paidLegacy && !t.count ? "paid_legacy" : "needs_total" };
+        }
+        const balance = inv.grossPence - t.settled;
+        const out = { ...base, balance, overpaid: balance < 0 ? -balance : 0 };
+        if (t.refunded > 0 && t.received + t.cis - t.refunded <= 0) return { ...out, status: "refunded" };
+        if (balance <= 0) return { ...out, status: "paid" };
+        if (inv.dueOn && (today || localDate()) > inv.dueOn) return { ...out, status: "overdue" };
+        return { ...out, status: t.settled > 0 ? "part_paid" : "unpaid" };
+    }
+
+    // CIS: the contractor deducts ratePct% of the part of the invoice that isn't VAT or the
+    // tiler's direct cost of materials (HMRC CISR15060). cis: { grossPence, liablePence, ratePct }.
+    function cisTotalDeduction(cis) {
+        if (!cis || !(cis.ratePct > 0) || !(cis.liablePence > 0)) return 0;
+        return Math.round(cis.liablePence * cis.ratePct / 100);
+    }
+    // The deduction to expect alongside cashPence received. A part payment carries its share:
+    // cash = gross share x (1 - rate x liable/gross), so deduction = cash x k / (1 - k).
+    // Never more than what is still to be deducted on the invoice.
+    function cisSuggest(cis, cashPence, deductedSoFar) {
+        const total = cisTotalDeduction(cis);
+        const remaining = Math.max(0, total - (deductedSoFar || 0));
+        if (!remaining || !(cashPence > 0) || !(cis.grossPence > 0)) return 0;
+        const k = (cis.ratePct / 100) * (cis.liablePence / cis.grossPence);
+        if (k >= 1) return remaining;
+        return Math.min(remaining, Math.round(cashPence * k / (1 - k)));
+    }
+    // "Paid in full": the cash to expect for the rest of the invoice, and the CIS to go with it.
+    function paidInFull(balancePence, cis, deductedSoFar) {
+        const ded = Math.min(Math.max(0, cisTotalDeduction(cis) - (deductedSoFar || 0)), Math.max(0, balancePence));
+        return { cash: Math.max(0, balancePence - ded), cis: ded };
+    }
+    // The part of an invoice CIS applies to: net of VAT, less materials at cost.
+    function cisLiable(netPence, materialsCostPence) {
+        return Math.max(0, (netPence || 0) - Math.max(0, materialsCostPence || 0));
+    }
+    // Materials at cost from the price the quote charged, by taking the markup back off.
+    function costFromSell(sellPence, markupPct) {
+        const m = Number(markupPct) || 0;
+        return Math.round((sellPence || 0) / (1 + m / 100));
+    }
+
+    return { METHODS, parsePence, toPence, formatPence, localDate, ukTaxYear, totals, invoiceState,
+             cisTotalDeduction, cisSuggest, paidInFull, cisLiable, costFromSell };
+})();
+/* FIN-CORE END */
+
+/* ── Payment records: kept on the phone first, then sent to Supabase ──
+   Each record gets its id on the phone, so sending it twice (a double tap, a retry
+   after losing signal) updates the same row instead of making a second payment.
+   The demo account never sends anything; its records stay on the device. */
+const FinStore = (() => {
+    let uid = null, rows = [], fresh = false, loading = null, flushing = false, timer = null;
+    let lastError = null, listeners = [];
+    const key = () => `tileiq-fin-payments-${uid || "anon"}`;
+    function readLocal() { try { const r = JSON.parse(localStorage.getItem(key()) || "[]"); return Array.isArray(r) ? r : []; } catch(e) { return []; } }
+    function writeLocal() { try { localStorage.setItem(key(), JSON.stringify(rows)); } catch(e) { console.warn("fin local save failed", e); } }
+    function sync() {                                   // follow sign-in / sign-out / account switch
+        const id = (typeof currentUser !== "undefined" && currentUser && currentUser.id) || null;
+        if (id !== uid) { uid = id; rows = readLocal(); fresh = false; loading = null; lastError = null; }
+    }
+    const localOnly = () => typeof isDemoAccount === "function" && isDemoAccount();
+    function changed() { listeners.forEach(fn => { try { fn(); } catch(e) { console.warn(e); } }); }
+    async function rest(method, path, body, prefer) {
+        let tok = "";
+        try { const { data } = await sb.auth.getSession(); tok = data?.session?.access_token || ""; } catch(e) {}
+        if (!tok) throw new Error("Not signed in");
+        const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+            method, headers: { "apikey": SB_KEY, "Authorization": "Bearer " + tok, "Content-Type": "application/json", ...(prefer ? { "Prefer": prefer } : {}) },
+            body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        if (!r.ok) throw new Error(`${r.status} ${(await r.text().catch(() => "")).slice(0, 160)}`);
+        return r.status === 204 ? null : r.json().catch(() => null);
+    }
+    // The columns of fin_payments; anything starting "_" is local bookkeeping only.
+    const COLS = ["id","user_id","job_id","kind","amount_pence","cis_deduction_pence","cis_statement_ref","received_on","method",
+                  "reference","notes","customer_name","job_label","invoice_ref","status","void_reason","is_demo","created_at","updated_at"];
+    const clean = r => Object.fromEntries(COLS.map(c => [c, r[c] === undefined ? null : r[c]]).filter(([c, v]) => v !== null || c === "job_id"));
+
+    async function load() {
+        sync();
+        if (!uid) return;
+        if (localOnly()) { fresh = true; changed(); return; }
+        if (!navigator.onLine) return;
+        if (loading) return loading;
+        loading = (async () => {
+            try {
+                const server = await rest("GET", `fin_payments?select=*&user_id=eq.${uid}&order=received_on.asc,created_at.asc`) || [];
+                const pending = rows.filter(r => r._dirty);
+                rows = server.filter(s => !pending.some(p => p.id === s.id)).concat(pending);
+                fresh = true; lastError = null;
+                writeLocal();
+            } catch(e) { lastError = e.message; console.warn("fin load failed:", e.message); }
+            loading = null;
+            changed();
+            flush();
+        })();
+        return loading;
+    }
+    function schedule() { clearTimeout(timer); timer = setTimeout(flush, 400); }
+    async function flush() {
+        sync();
+        if (!uid || flushing || localOnly() || !navigator.onLine) return;
+        const dirty = rows.filter(r => r._dirty);
+        if (!dirty.length) return;
+        flushing = true;
+        const sent = new Map(dirty.map(r => [r.id, r._v]));
+        try {
+            const saved = await rest("POST", "fin_payments?on_conflict=id", dirty.map(clean), "resolution=merge-duplicates,return=representation") || [];
+            saved.forEach(s => {
+                const i = rows.findIndex(r => r.id === s.id);
+                // Keep the local copy if it was edited again while this was being sent.
+                if (i >= 0 && rows[i]._v === sent.get(s.id)) rows[i] = s;
+            });
+            lastError = null;
+        } catch(e) { lastError = e.message; console.warn("fin sync failed:", e.message); }
+        flushing = false;
+        writeLocal();
+        changed();
+        if (!lastError && rows.some(r => r._dirty)) schedule();
+    }
+    function save(rec) {
+        sync();
+        const now = new Date().toISOString();
+        const next = { ...rec, user_id: uid, updated_at: now, created_at: rec.created_at || now, _dirty: true, _v: (rec._v || 0) + 1 };
+        const i = rows.findIndex(r => r.id === next.id);
+        if (i >= 0) rows[i] = next; else rows.push(next);
+        writeLocal();
+        changed();
+        schedule();
+        return next;
+    }
+    return {
+        load, flush, save,
+        forJob(jobId) { sync(); return rows.filter(r => r.job_id === jobId); },
+        get(id) { sync(); return rows.find(r => r.id === id) || null; },
+        all() { sync(); return rows.slice(); },
+        isFresh() { sync(); return fresh; },
+        pendingCount() { sync(); return rows.filter(r => r._dirty).length; },
+        lastError() { return lastError; },
+        onChange(fn) { listeners.push(fn); }
+    };
+})();
+window.addEventListener("online", () => FinStore.flush());
+
+function finNewId() {
+    if (window.crypto?.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+        const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 15);
+        return (c === "x" ? r : (r & 3) | 8).toString(16);
+    });
+}
+// The pence the invoice PDF printed: the same toFixed(2) the PDF uses, so they always agree.
+function finPenceAsPrinted(n) { return FinCore.parsePence(Number(n || 0).toFixed(2), true) || 0; }
+
+// Freeze what the invoice the customer was sent actually said. Taken from the figures the PDF
+// builder printed, every time an invoice goes out, so the balance matches the latest invoice.
+function captureInvoiceTotals(j, t) {
+    if (!j || !t || !(t.grand > 0)) return;
+    const next = {
+        netPence:   finPenceAsPrinted(t.subtotal),
+        vatPence:   t.applyVat ? finPenceAsPrinted(t.subtotal * 0.2) : 0,
+        grossPence: finPenceAsPrinted(t.grand),
+        vatApplied: !!t.applyVat,
+        materialsSellPence: finPenceAsPrinted(t.materials),
+        labourPence: finPenceAsPrinted(t.labour),
+        markupPct: Number(settings.markup) || 0,
+        invoiceRef: j.invoiceRef || null,
+        source: "pdf",
+        capturedAt: new Date().toISOString()
+    };
+    const prev = j.invoiceTotals;
+    if (prev && prev.grossPence !== next.grossPence) next.revisedFromPence = prev.grossPence;
+    j.invoiceTotals = next;
+}
+
+function finJobInvoice(j) {
+    const due = invoiceDueDate(j);
+    return {
+        invoiced: !!j.invoicedAt,
+        grossPence: j.invoiceTotals ? j.invoiceTotals.grossPence : null,
+        dueOn: due ? FinCore.localDate(due) : null,
+        paidLegacy: !!j.invoicePaidAt && j.invoicePaidBy !== "payments"
+    };
+}
+function finJobState(j) { return FinCore.invoiceState(finJobInvoice(j), FinStore.forJob(j.id)); }
+
+// CIS figures for a job, or null if it isn't a CIS job.
+function finJobCis(j) {
+    if (!j || !j.cis || !j.cis.applies) return null;
+    const ratePct = Number(j.cis.ratePct);
+    const t = j.invoiceTotals;
+    if (!t) return { ratePct, grossPence: 0, liablePence: 0, materialsCostPence: 0, estimated: true };
+    const frozen = t.cis && Number.isFinite(t.cis.materialsCostPence);
+    const materialsCostPence = frozen ? t.cis.materialsCostPence : FinCore.costFromSell(t.materialsSellPence || 0, t.markupPct);
+    return { ratePct, grossPence: t.grossPence, liablePence: FinCore.cisLiable(t.netPence, materialsCostPence), materialsCostPence, estimated: !frozen };
+}
+
+// Keep the old invoicePaidAt flag in step with the payments the tiler recorded, so the
+// dashboard tiles and overdue list that read it keep working. Only ever undone if it was
+// set here (never a "paid" marked by hand before payment tracking existed).
+function finSyncPaidFlag(j) {
+    if (!j || !j.invoicedAt) return;
+    const s = finJobState(j);
+    if (s.status === "paid" && !j.invoicePaidAt) {
+        const last = FinStore.forJob(j.id).filter(p => p.status !== "void" && p.kind !== "refund")
+            .map(p => p.received_on).sort().pop();
+        j.invoicePaidAt = last ? new Date(last + "T12:00:00").toISOString() : new Date().toISOString();
+        j.invoicePaidBy = "payments";
+        saveAll();
+        if (typeof TQA !== "undefined") TQA.invoicePaid(j);
+    } else if (s.status !== "paid" && j.invoicePaidAt && j.invoicePaidBy === "payments" &&
+               (FinStore.isFresh() || FinStore.forJob(j.id).length > 0)) {
+        // Only when this device has the job's payments (loaded, or recorded here): a phone
+        // that hasn't loaded them yet must not undo "paid" just because it sees none.
+        delete j.invoicePaidAt;
+        delete j.invoicePaidBy;
+        saveAll();
+    }
+}
+
+function finRefreshViews() {
+    const j = typeof getJob === "function" ? getJob() : null;
+    if (j) finSyncPaidFlag(j);
+    const job = document.getElementById("screen-job");
+    if (j && job && !job.classList.contains("hidden")) renderJobMoneyCard(j);
+    const quote = document.getElementById("screen-quote");
+    if (j && quote && !quote.classList.contains("hidden")) renderInvoiceStatusBar();
+}
+FinStore.onChange(finRefreshViews);
+
+const FIN_STATUS = {
+    none:        { label: "No invoice yet",  bg: "var(--bg)",        fg: "var(--muted)" },
+    needs_total: { label: "Check amount",    bg: "var(--amber-lt)",  fg: "var(--ink)" },
+    paid_legacy: { label: "Paid",            bg: "var(--green)",     fg: "#fff" },
+    unpaid:      { label: "Unpaid",          bg: "var(--bg)",        fg: "var(--ink)" },
+    part_paid:   { label: "Part paid",       bg: "var(--amber)",     fg: "#000" },
+    overdue:     { label: "Overdue",         bg: "var(--red)",       fg: "#fff" },
+    paid:        { label: "Paid",            bg: "var(--green)",     fg: "#fff" },
+    refunded:    { label: "Refunded",        bg: "var(--bg)",        fg: "var(--muted)" }
+};
+const finFmtDate = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+// Should this job show its money section? Not demo jobs (their figures aren't real),
+// and only once there is something to take money for.
+function finJobShowsMoney(j) {
+    if (!j || j.isDemo) return false;
+    if (j.invoicedAt || FinStore.forJob(j.id).length) return true;
+    return j.quoteStatus === "accepted" || ["accepted", "scheduled", "in_progress", "complete"].includes(j.status);
+}
+
+// The money block, shared by the job screen's Payments card and the quote screen's invoice bar.
+function finMoneyHtml(j) {
+    const s = finJobState(j);
+    const st = FIN_STATUS[s.status] || FIN_STATUS.unpaid;
+    const cis = finJobCis(j);
+    const f = FinCore.formatPence;
+    const fig = (label, value, strong) => `<div style="flex:1;min-width:0;">
+            <div style="font-size:11px;color:var(--muted);font-weight:600;">${label}</div>
+            <div style="font-size:${strong ? 17 : 15}px;font-weight:800;color:var(--ink);margin-top:2px;">${value}</div></div>`;
+    const due = invoiceDueDate(j);
+    let head = "";
+    if (s.status === "none") {
+        head = `<div style="font-size:13px;color:var(--muted);">${s.count ? "Taken before invoicing" : "Record a deposit or any money taken before the invoice."}</div>`;
+    } else {
+        head = `<div style="font-size:12.5px;color:var(--muted);">${esc(j.invoiceRef || "Invoice")} · sent ${new Date(j.invoicedAt).toLocaleDateString("en-GB")}${due ? " · due " + due.toLocaleDateString("en-GB") : ""}</div>`;
+    }
+    let figures = "";
+    if (s.gross != null) {
+        figures = `<div style="display:flex;gap:10px;margin-top:10px;">
+            ${fig("Invoice", f(s.gross))}${fig(s.cis ? "Received + CIS" : "Received", f(s.settled))}
+            ${s.overpaid ? fig("Overpaid", f(s.overpaid), true) : fig("Balance", f(Math.max(0, s.balance)), true)}</div>`;
+    } else if (s.count) {
+        figures = `<div style="display:flex;gap:10px;margin-top:10px;">${fig("Received", f(s.received - s.refunded), true)}</div>`;
+    }
+    const cisLine = cis ? `<div style="font-size:12px;color:var(--muted);margin-top:8px;">CIS job · ${cis.ratePct}% deduction${s.cis ? ` · ${f(s.cis)} deducted so far (tax already paid, claim it on your tax return)` : ""}</div>` : "";
+    let note = "";
+    if (s.status === "needs_total") note = `<div style="font-size:12.5px;color:var(--ink);background:var(--amber-lt);border-radius:8px;padding:8px 10px;margin-top:10px;">This invoice was sent before payment tracking. Confirm its amount when you record the first payment.</div>`;
+    if (s.status === "paid_legacy") note = `<div style="font-size:12.5px;color:var(--muted);margin-top:8px;">Marked paid on ${new Date(j.invoicePaidAt).toLocaleDateString("en-GB")}, before payment tracking.</div>`;
+    if (j.invoiceTotals && j.invoiceTotals.revisedFromPence != null && s.count) note += `<div style="font-size:12px;color:var(--muted);margin-top:8px;">Invoice re-sent with a new total (was ${f(j.invoiceTotals.revisedFromPence)}).</div>`;
+
+    const buttons = [];
+    if (s.status !== "paid_legacy" && s.status !== "paid") {
+        const label = s.status === "none" && !s.count ? "+ Take deposit" : "+ Record payment";
+        buttons.push(`<button onclick="openPaymentSheet('${j.id}')" class="btn-primary" style="flex:2;padding:12px;font-size:15px;">${label}</button>`);
+    }
+    if (s.received - s.refunded > 0) buttons.push(`<button onclick="openPaymentSheet('${j.id}',{refund:true})" class="btn-secondary" style="flex:1;padding:12px;">Refund</button>`);
+
+    const list = FinStore.forJob(j.id).slice().sort((a, b) => (b.received_on + b.created_at).localeCompare(a.received_on + a.created_at));
+    const rowsHtml = list.map(p => {
+        const isVoid = p.status === "void", isRefund = p.kind === "refund";
+        const amt = (isRefund ? "−" : "") + f(p.amount_pence);
+        const sub = [FinCore.METHODS[p.method] || p.method, p.reference ? esc(p.reference) : "", p.cis_deduction_pence ? `CIS ${f(p.cis_deduction_pence)}` : "",
+                     isVoid ? `void${p.void_reason ? ": " + esc(p.void_reason) : ""}` : ""].filter(Boolean).join(" · ");
+        return `<button onclick="openPaymentSheet('${j.id}',{editId:'${p.id}'})" style="display:flex;width:100%;align-items:center;gap:10px;background:none;border:none;border-radius:0;border-top:1px solid var(--border);padding:10px 0;text-align:left;cursor:pointer;color:var(--ink);${isVoid ? "opacity:.55;" : ""}">
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:600;${isVoid ? "text-decoration:line-through;" : ""}">${isRefund ? "Refund" : "Payment"} · ${finFmtDate(p.received_on)}</div>
+                <div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sub}</div>
+            </div>
+            <div style="font-size:15px;font-weight:700;${isVoid ? "text-decoration:line-through;" : ""}">${amt}</div>
+            ${p._dirty ? `<span title="Not synced yet" style="font-size:12px;">⏳</span>` : ""}
+        </button>`;
+    }).join("");
+
+    const pending = FinStore.pendingCount();
+    const syncNote = pending ? `<div style="font-size:12px;color:var(--muted);margin-top:8px;">⏳ Saved on this phone${navigator.onLine ? " — sending…" : " — will sync when you're back online"}.</div>` : "";
+
+    return `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="font-size:15px;font-weight:700;color:var(--ink);">💷 Payments</div>
+            <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:${st.bg};color:${st.fg};">${st.label}</span>
+        </div>
+        <div style="margin-top:6px;">${head}</div>
+        ${figures}${cisLine}${note}
+        ${buttons.length ? `<div style="display:flex;gap:8px;margin-top:12px;">${buttons.join("")}</div>` : ""}
+        ${rowsHtml ? `<div style="margin-top:12px;">${rowsHtml}</div>` : ""}
+        ${syncNote}`;
+}
+
+function renderJobMoneyCard(j) {
+    const card = document.getElementById("job-money-card");
+    if (!card) return;
+    if (!finJobShowsMoney(j)) { card.style.display = "none"; return; }
+    card.style.display = "block";
+    card.innerHTML = finMoneyHtml(j);
+    if (!FinStore.isFresh()) FinStore.load();
+}
+
+/* ── Record / edit / void a payment or refund ─────────────────── */
+function closePaymentSheet() { document.getElementById("fin-payment-sheet")?.remove(); }
+
+function openPaymentSheet(jobId, opts) {
+    opts = opts || {};
+    const j = jobs.find(x => x.id === jobId);
+    if (!j) return;
+    if (j.isDemo) { alert("This is a demo job — payments can only be recorded on your real jobs."); return; }
+    closePaymentSheet();
+    const editing = opts.editId ? FinStore.get(opts.editId) : null;
+    const isRefund = editing ? editing.kind === "refund" : !!opts.refund;
+    const s = finJobState(j);
+    const cis = isRefund ? null : finJobCis(j);
+    const f = FinCore.formatPence;
+    const today = FinCore.localDate();
+    const askTotal = !editing && !isRefund && s.status === "needs_total";
+    const liveTotal = askTotal ? finLiveInvoiceTotalPence(j) : 0;
+    const full = (!editing && !isRefund && s.gross != null && s.balance > 0) ? FinCore.paidInFull(s.balance, cis, s.cis) : null;
+    const v = editing || { id: finNewId(), kind: isRefund ? "refund" : "payment", method: settings.finDefaultMethod || "bank_transfer", received_on: today };
+    const amt = p => p ? (p / 100).toFixed(2) : "";
+    const locked = editing && editing.status === "void";
+    const methodChips = Object.entries(FinCore.METHODS).map(([k, label]) =>
+        `<label style="display:inline-flex;"><input type="radio" name="fin-method" value="${k}" ${v.method === k ? "checked" : ""} ${locked ? "disabled" : ""} style="position:absolute;opacity:0;width:0;height:0;" onchange="finMethodChipStyle()">
+         <span class="fin-chip" data-k="${k}" style="padding:8px 12px;border-radius:999px;border:1px solid var(--border);font-size:13.5px;font-weight:600;cursor:pointer;">${label}</span></label>`).join("");
+    const field = (label, html, hint) => `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">${label}${hint ? ` <span style="font-weight:400;">${hint}</span>` : ""}</div>${html}</div>`;
+    const input = (id, val, attrs) => `<input id="${id}" value="${esc(val == null ? "" : val)}" ${attrs || ""} ${locked ? "disabled" : ""} style="width:100%;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:16px;">`;
+    const title = editing ? (isRefund ? "Refund" : "Payment") + (locked ? " (void)" : "") : isRefund ? "Record a refund" : (s.status === "none" && !s.count ? "Take a deposit" : "Record a payment");
+
+    const sheet = document.createElement("div");
+    sheet.id = "fin-payment-sheet";
+    sheet.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end;";
+    sheet.innerHTML = `
+        <div onclick="closePaymentSheet()" style="flex:1;background:rgba(0,0,0,0.5);"></div>
+        <div style="background:var(--surface);color:var(--ink);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;">
+            <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;"></div>
+            <div style="font-size:17px;font-weight:700;">${title}</div>
+            <div style="font-size:13px;color:var(--muted);margin:2px 0 16px;">${esc(j.customerName || "")}${s.gross != null && !isRefund ? ` · balance ${f(Math.max(0, s.balance))}` : ""}</div>
+            ${full ? `<button id="fin-full-btn" onclick="finSavePaidInFull('${j.id}')" class="btn-primary" style="width:100%;padding:14px;font-size:15px;margin-bottom:6px;">✓ Paid in full · ${f(full.cash)}${full.cis ? ` + ${f(full.cis)} CIS` : ""}</button>
+               <div style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:16px;">${(FinCore.METHODS[v.method] || "").toLowerCase()} · today — or fill in below for anything else</div>` : ""}
+            ${askTotal ? field("Invoice total", input("fin-invoice-total", amt(liveTotal), 'inputmode="decimal" placeholder="0.00"'), "— what did the invoice you sent say?") : ""}
+            ${locked && editing.void_reason ? `<div style="font-size:13px;background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:12px;">Voided: ${esc(editing.void_reason)}</div>` : ""}
+            ${field(isRefund ? "Amount refunded" : "Amount received", input("fin-amount", amt(v.amount_pence), `inputmode="decimal" placeholder="0.00" ${cis ? 'oninput="finSuggestCis()"' : ""}`), cis ? "— cash that reached you" : "")}
+            ${cis ? field(`CIS deducted (${cis.ratePct}%)`, input("fin-cis", amt(v.cis_deduction_pence) || "", 'inputmode="decimal" placeholder="0.00" oninput="this.dataset.touched=1"'),
+                cis.grossPence ? "— suggested; match the contractor's statement" : "— from the contractor's statement") : ""}
+            ${cis ? field("Contractor's statement reference", input("fin-cis-ref", v.cis_statement_ref, 'placeholder="Optional"')) : ""}
+            ${field("Date", input("fin-date", v.received_on, `type="date" max="${today}"`))}
+            ${field(isRefund ? "Paid back by" : "Paid by", `<div style="display:flex;flex-wrap:wrap;gap:6px;">${methodChips}</div>`)}
+            ${field("Reference", input("fin-ref", v.reference, 'placeholder="Optional — e.g. bank reference"'))}
+            ${field(isRefund ? "Reason" : "Notes", input("fin-notes", v.notes, 'placeholder="Optional"'))}
+            <div id="fin-error" style="display:none;color:var(--red);font-size:13px;font-weight:600;margin-bottom:10px;"></div>
+            ${locked ? "" : `<button id="fin-save-btn" onclick="finSavePaymentSheet('${j.id}','${v.id}','${isRefund ? "refund" : "payment"}')" class="btn-primary" style="width:100%;padding:14px;font-size:15px;">${editing ? "Save changes" : "Save"}</button>`}
+            ${editing && !locked ? `<button onclick="finVoidPayment('${j.id}','${v.id}')" style="width:100%;background:none;border:none;color:var(--red);padding:14px;font-size:14px;font-weight:600;cursor:pointer;">Void this ${isRefund ? "refund" : "payment"}</button>` : ""}
+            <button onclick="closePaymentSheet()" style="width:100%;background:none;border:none;color:var(--muted);padding:12px;font-size:15px;font-weight:600;cursor:pointer;">${locked ? "Close" : "Cancel"}</button>
+        </div>`;
+    sheet._editing = editing;
+    sheet._jobId = j.id;
+    document.body.appendChild(sheet);
+    finMethodChipStyle();
+}
+
+function finMethodChipStyle() {
+    document.querySelectorAll("#fin-payment-sheet input[name=fin-method]").forEach(r => {
+        const chip = r.nextElementSibling;
+        chip.style.background = r.checked ? "var(--amber)" : "transparent";
+        chip.style.color = r.checked ? "#000" : "var(--ink)";
+        chip.style.borderColor = r.checked ? "var(--amber)" : "var(--border)";
+    });
+}
+
+// Fill the CIS box from the cash typed in, until the tiler types in the CIS box themselves.
+function finSuggestCis() {
+    const box = document.getElementById("fin-cis");
+    const sheet = document.getElementById("fin-payment-sheet");
+    if (!box || box.dataset.touched || !sheet) return;
+    const job = jobs.find(x => x.id === sheet._jobId);
+    const cis = finJobCis(job);
+    const cash = FinCore.parsePence(document.getElementById("fin-amount").value);
+    if (!cis || !cis.grossPence || !cash) { box.value = ""; return; }
+    const editing = sheet._editing;
+    const already = FinCore.totals(FinStore.forJob(job.id).filter(p => !editing || p.id !== editing.id)).cis;
+    const d = FinCore.cisSuggest(cis, cash, already);
+    box.value = d ? (d / 100).toFixed(2) : "0.00";
+}
+
+// The job's invoice total worked out from today's prices — only offered as a starting point
+// for an older invoice the tiler confirms; never used without them confirming it.
+function finLiveInvoiceTotalPence(j) {
+    let sub = 0;
+    (j.rooms || []).forEach(r => { sub += roomGrandTotal(r); });
+    return finPenceAsPrinted(settings.applyVat !== false ? sub * 1.2 : sub);
+}
+
+function finPaymentRecord(j, base) {
+    return {
+        ...base,
+        job_id: j.id,
+        customer_name: j.customerName || null,
+        job_label: j.description || [j.address, j.postcode].filter(Boolean).join(", ") || null,
+        invoice_ref: j.invoiceRef || null,
+        is_demo: isDemoAccount()
+    };
+}
+
+function finSavePaidInFull(jobId) {
+    const btn = document.getElementById("fin-full-btn");
+    if (btn) { if (btn.disabled) return; btn.disabled = true; }
+    const j = jobs.find(x => x.id === jobId);
+    const s = finJobState(j);
+    const full = FinCore.paidInFull(s.balance, finJobCis(j), s.cis);
+    if (!(full.cash > 0)) { closePaymentSheet(); return; }
+    const method = document.querySelector("#fin-payment-sheet input[name=fin-method]:checked")?.value || settings.finDefaultMethod || "bank_transfer";
+    FinStore.save(finPaymentRecord(j, {
+        id: finNewId(), kind: "payment", amount_pence: full.cash, cis_deduction_pence: full.cis,
+        received_on: FinCore.localDate(), method, status: "active"
+    }));
+    TQA.feature("payment_recorded");
+    closePaymentSheet();
+}
+
+function finSavePaymentSheet(jobId, id, kind) {
+    const btn = document.getElementById("fin-save-btn");
+    const err = document.getElementById("fin-error");
+    const fail = m => { err.textContent = m; err.style.display = "block"; if (btn) btn.disabled = false; };
+    if (btn) { if (btn.disabled) return; btn.disabled = true; }
+    const j = jobs.find(x => x.id === jobId);
+    const sheet = document.getElementById("fin-payment-sheet");
+    const editing = sheet?._editing || null;
+    const val = elId => (document.getElementById(elId)?.value || "").trim();
+
+    const totalEl = document.getElementById("fin-invoice-total");
+    let confirmedTotal = null;
+    if (totalEl) {
+        confirmedTotal = FinCore.parsePence(totalEl.value);
+        if (!confirmedTotal) return fail("Enter the invoice total from the invoice you sent.");
+    }
+    const amount = FinCore.parsePence(val("fin-amount"));
+    if (!amount) return fail(kind === "refund" ? "Enter the amount refunded." : "Enter the amount received.");
+    let cisPence = 0;
+    if (document.getElementById("fin-cis")) {
+        const raw = val("fin-cis");
+        cisPence = raw === "" ? 0 : FinCore.parsePence(raw, true);
+        if (cisPence == null) return fail("The CIS figure isn't an amount.");
+    }
+    const date = val("fin-date");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Pick the date it was paid.");
+    if (date > FinCore.localDate()) return fail("That date is in the future.");
+    const method = document.querySelector("#fin-payment-sheet input[name=fin-method]:checked")?.value;
+    if (!method) return fail(kind === "refund" ? "Choose how it was paid back." : "Choose how it was paid.");
+
+    // Sense checks the tiler can override.
+    const others = FinStore.forJob(j.id).filter(p => p.id !== id);
+    const s = FinCore.invoiceState({ ...finJobInvoice(j), grossPence: confirmedTotal ?? finJobInvoice(j).grossPence }, others);
+    const f = FinCore.formatPence;
+    if (kind === "refund") {
+        if (amount > s.received - s.refunded && !confirm(`That's more than the ${f(s.received - s.refunded)} received on this job. Record it anyway?`)) { btn.disabled = false; return; }
+    } else {
+        if (s.gross != null && s.balance != null && amount + cisPence > Math.max(0, s.balance) &&
+            !confirm(`That's ${f(amount + cisPence - Math.max(0, s.balance))} more than the balance of ${f(Math.max(0, s.balance))}. Record it anyway?`)) { btn.disabled = false; return; }
+        const twin = others.find(p => p.status !== "void" && p.kind === "payment" && p.amount_pence === amount && p.received_on === date);
+        if (!editing && twin && !confirm(`You've already recorded ${f(amount)} on ${finFmtDate(date)} for this job. Record another one?`)) { btn.disabled = false; return; }
+    }
+
+    if (confirmedTotal != null) {
+        const vat = settings.applyVat !== false;
+        j.invoiceTotals = {
+            grossPence: confirmedTotal,
+            netPence: vat ? Math.round(confirmedTotal / 1.2) : confirmedTotal,
+            vatPence: vat ? confirmedTotal - Math.round(confirmedTotal / 1.2) : 0,
+            vatApplied: vat, invoiceRef: j.invoiceRef || null, source: "confirmed", capturedAt: new Date().toISOString()
+        };
+        saveAll();
+    }
+    FinStore.save(finPaymentRecord(j, {
+        ...(editing || {}),
+        id, kind, amount_pence: amount, cis_deduction_pence: kind === "refund" ? 0 : cisPence,
+        cis_statement_ref: val("fin-cis-ref") || null,
+        received_on: date, method, reference: val("fin-ref") || null, notes: val("fin-notes") || null,
+        status: "active"
+    }));
+    if (!editing) TQA.feature(kind === "refund" ? "refund_recorded" : "payment_recorded");
+    closePaymentSheet();
+}
+
+function finVoidPayment(jobId, id) {
+    const p = FinStore.get(id);
+    if (!p || p.status === "void") return;
+    const reason = prompt(`Void this ${p.kind === "refund" ? "refund" : "payment"} of ${FinCore.formatPence(p.amount_pence)}?\n\nIt stays in your records, crossed out, and stops counting. Say why (e.g. "recorded twice", "wrong job"):`);
+    if (reason == null) return;
+    if (!reason.trim()) { alert("Please give a short reason, so the record makes sense later."); return; }
+    FinStore.save({ ...p, status: "void", void_reason: reason.trim().slice(0, 200) });
+    TQA.feature("payment_voided");
+    closePaymentSheet();
+}
+
 async function sendInvoiceShare() {
     const sheet = document.getElementById("send-invoice-sheet");
     const pdf   = sheet?._pdf;
@@ -15179,12 +15818,12 @@ async function sendInvoiceShare() {
             await Filesystem.writeFile({ path: fileName, data: pdf.base64, directory: "CACHE" });
             const { uri } = await Filesystem.getUri({ path: fileName, directory: "CACHE" });
             await Share.share({ title: `Invoice – ${pdf.customerName}`, text: "Please find your invoice attached.", files: [uri], dialogTitle: "Share Invoice" });
-            if (currentJobId) markJobInvoiced(currentJobId, "share");
+            if (currentJobId) markJobInvoiced(currentJobId, "share", pdf.totals);
             return;
         } catch(e) { console.error(e); }
     }
     downloadPDF();
-    if (currentJobId) markJobInvoiced(currentJobId, "download");
+    if (currentJobId) markJobInvoiced(currentJobId, "download", pdf.totals);
 }
 
 function previewQuote() {
