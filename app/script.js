@@ -7789,6 +7789,7 @@ function renderJobView() {
     renderJobQuoteButton(job);
     renderJobMoneyCard(job);
     renderJobCostsCard(job);
+    renderJobSummaryCard(job);
     renderJobPhotos(job);
     renderFinishedPhotos(job);
     renderPortfolioJobCard(job);
@@ -15536,8 +15537,27 @@ const FinCore = (() => {
             .sort((a, b) => b.total - a.total);
     }
 
+    /* ── Job summary (phase F) ── */
+    // What a job is worth (ex VAT: VAT isn't the tiler's money), less what's been spent on it,
+    // = what's left to pay the tiler's own time and the business overheads. Not profit.
+    // Optional days on site turn that into a figure per day, to set against their day rate.
+    function jobSummary({ valuePence, labourAllowancePence, expenses, days, dayRatePence }) {
+        const active = (expenses || []).filter(isActive);
+        const materials = active.filter(e => e.tax_category === "costOfGoods").reduce((a, e) => a + e.amount_pence, 0);
+        const otherCosts = active.filter(e => e.tax_category !== "costOfGoods").reduce((a, e) => a + e.amount_pence, 0);
+        const value = Math.max(0, valuePence || 0);
+        const left = value - materials - otherCosts;
+        const d = Number(days);
+        const perDay = d > 0 ? Math.round(left / d) : null;
+        return { value, materials, otherCosts, costs: materials + otherCosts, left,
+                 labourAllowance: labourAllowancePence || 0,
+                 vsAllowance: labourAllowancePence ? left - labourAllowancePence : null,
+                 days: d > 0 ? d : null, perDay,
+                 vsDayRate: perDay != null && dayRatePence ? perDay - dayRatePence : null };
+    }
+
     return { METHODS, parsePence, toPence, formatPence, localDate, ukTaxYear, totals, invoiceState,
-             materialsCompare, jobMaterialsSpend, periodRange, incomeTotals, overview, byMonth, costsByCategory,
+             materialsCompare, jobMaterialsSpend, jobSummary, periodRange, incomeTotals, overview, byMonth, costsByCategory,
              cisTotalDeduction, cisSuggest, paidInFull, cisLiable, costFromSell,
              TAX_HEADINGS, EXPENSE_CATEGORIES, CUSTOM_KINDS, categoryOf, categoriesFor, ukTaxQuarter,
              vatFromGross, businessShare, expenseTotals };
@@ -15737,7 +15757,7 @@ function finRefreshViews() {
     if (j && job && !job.classList.contains("hidden")) renderJobMoneyCard(j);
     const quote = document.getElementById("screen-quote");
     if (j && quote && !quote.classList.contains("hidden")) renderInvoiceStatusBar();
-    if (j && job && !job.classList.contains("hidden")) renderJobCostsCard(j);
+    if (j && job && !job.classList.contains("hidden")) { renderJobCostsCard(j); renderJobSummaryCard(j); }
     const money = document.getElementById("screen-money");
     if (money && !money.classList.contains("hidden")) renderMoneyScreen();
     const home = document.getElementById("screen-home");
@@ -16245,9 +16265,28 @@ function finFreezeQuoteFigures(j) {
     if (!j || j.quoteFigures || j.isDemo || !(j.rooms || []).length) return;
     const accepted = j.quoteStatus === "accepted" || ["accepted", "scheduled", "in_progress", "complete"].includes(j.status);
     if (!accepted) return;
-    j.quoteFigures = { materialsSellPence: finLiveMaterialsSellPence(j), markupPct: Number(settings.markup) || 0, capturedAt: new Date().toISOString() };
+    const live = finLiveJobValue(j);
+    j.quoteFigures = { materialsSellPence: finLiveMaterialsSellPence(j), markupPct: Number(settings.markup) || 0,
+                       netPence: live.netPence, labourPence: live.labourPence, capturedAt: new Date().toISOString() };
     saveAll();
 }
+// The job priced from its rooms at today's prices, ex VAT (read-only use of the pricing engine).
+function finLiveJobValue(j) {
+    let total = 0, mats = 0;
+    (j.rooms || []).forEach(r => { const p = roomPriceParts(r); total += p.total; mats += p.materials; });
+    const netPence = finPenceAsPrinted(total);
+    return { netPence, labourPence: Math.max(0, netPence - finPenceAsPrinted(mats)) };
+}
+// What the job is worth and what its price allowed for labour: the invoice once sent, else the
+// figures frozen when the quote was accepted, else today's prices.
+function finJobValue(j) {
+    const t = j.invoiceTotals, q = j.quoteFigures;
+    if (t && t.netPence != null) return { valuePence: t.netPence, labourPence: t.labourPence != null ? t.labourPence : null, basis: "the invoice" };
+    if (q && q.netPence != null) return { valuePence: q.netPence, labourPence: q.labourPence, basis: "the accepted quote" };
+    const live = finLiveJobValue(j);
+    return { valuePence: live.netPence, labourPence: live.labourPence, basis: "today's prices" };
+}
+
 function finJobMaterialsEstimate(j) {
     const t = j.invoiceTotals;
     if (t && t.materialsSellPence != null) return { sellPence: t.materialsSellPence, markupPct: t.markupPct, basis: "the invoice" };
@@ -16424,6 +16463,63 @@ async function finSaveMaterialPurchase(jobId) {
     }
     TQA.feature("material_purchase_recorded");
     closeExpenseSheet();
+}
+
+/* ── Job summary (phase F): how the job is doing ─────────────── */
+function renderJobSummaryCard(j) {
+    const card = document.getElementById("job-summary-card");
+    if (!card) return;
+    const v = finJobShowsMoney(j) ? finJobValue(j) : null;
+    if (!v || !(v.valuePence > 0)) { card.style.display = "none"; return; }
+    const f = FinCore.formatPence;
+    const dayRatePence = FinCore.toPence(settings.dayRate || 0);
+    const sm = FinCore.jobSummary({ valuePence: v.valuePence, labourAllowancePence: v.labourPence, expenses: FinExpenses.forJob(j.id), days: j.daysOnSite, dayRatePence });
+    const neg = sm.left < 0;
+    const row = (label, value, opts = {}) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:${opts.big ? "10px 0 2px" : "4px 0"};${opts.top ? "border-top:1px solid var(--border);margin-top:6px;" : ""}">
+        <span style="font-size:${opts.big ? 14.5 : 13.5}px;color:${opts.big ? "var(--ink)" : "var(--muted)"};${opts.big ? "font-weight:800;" : ""}">${label}</span>
+        <span style="font-size:${opts.big ? 18 : 14}px;font-weight:${opts.big ? 800 : 700};color:${opts.colour || "var(--ink)"};">${value}</span></div>`;
+    let allowance = "";
+    if (sm.vsAllowance != null && sm.labourAllowance > 0 && sm.costs > 0) {
+        allowance = `<div style="font-size:12.5px;color:${sm.vsAllowance < 0 ? "var(--red)" : "var(--muted)"};margin-top:6px;">Your price allowed ${f(sm.labourAllowance)} for labour — ${sm.vsAllowance >= 0 ? `${f(sm.vsAllowance)} more left than that` : `${f(-sm.vsAllowance)} less left than that, because costs ran over`}.</div>`;
+    }
+    let perDay = "";
+    if (sm.perDay != null) {
+        perDay = `<div style="font-size:13.5px;margin-top:8px;"><b style="color:${sm.perDay < 0 ? "var(--red)" : "var(--ink)"};">${sm.perDay < 0 ? "−" : ""}${f(Math.abs(sm.perDay))} a day</b>
+            <span style="color:var(--muted);">over ${sm.days} day${sm.days === 1 ? "" : "s"}${dayRatePence ? ` · your day rate is ${f(dayRatePence)}` : ""}</span></div>`;
+    }
+    card.style.display = "block";
+    card.innerHTML = `
+        <div style="font-size:15px;font-weight:700;color:var(--ink);">📊 How this job's doing</div>
+        <div style="margin-top:8px;">
+            ${row(`Job value <span style="font-weight:400;">(ex VAT, from ${v.basis})</span>`, f(sm.value))}
+            ${row("Materials bought", "−" + f(sm.materials))}
+            ${row("Other job costs", "−" + f(sm.otherCosts))}
+            ${row("Left before your labour and overheads", (neg ? "−" : "") + f(Math.abs(sm.left)), { big: true, top: true, colour: neg ? "var(--red)" : "var(--ink)" })}
+        </div>
+        ${allowance}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+            <label for="job-days-on-site" style="font-size:13px;color:var(--muted);flex:1;">Days on site <span style="font-weight:400;">(optional)</span></label>
+            <input id="job-days-on-site" type="number" inputmode="decimal" min="0" max="365" step="0.5" value="${sm.days ?? ""}" placeholder="—"
+                onchange="finSetDaysOnSite('${j.id}', this.value)"
+                style="width:84px;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:9px;font-size:16px;text-align:center;">
+        </div>
+        ${perDay}
+        <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Not profit: your own time, van, insurance and other overheads still come out of this.</div>`;
+}
+
+function finSetDaysOnSite(jobId, raw) {
+    const j = jobs.find(x => x.id === jobId);
+    if (!j) return;
+    const s = String(raw || "").trim();
+    if (!s || Number(s) === 0) delete j.daysOnSite;
+    else {
+        const d = Math.round(Number(s) * 2) / 2;                 // to the half day
+        if (!(d > 0 && d <= 365)) { alert("Days on site is a number of days, like 3 or 4.5."); renderJobSummaryCard(j); return; }
+        j.daysOnSite = d;
+    }
+    saveAll();
+    TQA.feature("days_on_site");
+    renderJobSummaryCard(j);
 }
 
 /* ── Add / edit / void an expense ───────────────────────────── */
