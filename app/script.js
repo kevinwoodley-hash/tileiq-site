@@ -4247,7 +4247,9 @@ const DASHBOARD_WIDGET_DEFS = [
     { id: "new_requests",   title: "New job requests banner", icon: "📥", type: "wide"  },
     { id: "chase_up",       title: "Chase up overdue quotes", icon: "⏰", type: "wide"  },
     { id: "schedule",       title: "This week's schedule",    icon: "🗓", type: "wide"  },
-    { id: "lead_sources",   title: "Lead sources",            icon: "🌐", type: "wide"  }
+    { id: "lead_sources",   title: "Lead sources",            icon: "🌐", type: "wide"  },
+    { id: "money_in_month", title: "Money in this month",     icon: "💷", type: "small", defaultOff: true },
+    { id: "owed",           title: "Owed to you",             icon: "🧾", type: "small", defaultOff: true }
 ];
 
 function getDashboardWidgetOrder() {
@@ -4255,7 +4257,7 @@ function getDashboardWidgetOrder() {
     if (Array.isArray(saved)) {
         return saved.filter(id => DASHBOARD_WIDGET_DEFS.some(w => w.id === id));
     }
-    return DASHBOARD_WIDGET_DEFS.map(w => w.id);
+    return DASHBOARD_WIDGET_DEFS.filter(w => !w.defaultOff).map(w => w.id);
 }
 
 let _dashNotifSeq = 0;
@@ -4325,6 +4327,18 @@ function renderHomeDashboard() {
         <div style="font-size:11px;color:var(--muted);">This month, accepted</div>
         <div style="font-size:18px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
     </div>`;
+
+    if (typeof FinStore !== "undefined" && getDashboardWidgetOrder().some(id => id === "money_in_month" || id === "owed")) {
+        const mr = FinCore.periodRange("month", FinCore.localDate());
+        const mo = FinCore.overview(finPayments(), [], mr.from, mr.to);
+        const owe = finOutstanding();
+        const tile = (label, value, sub, red) => `<div onclick="finMoneyTab='overview';goMoney();" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:9px 10px;cursor:pointer;">
+            <div style="font-size:11px;color:var(--muted);">${label}</div>
+            <div style="font-size:18px;font-weight:800;color:${red ? "var(--red)" : "var(--ink)"};margin-top:1px;">${value}</div>${sub ? `<div style="font-size:10.5px;color:${red ? "var(--red)" : "var(--muted)"};">${sub}</div>` : ""}</div>`;
+        w.money_in_month = tile("Money in this month", fmt(Math.round(mo.cash / 100)), "");
+        w.owed = tile("Owed to you", fmt(Math.round(owe.owed / 100)), owe.overdueCount ? `${owe.overdueCount} overdue` : "", owe.overdueCount > 0);
+        if (!FinStore.isFresh()) FinStore.load();
+    }
 
     w.new_requests = newRequests.length ? `<div onclick="document.getElementById('jobs-quote-filter').value='new_requests';goDashboard();" style="background:#eff6ff;border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:9px;cursor:pointer;">
         <span style="font-size:16px;">📥</span>
@@ -15445,7 +15459,85 @@ const FinCore = (() => {
         return { total, vat, business, count };
     }
 
+    // Materials: what the quote charged for them, the cost that implies (markup taken back
+    // off), what has actually been bought, and the gap. diff > 0 = spent more than estimated.
+    function materialsCompare(chargedPence, markupPct, actualPence) {
+        const charged = Math.max(0, chargedPence || 0), actual = Math.max(0, actualPence || 0);
+        const estCost = costFromSell(charged, markupPct);
+        return { charged, estCost, actual, diff: actual - estCost, leftFromCharge: charged - actual };
+    }
+    // Spending that counts as materials bought for a job: anything filed as cost of goods
+    // (the Materials category, material purchases, a tiler's own "materials" categories).
+    function jobMaterialsSpend(expenses) {
+        return (expenses || []).filter(e => isActive(e) && e.tax_category === "costOfGoods")
+            .reduce((a, e) => a + e.amount_pence, 0);
+    }
+
+    /* ── Overview (phase E): money in and out over a period, cash basis ── */
+    const pad2 = n => String(n).padStart(2, "0");
+    const monthEnd = (y, m) => `${y}-${pad2(m)}-${pad2(new Date(Date.UTC(y, m, 0)).getUTCDate())}`;
+    // The reporting periods the tiler can pick. Quarters and tax years are the UK tax ones.
+    function periodRange(kind, today, from, to) {
+        const y = parseInt(today.slice(0, 4), 10), m = parseInt(today.slice(5, 7), 10);
+        const monthName = (yy, mm) => new Date(Date.UTC(yy, mm - 1, 15)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+        if (kind === "last_month") {
+            const ly = m === 1 ? y - 1 : y, lm = m === 1 ? 12 : m - 1;
+            return { kind, from: `${ly}-${pad2(lm)}-01`, to: monthEnd(ly, lm), label: monthName(ly, lm) };
+        }
+        if (kind === "quarter") { const q = ukTaxQuarter(today); return { kind, from: q.start, to: q.end, label: `${q.label} (${q.range})` }; }
+        if (kind === "tax_year") { const t = ukTaxYear(today); return { kind, from: t.start, to: t.end, label: `Tax year ${t.label}` }; }
+        if (kind === "last_tax_year") { const t = ukTaxYear(ukTaxYear(today).start.slice(0, 4) + "-04-05"); return { kind, from: t.start, to: t.end, label: `Tax year ${t.label}` }; }
+        if (kind === "custom" && /^\d{4}-\d{2}-\d{2}$/.test(from || "") && /^\d{4}-\d{2}-\d{2}$/.test(to || "")) {
+            const [a, b] = from <= to ? [from, to] : [to, from];
+            return { kind, from: a, to: b, label: `${a.split("-").reverse().join("/")} – ${b.split("-").reverse().join("/")}` };
+        }
+        return { kind: "month", from: `${y}-${pad2(m)}-01`, to: monthEnd(y, m), label: monthName(y, m) };
+    }
+    // Money in over a period, by the day it reached the tiler (payments less refunds), with
+    // the CIS contractors kept back counted too: on a cash basis that's income (tax already paid).
+    function incomeTotals(payments, from, to) {
+        let received = 0, cis = 0, refunded = 0;
+        (payments || []).filter(p => isActive(p) && inPeriod(p.received_on, from, to)).forEach(p => {
+            if (p.kind === "refund") refunded += p.amount_pence;
+            else { received += p.amount_pence; cis += p.cis_deduction_pence || 0; }
+        });
+        return { received, cis, refunded, cash: received - refunded, income: received + cis - refunded };
+    }
+    // The period's headline figures. Costs are the business share (after private use).
+    function overview(payments, expenses, from, to) {
+        const inc = incomeTotals(payments, from, to);
+        const jobCosts = expenseTotals((expenses || []).filter(e => e.job_id), from, to);
+        const bizCosts = expenseTotals((expenses || []).filter(e => !e.job_id), from, to);
+        const out = jobCosts.business + bizCosts.business;
+        return { ...inc, jobCosts: jobCosts.business, businessCosts: bizCosts.business, out,
+                 paidOut: jobCosts.total + bizCosts.total, surplus: inc.income - out };
+    }
+    // Month by month in and out (for the chart): each month in the period, oldest first.
+    function byMonth(payments, expenses, from, to) {
+        const months = [];
+        let y = parseInt(from.slice(0, 4), 10), m = parseInt(from.slice(5, 7), 10);
+        while (months.length < 24) {
+            const start = `${y}-${pad2(m)}-01`;
+            if (start > to) break;
+            const a = start < from ? from : start, b = monthEnd(y, m) > to ? to : monthEnd(y, m);
+            const o = overview(payments, expenses, a, b);
+            months.push({ month: `${y}-${pad2(m)}`, label: new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }), in: o.income, out: o.out });
+            m++; if (m > 12) { m = 1; y++; }
+        }
+        return months;
+    }
+    // Where the money went: business share by category, biggest first.
+    function costsByCategory(expenses, from, to, custom) {
+        const sums = {};
+        (expenses || []).filter(e => isActive(e) && inPeriod(e.spent_on, from, to)).forEach(e => {
+            sums[e.category] = (sums[e.category] || 0) + businessShare(e.amount_pence, e.business_use_pct);
+        });
+        return Object.entries(sums).map(([key, total]) => { const c = categoryOf(key, custom); return { key, label: c.label, icon: c.icon, total }; })
+            .sort((a, b) => b.total - a.total);
+    }
+
     return { METHODS, parsePence, toPence, formatPence, localDate, ukTaxYear, totals, invoiceState,
+             materialsCompare, jobMaterialsSpend, periodRange, incomeTotals, overview, byMonth, costsByCategory,
              cisTotalDeduction, cisSuggest, paidInFull, cisLiable, costFromSell,
              TAX_HEADINGS, EXPENSE_CATEGORIES, CUSTOM_KINDS, categoryOf, categoriesFor, ukTaxQuarter,
              vatFromGross, businessShare, expenseTotals };
@@ -15648,6 +15740,8 @@ function finRefreshViews() {
     if (j && job && !job.classList.contains("hidden")) renderJobCostsCard(j);
     const money = document.getElementById("screen-money");
     if (money && !money.classList.contains("hidden")) renderMoneyScreen();
+    const home = document.getElementById("screen-home");
+    if (home && !home.classList.contains("hidden") && getDashboardWidgetOrder().some(id => id === "money_in_month" || id === "owed")) renderHomeDashboard();
 }
 FinStore.onChange(finRefreshViews);
 FinExpenses.onChange(finRefreshViews);
@@ -16117,6 +16211,7 @@ function renderJobCostsCard(j) {
     const card = document.getElementById("job-costs-card");
     if (!card) return;
     if (!finJobShowsMoney(j)) { card.style.display = "none"; return; }
+    finFreezeQuoteFigures(j);
     const list = FinExpenses.forJob(j.id).slice().sort((a, b) => (b.spent_on + b.created_at).localeCompare(a.spent_on + a.created_at));
     const t = FinCore.expenseTotals(list);
     card.style.display = "block";
@@ -16126,9 +16221,209 @@ function renderJobCostsCard(j) {
             <div style="font-size:15px;font-weight:800;color:var(--ink);">${FinCore.formatPence(t.total)}</div>
         </div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${t.count ? `${t.count} cost${t.count === 1 ? "" : "s"} on this job` : "Materials, skip hire, parking — anything you spend on this job."}</div>
-        <button onclick="openExpenseSheet({jobId:'${j.id}'})" class="btn-secondary" style="width:100%;padding:12px;margin-top:12px;">+ Add job cost</button>
+        ${finMaterialsBlockHtml(j, list)}
+        ${(j.rooms || []).length ? `<button onclick="openMaterialPurchaseSheet('${j.id}')" class="btn-primary" style="width:100%;padding:12px;margin-top:12px;">+ Record material purchase</button>` : ""}
+        <button onclick="openExpenseSheet({jobId:'${j.id}'})" class="btn-secondary" style="width:100%;padding:12px;margin-top:8px;">+ Add job cost</button>
         ${list.length ? `<div style="margin-top:10px;">${list.map(e => finExpenseRowHtml(e, false)).join("")}</div>` : ""}`;
     if (!FinExpenses.isFresh()) FinExpenses.load();
+}
+
+/* ── Material purchases (phase D) ─────────────────────────────
+   Estimated materials come from the job's own pricing (never changed here): the figure the
+   invoice charged if it's been sent, else the figures frozen when the quote was accepted,
+   else today's. A purchase is one expense (source "material_purchase"), so it shows on the
+   job and in the Money screen as the same record and can't be counted twice. Nothing is ever
+   recorded from the estimate by itself: only what the tiler confirms they bought. */
+function finLiveMaterialsSellPence(j) {
+    let p = 0;
+    (j.rooms || []).forEach(r => { p += roomPriceParts(r).materials; });
+    return finPenceAsPrinted(p);
+}
+// When a job's quote has been accepted, keep what it charged for materials, so later price
+// changes in Settings don't move the estimate the purchases are compared with.
+function finFreezeQuoteFigures(j) {
+    if (!j || j.quoteFigures || j.isDemo || !(j.rooms || []).length) return;
+    const accepted = j.quoteStatus === "accepted" || ["accepted", "scheduled", "in_progress", "complete"].includes(j.status);
+    if (!accepted) return;
+    j.quoteFigures = { materialsSellPence: finLiveMaterialsSellPence(j), markupPct: Number(settings.markup) || 0, capturedAt: new Date().toISOString() };
+    saveAll();
+}
+function finJobMaterialsEstimate(j) {
+    const t = j.invoiceTotals;
+    if (t && t.materialsSellPence != null) return { sellPence: t.materialsSellPence, markupPct: t.markupPct, basis: "the invoice" };
+    if (j.quoteFigures) return { sellPence: j.quoteFigures.materialsSellPence, markupPct: j.quoteFigures.markupPct, basis: "the accepted quote" };
+    return { sellPence: finLiveMaterialsSellPence(j), markupPct: Number(settings.markup) || 0, basis: "today's prices" };
+}
+
+function finMaterialsBlockHtml(j, list) {
+    const actual = FinCore.jobMaterialsSpend(list);
+    if (!(j.rooms || []).length && !actual) return "";
+    const est = finJobMaterialsEstimate(j);
+    const c = FinCore.materialsCompare(est.sellPence, est.markupPct, actual);
+    const f = FinCore.formatPence;
+    const bought = list.filter(e => e.status !== "void" && e.tax_category === "costOfGoods").length;
+    let verdict = "";
+    if (actual && c.estCost) {
+        verdict = c.diff > 0
+            ? `<div style="font-size:13px;font-weight:700;color:var(--red);margin-top:6px;">▲ ${f(c.diff)} over the estimate</div>`
+            : `<div style="font-size:13px;font-weight:700;color:var(--green);margin-top:6px;">${f(-c.diff)} of the estimate left</div>`;
+    }
+    const row = (label, value, strong) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px;margin-top:4px;${strong ? "font-weight:700;" : ""}">
+        <span style="color:${strong ? "var(--ink)" : "var(--muted)"};">${label}</span><span style="color:var(--ink);">${value}</span></div>`;
+    return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:12px;">
+        <div style="font-size:13px;font-weight:700;color:var(--ink);">Materials</div>
+        ${row("Estimated cost", f(c.estCost))}
+        ${row(`Bought so far${bought ? ` (${bought})` : ""}`, f(c.actual), true)}
+        ${verdict}
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Estimate from ${est.basis}: ${f(c.charged)} charged for materials, less your ${Number(est.markupPct) || 0}% markup.</div>
+    </div>`;
+}
+
+// The job's materials list, exactly as the Materials screen shows its Job Totals: drawn by the
+// existing renderMaterials() (read only), then the screen is put back as it was.
+function finEstimatedMaterialLines(j) {
+    const out = document.getElementById("materials-output");
+    if (!j || !(j.rooms || []).length || !out || typeof renderMaterials !== "function") return [];
+    const keepJob = currentJobId, before = out.innerHTML;
+    let lines = [];
+    try {
+        currentJobId = j.id;
+        renderMaterials();
+        lines = [...out.querySelectorAll(".mat-totals-card .mat-total-item")].map(el => {
+            const text = n => (n ? n.innerHTML : "").replace(/<br\s*\/?>/gi, " · ").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+            return { item: text(el.querySelector(".mat-total-label")), est: text(el.querySelector(".mat-total-value")) };
+        }).filter(l => l.item);
+    } catch(e) { console.warn("materials list:", e.message); }
+    currentJobId = keepJob;
+    out.innerHTML = before;
+    return lines;
+}
+
+function openMaterialPurchaseSheet(jobId) {
+    const j = jobs.find(x => x.id === jobId);
+    if (!j) return;
+    if (j.isDemo) { alert("This is a demo job — purchases can only be recorded on your real jobs."); return; }
+    closeExpenseSheet();
+    const lines = finEstimatedMaterialLines(j).concat([{ item: "Other", est: "" }]);
+    const today = FinCore.localDate();
+    const inputStyle = "width:100%;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:16px;";
+    const field = (label, html, hint) => `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">${label}${hint ? ` <span style="font-weight:400;">${hint}</span>` : ""}</div>${html}</div>`;
+    const suppliers = [...new Set(FinExpenses.all().map(e => (e.supplier || "").trim()).filter(Boolean))].slice(0, 30);
+    const methods = Object.entries(FinCore.METHODS).map(([k, label]) =>
+        `<label style="display:inline-flex;"><input type="radio" name="fin-exp-method" value="${k}" ${k === "card" ? "checked" : ""} style="position:absolute;opacity:0;width:0;height:0;" onchange="finChipStyles()">
+         <span class="fin-chip" style="padding:8px 12px;border-radius:999px;border:1px solid var(--border);font-size:13.5px;font-weight:600;cursor:pointer;">${label}</span></label>`).join("");
+    const lineRows = lines.map((l, i) => `
+        <div class="fin-mat-line" data-i="${i}" style="border-top:1px solid var(--border);padding:10px 0;">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input type="checkbox" onchange="finMatLineToggle(${i})" style="width:22px;height:22px;flex:none;accent-color:var(--amber);">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:14.5px;font-weight:600;color:var(--ink);">${esc(l.item)}</div>
+                    ${l.est ? `<div style="font-size:12px;color:var(--muted);">Estimate: ${esc(l.est)}</div>` : ""}
+                </div>
+            </label>
+            <div class="fin-mat-amt" style="display:none;margin:8px 0 0 32px;">
+                <input inputmode="decimal" placeholder="£ for this (optional)" oninput="finMatSum()" style="${inputStyle}padding:10px;">
+            </div>
+        </div>`).join("");
+
+    const sheet = document.createElement("div");
+    sheet.id = "fin-expense-sheet";                    // same id: the expense sheet's helpers (receipt, chips) work here too
+    sheet.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end;";
+    sheet.innerHTML = `
+        <div onclick="closeExpenseSheet()" style="flex:1;background:rgba(0,0,0,0.5);"></div>
+        <div style="background:var(--surface);color:var(--ink);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom));max-height:90vh;overflow-y:auto;">
+            <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;"></div>
+            <div style="font-size:17px;font-weight:700;">Record material purchase</div>
+            <div style="font-size:13px;color:var(--muted);margin:2px 0 14px;">${esc(j.customerName || "")}</div>
+            ${field("What did you buy?", `<div>${lineRows}</div>`, "— tick from your materials list")}
+            ${field("Total paid", `<input id="fin-exp-amount" inputmode="decimal" placeholder="0.00" oninput="this.dataset.touched=1;finMatSum()" style="${inputStyle}">`, "— as on the receipt, VAT included")}
+            ${field("Supplier", `<input id="fin-exp-supplier" placeholder="e.g. Topps Tiles" list="fin-supplier-list" autocomplete="off" style="${inputStyle}"><datalist id="fin-supplier-list">${suppliers.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`)}
+            ${field("Date", `<input id="fin-exp-date" type="date" value="${today}" max="${today}" style="${inputStyle}">`)}
+            ${field("Receipt", `<div id="fin-receipt-box"></div>`)}
+            ${field("Paid by", `<div style="display:flex;flex-wrap:wrap;gap:6px;">${methods}</div>`)}
+            <div id="fin-exp-error" style="display:none;color:var(--red);font-size:13px;font-weight:600;margin-bottom:10px;"></div>
+            <div id="fin-mat-summary" style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:8px;"></div>
+            <button id="fin-exp-save" onclick="finSaveMaterialPurchase('${j.id}')" class="btn-primary" style="width:100%;padding:14px;font-size:15px;">Confirm purchase</button>
+            <button onclick="closeExpenseSheet()" style="width:100%;background:none;border:none;color:var(--muted);padding:12px;font-size:15px;font-weight:600;cursor:pointer;">Cancel</button>
+        </div>`;
+    sheet._editing = null;
+    sheet._id = finNewId();
+    sheet._receipt = null;
+    sheet._lines = lines;
+    sheet._jobName = j.customerName || "this job";
+    document.body.appendChild(sheet);
+    finChipStyles();
+    finRenderReceiptBox();
+    finMatSum();
+}
+
+function finMatLineToggle(i) {
+    const line = document.querySelector(`#fin-expense-sheet .fin-mat-line[data-i="${i}"]`);
+    if (!line) return;
+    const on = line.querySelector("input[type=checkbox]").checked;
+    line.querySelector(".fin-mat-amt").style.display = on ? "block" : "none";
+    if (!on) line.querySelector(".fin-mat-amt input").value = "";
+    finMatSum();
+}
+// The total follows the per-item amounts until the tiler types a total themselves.
+function finMatSum() {
+    const total = document.getElementById("fin-exp-amount");
+    if (!total) return;
+    let sum = 0;
+    document.querySelectorAll("#fin-expense-sheet .fin-mat-line").forEach(l => {
+        if (l.querySelector("input[type=checkbox]").checked) sum += FinCore.parsePence(l.querySelector(".fin-mat-amt input").value) || 0;
+    });
+    if (!total.dataset.touched) total.value = sum ? (sum / 100).toFixed(2) : "";
+    const p = FinCore.parsePence(total.value);
+    const sheet = document.getElementById("fin-expense-sheet");
+    const sum2 = document.getElementById("fin-mat-summary");
+    if (sum2) sum2.textContent = p ? `Adds ${FinCore.formatPence(p)} to ${sheet._jobName}'s job costs.` : "";
+}
+
+async function finSaveMaterialPurchase(jobId) {
+    const btn = document.getElementById("fin-exp-save");
+    const err = document.getElementById("fin-exp-error");
+    const fail = m => { err.textContent = m; err.style.display = "block"; if (btn) btn.disabled = false; };
+    if (btn) { if (btn.disabled) return; btn.disabled = true; }
+    const sheet = document.getElementById("fin-expense-sheet");
+    const j = jobs.find(x => x.id === jobId);
+    const ticked = [];
+    let badLine = false;
+    document.querySelectorAll("#fin-expense-sheet .fin-mat-line").forEach(l => {
+        if (!l.querySelector("input[type=checkbox]").checked) return;
+        const raw = l.querySelector(".fin-mat-amt input").value.trim();
+        const p = raw ? FinCore.parsePence(raw) : null;
+        if (raw && !p) badLine = true;
+        const line = sheet._lines[+l.dataset.i];
+        ticked.push({ item: line.item, est: line.est || null, amount_pence: p });
+    });
+    if (badLine) return fail("One of the item amounts isn't an amount.");
+    const amount = FinCore.parsePence(document.getElementById("fin-exp-amount").value);
+    if (!amount) return fail("Enter the total paid.");
+    const lineSum = ticked.reduce((a, l) => a + (l.amount_pence || 0), 0);
+    if (lineSum > amount) return fail(`The items add up to ${FinCore.formatPence(lineSum)}, more than the total paid.`);
+    const date = (document.getElementById("fin-exp-date").value || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Pick the date.");
+    if (date > FinCore.localDate()) return fail("That date is in the future.");
+    const supplier = (document.getElementById("fin-exp-supplier").value || "").trim();
+    const twin = FinExpenses.forJob(jobId).find(e => e.status !== "void" && e.amount_pence === amount && e.spent_on === date);
+    if (twin && !confirm(`You've already recorded ${FinCore.formatPence(amount)} on ${finFmtDate(date)} for this job. Record another?`)) { btn.disabled = false; return; }
+    const rec = FinExpenses.save({
+        id: sheet._id, job_id: jobId, job_label: j.customerName || null,
+        spent_on: date, supplier: supplier || null,
+        description: ticked.length ? ticked.map(l => l.item).join(", ").slice(0, 200) : "Materials",
+        category: "materials", tax_category: "costOfGoods",
+        amount_pence: amount, vat_pence: 0, vat_treatment: "unknown", business_use_pct: 100,
+        payment_method: document.querySelector("#fin-expense-sheet input[name=fin-exp-method]:checked")?.value || "card",
+        source: "material_purchase", material_lines: ticked.length ? ticked : null,
+        status: "active", is_demo: isDemoAccount()
+    });
+    if (sheet._receipt) {
+        try { await FinReceipts.attach(rec.id, sheet._receipt); }
+        catch(e) { alert("The purchase is saved, but the receipt couldn't be kept: " + e.message); }
+    }
+    TQA.feature("material_purchase_recorded");
+    closeExpenseSheet();
 }
 
 /* ── Add / edit / void an expense ───────────────────────────── */
@@ -16407,7 +16702,12 @@ function finVoidExpense(id) {
 }
 
 /* ── Money screen (from Home): every expense, with this month / tax year totals ── */
-let finMoneyTab = "business";
+let finMoneyTab = "overview";
+let finPeriod = { kind: "month", from: "", to: "" };
+const finMoneyTabs = () => {
+    const tab = (k, label) => `<button onclick="finMoneyTab='${k}';renderMoneyScreen();" style="flex:1;padding:10px 4px;border-radius:999px;border:1px solid ${finMoneyTab === k ? "var(--amber)" : "var(--border)"};background:${finMoneyTab === k ? "var(--amber)" : "transparent"};color:${finMoneyTab === k ? "#000" : "var(--ink)"};font-size:13.5px;font-weight:700;cursor:pointer;">${label}</button>`;
+    return `<div style="display:flex;gap:6px;">${tab("overview", "Overview")}${tab("business", "Business costs")}${tab("jobs", "Job costs")}</div>`;
+};
 function goMoney() {
     show("screen-money");
     renderMoneyScreen();
@@ -16422,6 +16722,7 @@ function goMoney() {
 function renderMoneyScreen() {
     const el = document.getElementById("money-body");
     if (!el) return;
+    if (finMoneyTab === "overview") { renderMoneyOverview(el); return; }
     const f = FinCore.formatPence, today = FinCore.localDate();
     const ty = FinCore.ukTaxYear(today), q = FinCore.ukTaxQuarter(today);
     const isJobs = finMoneyTab === "jobs";
@@ -16452,18 +16753,116 @@ function renderMoneyScreen() {
                 ${list.sort(newest).map(e => finExpenseRowHtml(e, false)).join("")}</div>`;
         });
     }
-    const tab = (k, label) => `<button onclick="finMoneyTab='${k}';renderMoneyScreen();" style="flex:1;padding:10px 6px;border-radius:999px;border:1px solid ${finMoneyTab === k ? "var(--amber)" : "var(--border)"};background:${finMoneyTab === k ? "var(--amber)" : "transparent"};color:${finMoneyTab === k ? "#000" : "var(--ink)"};font-size:14px;font-weight:700;cursor:pointer;">${label}</button>`;
     const card = (label, t) => `<div class="form-card" style="flex:1;margin:0;"><div style="font-size:11px;color:var(--muted);font-weight:600;">${label}</div><div style="font-size:19px;font-weight:800;color:var(--ink);margin-top:2px;">${f(t.total)}</div></div>`;
     const pending = FinExpenses.pendingCount();
     const empty = isJobs
         ? "No job costs yet. Add materials, skip hire or parking from a job's Job costs card, or here."
         : "No business costs yet. Add fuel, insurance, tools, your phone — anything the business pays for that isn't one job. Snap the receipt and it's kept safe for your accountant.";
     el.innerHTML = `
-        <div style="display:flex;gap:6px;">${tab("business", "Business costs")}${tab("jobs", "Job costs")}</div>
+        ${finMoneyTabs()}
         <div style="display:flex;gap:10px;margin-top:14px;">${card(`This quarter · Q${q.n}`, quarterTotal)}${card(`Tax year ${ty.label}`, yearTotal)}</div>
         <button onclick="openExpenseSheet(${isJobs ? "{forJob:true}" : ""})" class="btn-primary" style="width:100%;padding:14px;font-size:15px;margin-top:14px;">${isJobs ? "+ Add job cost" : "+ Add business cost"}</button>
         ${groups || `<div class="form-card" style="margin-top:12px;"><div style="font-size:14px;color:var(--muted);padding:6px 0;">${empty}</div></div>`}
         ${pending ? `<div style="font-size:12px;color:var(--muted);margin-top:10px;">⏳ ${pending} saved on this phone${navigator.onLine ? " — sending…" : " — will sync when you're back online"}.</div>` : ""}`;
+}
+
+// Invoices still owed: every real, sent invoice with something left to pay, most overdue first.
+function finOutstanding() {
+    const out = [];
+    let unchecked = 0;
+    getRealJobs().filter(j => j.invoicedAt && !j.jobArchived).forEach(j => {
+        const st = finJobState(j);
+        if (st.status === "needs_total") { unchecked++; return; }
+        if (["unpaid", "part_paid", "overdue"].includes(st.status) && st.balance > 0) out.push({ job: j, st, due: finJobInvoice(j).dueOn });
+    });
+    out.sort((a, b) => (a.st.status === "overdue") === (b.st.status === "overdue") ? String(a.due).localeCompare(String(b.due)) : a.st.status === "overdue" ? -1 : 1);
+    const owed = out.reduce((a, o) => a + o.st.balance, 0), overdue = out.filter(o => o.st.status === "overdue");
+    return { list: out, owed, overdueCount: overdue.length, overdue: overdue.reduce((a, o) => a + o.st.balance, 0), unchecked };
+}
+
+function finPayments() { return FinStore.all().filter(p => !p.is_demo || isDemoAccount()); }
+function finExpensesAll() { return FinExpenses.all().filter(e => !e.is_demo || isDemoAccount()); }
+
+function finSetPeriod(kind) {
+    finPeriod.kind = kind;
+    if (kind === "custom" && !finPeriod.from) {
+        const r = FinCore.periodRange("month", FinCore.localDate());
+        finPeriod.from = r.from; finPeriod.to = FinCore.localDate();
+    }
+    renderMoneyScreen();
+}
+
+// In vs out by month, as plain SVG bars (the app has no chart library).
+function finMonthChartSvg(months) {
+    if (months.length < 2) return "";
+    const max = Math.max(1, ...months.map(m => Math.max(m.in, m.out)));
+    const W = 340, H = 150, base = 120, left = 6, slot = (W - left * 2) / months.length, bw = Math.min(14, slot / 2 - 3);
+    const bars = months.map((m, i) => {
+        const x = left + i * slot + slot / 2;
+        const hi = Math.round((m.in / max) * 100), ho = Math.round((m.out / max) * 100);
+        return `<rect x="${x - bw - 1}" y="${base - hi}" width="${bw}" height="${hi}" rx="2" fill="var(--green)"><title>${m.label}: in ${FinCore.formatPence(m.in)}</title></rect>
+                <rect x="${x + 1}" y="${base - ho}" width="${bw}" height="${ho}" rx="2" fill="var(--muted)"><title>${m.label}: out ${FinCore.formatPence(m.out)}</title></rect>
+                <text x="${x}" y="${base + 16}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${m.label}</text>`;
+    }).join("");
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Money in and out by month" style="display:block;">
+        <line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="var(--border)"/>${bars}</svg>
+        <div style="display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:4px;">
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--green);margin-right:5px;"></span>Money in</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--muted);margin-right:5px;"></span>Money out</span></div>`;
+}
+
+function renderMoneyOverview(el) {
+    const f = FinCore.formatPence, today = FinCore.localDate();
+    const r = FinCore.periodRange(finPeriod.kind, today, finPeriod.from, finPeriod.to);
+    const pays = finPayments(), exps = finExpensesAll(), custom = finCustomCats();
+    const o = FinCore.overview(pays, exps, r.from, r.to);
+    const owe = finOutstanding();
+    const chip = (k, label) => `<button onclick="finSetPeriod('${k}')" style="padding:7px 11px;border-radius:999px;border:1px solid ${finPeriod.kind === k ? "var(--amber)" : "var(--border)"};background:${finPeriod.kind === k ? "var(--amber)" : "transparent"};color:${finPeriod.kind === k ? "#000" : "var(--ink)"};font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">${label}</button>`;
+    const line = (label, value, opts = {}) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:${opts.big ? "10px 0 2px" : "5px 0"};${opts.top ? "border-top:1px solid var(--border);margin-top:6px;" : ""}">
+        <span style="font-size:${opts.big ? 15 : 14}px;color:${opts.muted ? "var(--muted)" : "var(--ink)"};${opts.big ? "font-weight:800;" : ""}">${label}</span>
+        <span style="font-size:${opts.big ? 18 : 14.5}px;font-weight:${opts.big ? 800 : 700};color:${opts.colour || "var(--ink)"};">${value}</span></div>`;
+    const months = FinCore.byMonth(pays, exps, r.from, r.to);
+    const cats = FinCore.costsByCategory(exps, r.from, r.to, custom).slice(0, 6);
+    const catMax = Math.max(1, ...cats.map(c => c.total));
+    const owedRows = owe.list.slice(0, 8).map(x => `<button onclick="goJob('${x.job.id}')" style="display:flex;width:100%;align-items:center;gap:10px;background:none;border:none;border-radius:0;border-top:1px solid var(--border);padding:10px 0;text-align:left;cursor:pointer;color:var(--ink);">
+        <div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">${esc(x.job.customerName || "Job")}</div>
+        <div style="font-size:12px;color:${x.st.status === "overdue" ? "var(--red)" : "var(--muted)"};">${esc(x.job.invoiceRef || "Invoice")} · ${x.st.status === "overdue" ? "overdue since " : "due "}${x.due ? finFmtDate(x.due) : "—"}</div></div>
+        <div style="font-size:15px;font-weight:700;">${f(x.st.balance)}</div></button>`).join("");
+    const empty = !o.received && !o.refunded && !o.out;
+
+    el.innerHTML = `
+        ${finMoneyTabs()}
+        <div style="display:flex;gap:6px;overflow-x:auto;margin-top:14px;padding-bottom:2px;">
+            ${chip("month", "This month")}${chip("last_month", "Last month")}${chip("quarter", "This quarter")}${chip("tax_year", "This tax year")}${chip("last_tax_year", "Last tax year")}${chip("custom", "Dates…")}
+        </div>
+        ${finPeriod.kind === "custom" ? `<div style="display:flex;gap:8px;margin-top:10px;align-items:center;">
+            <input type="date" value="${finPeriod.from}" onchange="finPeriod.from=this.value;renderMoneyScreen();" style="flex:1;min-width:0;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:9px;font-size:15px;">
+            <span style="color:var(--muted);">to</span>
+            <input type="date" value="${finPeriod.to}" onchange="finPeriod.to=this.value;renderMoneyScreen();" style="flex:1;min-width:0;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:9px;font-size:15px;"></div>` : ""}
+        <div class="form-card" style="margin-top:12px;">
+            <div style="font-size:13px;font-weight:700;color:var(--muted);">${esc(r.label)}</div>
+            ${line("Money in", f(o.cash))}
+            ${o.cis ? line("+ CIS kept back by contractors", f(o.cis), { muted: true }) : ""}
+            ${line("Job costs", "−" + f(o.jobCosts))}
+            ${line("Business costs", "−" + f(o.businessCosts))}
+            ${line("Cash surplus before tax", (o.surplus < 0 ? "−" : "") + f(Math.abs(o.surplus)), { big: true, top: true, colour: o.surplus < 0 ? "var(--red)" : "var(--ink)" })}
+            <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Money in when it reached you, costs when you paid them${o.paidOut !== o.out ? " (business share after private use)" : ""}. Before tax and before paying yourself — not a tax bill.</div>
+        </div>
+        <div class="form-card" style="margin-top:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+                <div style="font-size:15px;font-weight:700;color:var(--ink);">Owed to you</div>
+                <div style="font-size:18px;font-weight:800;color:var(--ink);">${f(owe.owed)}</div></div>
+            <div style="font-size:12.5px;color:${owe.overdueCount ? "var(--red)" : "var(--muted)"};margin-top:2px;">${owe.list.length
+                ? `${owe.list.length} invoice${owe.list.length === 1 ? "" : "s"} unpaid${owe.overdueCount ? ` · ${owe.overdueCount} overdue (${f(owe.overdue)})` : ""}`
+                : "Nothing outstanding — every invoice sent is paid."}${owe.unchecked ? ` · ${owe.unchecked} older invoice${owe.unchecked === 1 ? "" : "s"} to check` : ""}</div>
+            ${owedRows ? `<div style="margin-top:8px;">${owedRows}</div>` : ""}
+            ${owe.list.length > 8 ? `<div style="font-size:12px;color:var(--muted);margin-top:6px;">and ${owe.list.length - 8} more</div>` : ""}
+        </div>
+        ${months.length >= 2 ? `<div class="form-card" style="margin-top:12px;"><div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:8px;">Month by month</div>${finMonthChartSvg(months)}</div>` : ""}
+        ${cats.length ? `<div class="form-card" style="margin-top:12px;"><div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px;">Where the money went</div>
+            ${cats.map(c => `<div style="margin-top:8px;"><div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>${c.icon} ${esc(c.label)}</span><span style="font-weight:700;">${f(c.total)}</span></div>
+                <div style="height:6px;background:var(--bg);border-radius:3px;margin-top:4px;"><div style="height:6px;width:${Math.max(2, Math.round(c.total / catMax * 100))}%;background:var(--amber);border-radius:3px;"></div></div></div>`).join("")}</div>` : ""}
+        ${empty ? `<div style="font-size:13px;color:var(--muted);margin-top:12px;">Nothing recorded for ${esc(r.label)} yet. Record payments from a job's Payments card, and costs from Job costs or the Business costs tab.</div>` : ""}`;
 }
 
 async function sendInvoiceShare() {
