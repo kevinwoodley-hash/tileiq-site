@@ -17,6 +17,7 @@ if (form) {
     const phone = document.getElementById("contact-phone").value.trim();
     const enquiry = document.getElementById("enquiry-type").value;
     const message = document.getElementById("contact-message").value.trim();
+    const website = document.getElementById("contact-website")?.value || ""; // honeypot: people never see it
 
     if (!name || !email || !message) {
       errorBox.textContent = "Please enter your name, email address and message.";
@@ -35,6 +36,7 @@ if (form) {
       payload.append("phone", phone);
       payload.append("enquiry_type", enquiry);
       payload.append("message", message);
+      payload.append("website", website);
       payload.append("_subject", `TileIQ website enquiry - ${enquiry}`);
 
       const response = await fetch(FORMSPREE_URL, {

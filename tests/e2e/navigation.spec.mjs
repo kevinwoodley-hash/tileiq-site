@@ -11,7 +11,7 @@ test.describe("Header navigation", () => {
     await expect(page).toHaveURL(/\/guides\/$/);
   });
 
-  test("mobile menu opens, closes on Escape and on outside click", async ({ page, isMobile }) => {
+  test("mobile menu opens, closes on Escape and with the menu button", async ({ page, isMobile }) => {
     test.skip(!isMobile, "mobile layout only");
     await page.goto("/");
     const button = page.locator(".mobile-menu-btn");
@@ -28,10 +28,13 @@ test.describe("Header navigation", () => {
     await expect(nav).not.toHaveClass(/mobile-open/);
     await expect(button).toHaveAttribute("aria-expanded", "false");
 
+    // The open menu covers the page, so the menu button (now a close button) is how it closes
     await button.click();
     await expect(nav).toHaveClass(/mobile-open/);
-    await page.locator("main").click({ position: { x: 5, y: 400 } });
+    await expect(page.locator("body")).toHaveClass(/menu-open/);
+    await button.click();
     await expect(nav).not.toHaveClass(/mobile-open/);
+    await expect(page.locator("body")).not.toHaveClass(/menu-open/);
   });
 
   test("tapping a mobile menu link closes the menu and navigates", async ({ page, isMobile }) => {

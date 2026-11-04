@@ -24,7 +24,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/site.css" />
+  <link rel="stylesheet" href="/home.css" />
   <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -103,28 +104,82 @@
   </script>
 </head>
 <body>
-  <header class="site-header">
+  <a class="skip-link" href="#top">Skip to content</a>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M10 8.5v7l6-3.5z"/></symbol>
+      <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></symbol>
+      <symbol id="i-ruler" viewBox="0 0 24 24"><path d="M21.3 15.3l-6 6a1 1 0 0 1-1.4 0L2.7 10.1a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.4 0l11.2 11.2a1 1 0 0 1 0 1.4z"/><path d="M7.5 7.5l2 2M10.5 4.5l2 2M4.5 10.5l2 2M13.5 13.5l2 2M16.5 10.5l2 2M10.5 16.5l2 2"/></symbol>
+      <symbol id="i-calc" viewBox="0 0 24 24"><rect x="4" y="2.5" width="16" height="19" rx="2.5"/><path d="M8 6.5h8M8 11h.01M12 11h.01M16 11h.01M8 14.5h.01M12 14.5h.01M16 14.5v4M8 18h.01M12 18h.01"/></symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5M8.5 13h7M8.5 17h5"/></symbol>
+      <symbol id="i-briefcase" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="13.5" rx="2.5"/><path d="M8.5 7V5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v2M2.5 13h19"/></symbol>
+      <symbol id="i-invoice" viewBox="0 0 24 24"><path d="M5 2.5h14v19l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 7.5h6M9 11h6M9 14.5h3.5"/></symbol>
+      <symbol id="i-bt" viewBox="0 0 24 24"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8l2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.3l-5.7 3 1.1-6.3-4.6-4.5 6.4-.9z"/></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 20.5v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7.5" r="4"/><path d="M22 20.5v-2a4 4 0 0 0-3-3.9M16 3.6a4 4 0 0 1 0 7.8"/></symbol>
+      <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2.5h16v19l-2.7-1.6-2.6 1.6-2.7-1.6-2.7 1.6-2.6-1.6L4 21.5z"/><path d="M15.5 8H10a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8.5M12 6.5v11"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M3 6.5l9 6.5 9-6.5"/></symbol>
+      <symbol id="i-pound" viewBox="0 0 24 24"><path d="M17.5 20.5h-11c1.8-1 3-3 3-5.5V8.8A4.3 4.3 0 0 1 13.8 4.5c1.7 0 3.2.9 3.9 2.4M6.5 12.5h8"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></symbol>
+      <symbol id="i-sync" viewBox="0 0 24 24"><path d="M21 3v6h-6M3 21v-6h6"/><path d="M20.1 9A8.5 8.5 0 0 0 5.3 5.8L3 8M3.9 15a8.5 8.5 0 0 0 14.8 3.2L21 16"/></symbol>
+      <symbol id="i-offline" viewBox="0 0 24 24"><path d="M2 2l20 20M16.7 11.1A11 11 0 0 1 19 12.6M5 12.6a11 11 0 0 1 5.2-2.5M10.7 5A16 16 0 0 1 22.6 9M1.4 9a16 16 0 0 1 4.4-2.7M8.5 16a5 5 0 0 1 7 0M12 20h.01"/></symbol>
+      <symbol id="i-graduation" viewBox="0 0 24 24"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></symbol>
+      <symbol id="i-devices" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="site-header contact-header">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8.5M21 3v5.5h-5.5M21 12a9 9 0 0 1-15.5 6.2L3 15.5M3 21v-5.5h5.5"/></symbol>
+      <symbol id="i-hammer" viewBox="0 0 24 24"><path d="M15 12l-8.5 8.5a2.1 2.1 0 0 1-3-3L12 9M17.6 15L22 10.6M20.9 11.7l-1.3-1.3a2 2 0 0 1-.6-1.4V7.9l-2.3-2.3a5.6 5.6 0 0 0-4-1.6H9l.9.8a6.2 6.2 0 0 1 2.1 4.6v1.6l2 2h1.2a2 2 0 0 1 1.4.6l1.3 1.3"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+      <symbol id="i-tiktok" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0 1 15.54 3h-3.09v12.4a2.592 2.592 0 0 1-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3s-1.88.09-3.24-1.48z"/></symbol>
+      <symbol id="i-facebook" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-2.629c0-4.108 2.505-6.365 6.108-6.365 1.99 0 3.918.354 3.918.354v3.632h-2.303c-1.799 0-2.362 1.107-2.362 2.375v2.633h4.29l-.686 3.667h-3.604v7.98H9.101z"/></symbol>
+      <symbol id="i-instagram" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></symbol>
+    </defs></svg>
     <div class="container nav">
-      <a class="brand brand-image" href="#top" aria-label="TileIQ Pro home"><img src="images/tileiq-pro-logo.png" alt="TileIQ Pro"></a>
-      <nav class="nav-links" id="site-nav">
+      <a class="brand" href="#top" aria-label="TileIQ Pro home"><img src="/images/tileiq-pro-logo.png" alt="TileIQ Pro" width="152" height="51"></a>
+      <nav class="nav-links" id="site-nav" aria-label="Main">
         <a href="/features">Features</a>
         <a href="tour/">App Tour</a>
         <a href="#leica">Leica Disto™</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#faq">FAQ</a>
+        <div class="nav-drop">
+          <button type="button" aria-expanded="false" aria-controls="menu-calculators">Calculators <svg class="icon"><use href="#i-chevron"/></svg></button>
+          <div class="nav-menu" id="menu-calculators">
+            <a href="/tiling-material-calculator/">Tiling calculator<small>Tiles, adhesive and grout</small></a>
+            <a href="/floor-tiling-calculator/">Floor tiling calculator</a>
+            <a href="/wall-tiling-calculator/">Wall tiling calculator</a>
+            <a href="/tiling-labour-cost-calculator/">Labour cost calculator</a>
+            <a href="/tiling-day-rate-calculator/">Day rate calculator</a>
+          </div>
+        </div>
         <a href="/guides/">Guides</a>
-        <a href="blog/">Blog</a>
-        <a href="/contact">Contact</a>
-        <a href="/book-demo">Book a Demo</a>
+        <a href="#pricing">Pricing</a>
+        <div class="nav-drop">
+          <button type="button" aria-expanded="false" aria-controls="menu-more">More <svg class="icon"><use href="#i-chevron"/></svg></button>
+          <div class="nav-menu" id="menu-more">
+            <a href="blog/">Blog</a>
+            <a href="#faq">FAQ</a>
+            <a href="/about/">About TileIQ</a>
+            <a href="/contact">Contact</a>
+            <a href="/book-demo">Book a Demo<small>A live walkthrough on a call</small></a>
+          </div>
+        </div>
+        <a class="btn btn-primary nav-cta nav-mobile-only" href="https://tile-iq.com/app/demo">Try TileIQ Free Online <svg class="icon btn-arrow"><use href="#i-arrow"/></svg></a>
+        <a class="nav-cta-secondary nav-mobile-only" href="tel:08002461951">Call 0800 246 1951</a>
       </nav>
-      <div class="nav-actions-mobile">
-      <div class="header-social">
-        <a href="https://www.tiktok.com/@tileiq" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on TikTok"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0 1 15.54 3h-3.09v12.4a2.592 2.592 0 0 1-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3s-1.88.09-3.24-1.48z"/></svg></a>
-        <a href="https://www.facebook.com/profile.php?id=61583035084159" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on Facebook"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-2.629c0-4.108 2.505-6.365 6.108-6.365 1.99 0 3.918.354 3.918.354v3.632h-2.303c-1.799 0-2.362 1.107-2.362 2.375v2.633h4.29l-.686 3.667h-3.604v7.98H9.101z"/></svg></a>
-        <a href="https://www.instagram.com/tile.iq" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on Instagram"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg></a>
-      </div>
-        <a class="btn btn-primary btn-small header-cta-phone" href="tel:08002461951">☎ 0800 246 1951</a>
-        <button class="mobile-menu-btn" type="button" aria-label="Open menu" aria-expanded="false">
+      <div class="nav-actions">
+        <a class="nav-phone" href="tel:08002461951" aria-label="Call TileIQ on 0800 246 1951"><svg class="icon"><use href="#i-phone"/></svg><span>0800 246 1951</span></a>
+        <a class="btn btn-primary btn-sm" href="https://tile-iq.com/app/demo">Try Free Online</a>
+        <button class="mobile-menu-btn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="site-nav">
           <span></span><span></span><span></span>
         </button>
       </div>
@@ -132,226 +187,329 @@
   </header>
 
   <main id="top">
+    <!-- HERO -->
     <section class="hero">
-      <div class="hero-overlay"></div>
-      <div class="hero-wide">
-        <div class="hero-phone-wrap hero-phone-left">
-          <div class="hero-device-art hero-showcase-img">
-            <img src="images/tileiq-app-showcase.jpg" alt="TileIQ Pro home screen, dashboard and jobs list shown on three phones — everything your tiling business needs, all in one place">
-          </div>
-        </div>
-
+      <div class="container hero-grid">
         <div class="hero-copy">
+          <a class="eyebrow-pill" href="https://tile-iq.com/app/demo"><b>FREE</b> Try the real app online — no sign-up <svg class="icon" style="width:16px;height:16px"><use href="#i-arrow"/></svg></a>
           <h1>Tiling — that's you.<br>The rest, <span>that's TileIQ.</span></h1>
-          <p><strong style="color:#fff;">Less admin. More business. All in one app.</strong><br>TileIQ is a complete CRM for tilers — covering everything from the first customer enquiry to the finished job, including quotes, invoicing, AI-generated social posts and automatic Google review requests.</p>
-
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:16px 0 6px;font:800 13px 'Manrope',sans-serif;letter-spacing:.03em;text-transform:uppercase;color:#dfe3e6;">
-            <span>Jobs</span><span style="color:var(--yellow)">·</span><span>Customers</span><span style="color:var(--yellow)">·</span><span>Calendar</span><span style="color:var(--yellow)">·</span><span>Quotes</span><span style="color:var(--yellow)">·</span><span>Invoices</span><span style="color:var(--yellow)">·</span><span>Materials &amp; Labour</span>
-          </div>
-
-          <ul class="benefits">
-            <li><b>✓</b>Instant material calculations</li>
-            <li><b>✓</b>Professional quotes &amp; invoices</li>
-            <li><b>✓</b>Works with Leica Disto™</li>
-            <li><b>✓</b>All in one simple app</li>
-            <li><b>✓</b>Works offline</li>
+          <p class="hero-sub"><strong>Less admin. More business. All in one app.</strong>TileIQ is a complete CRM for tilers — covering everything from the first customer enquiry to the finished job, including quotes, invoicing, AI-generated social posts and automatic Google review requests.</p>
+          <ul class="hero-benefits">
+            <li>Instant material calculations</li>
+            <li>Professional quotes &amp; invoices</li>
+            <li>Works with Leica Disto™</li>
+            <li>All in one simple app</li>
+            <li>Works offline</li>
           </ul>
-
-          <div class="hero-actions" style="align-items:center;flex-wrap:wrap;">
-            <a class="btn btn-primary btn-large" href="https://tile-iq.com/app/demo">Try It Now, No Sign-up <span>→</span></a>
-            <a class="btn btn-primary btn-large" href="/book-demo">Book a Demo <span>→</span></a>
-            <a class="google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play" style="display:inline-flex;align-items:center;"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="width:145px;max-width:145px;height:auto;"></a>
-            <a class="app-store-link" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener noreferrer" aria-label="Download TileIQ Pro on the App Store" style="display:inline-flex;align-items:center;"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" style="width:145px;max-width:145px;height:auto;"></a>
+          <div class="hero-cta">
+            <a class="btn btn-primary btn-lg" href="https://tile-iq.com/app/demo">Try TileIQ Free Online <svg class="icon btn-arrow"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="/book-demo">Book a Demo</a>
           </div>
-          <div class="tiny-trust">◈ 2 weeks of free quotes, no account needed &nbsp;•&nbsp; No credit card &nbsp;•&nbsp; Cancel anytime</div>
+          <div class="hero-meta">
+            <span><svg class="icon"><use href="#i-check"/></svg>2 weeks of free quotes, no account needed</span>
+            <span><svg class="icon"><use href="#i-check"/></svg>No credit card</span>
+            <span><svg class="icon"><use href="#i-check"/></svg>Cancel anytime</span>
+          </div>
+          <div class="hero-stores">
+            <div class="store-badges">
+              <a class="store-badge google google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="646" height="250"></a>
+              <a class="store-badge apple app-store-link" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener noreferrer" aria-label="Download TileIQ Pro on the App Store"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="120" height="40"></a>
+            </div>
+            <p>iPhone &amp; Android · Works offline</p>
+          </div>
+        </div>
+
+        <div class="hero-stage" aria-label="TileIQ Pro app screens">
+          <div class="phone p-left"><img src="tour/img/03-5fd6a3.webp" alt="The Add Room form with Full Room selected, a room name and measurements" width="600" height="1246" fetchpriority="high"></div>
+          <div class="phone p-main"><img src="tour/img/09-b04cdd.webp" alt="The estimated room total with tiles, adhesive, grout, tanking, prep and labour" width="600" height="1246" fetchpriority="high"></div>
+          <div class="phone p-right"><img src="tour/img/14-55281e.webp" alt="The online quote page with the total and Accept Quote and Decline buttons" width="600" height="1298" fetchpriority="high"></div>
+          <div class="hero-chip c1"><i><svg class="icon"><use href="#i-calc"/></svg></i><span>Materials worked out<small>Tiles, adhesive, grout, labour</small></span></div>
+          <div class="hero-chip c2"><i><svg class="icon"><use href="#i-check"/></svg></i><span>Quote accepted<small>Customer said yes online</small></span></div>
         </div>
       </div>
     </section>
 
-    <section class="benefit-row">
+    <!-- DEMO BAND -->
+    <section class="section-tight" aria-labelledby="demo-title">
       <div class="container">
-        <span class="kicker">GET YOUR EVENINGS BACK</span>
-        <h2>Finish the admin before you leave the job.</h2>
-        <p class="lead">Measure up, calculate materials and labour, build your price and send a professional quote — all from TileIQ.</p>
-        <ul class="benefit-list">
-          <li>No getting home and trying to remember measurements.</li>
-          <li>No spending the evening working out quantities.</li>
-          <li>No sitting at the kitchen table writing quotes.</li>
+        <div class="demo-band reveal">
+          <div>
+            <span class="kicker">The online demo</span>
+            <h2 id="demo-title" style="margin-top:12px">Try the real TileIQ app in your browser.</h2>
+            <p>It's the actual app, not a video. Add a job, measure a room and send your first quote — no account, no card, nothing to install.</p>
+            <ol class="demo-steps">
+              <li><b>1</b>Add a job</li><li><b>2</b>Measure a room</li><li><b>3</b>Send the quote</li>
+            </ol>
+          </div>
+          <a class="btn btn-primary btn-lg" href="https://tile-iq.com/app/demo"><svg class="icon"><use href="#i-play"/></svg>Open the demo</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- GET YOUR EVENINGS BACK -->
+    <section class="section">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Get your evenings back</span>
+          <h2 class="h2">Finish the admin before you leave the job.</h2>
+          <p class="lead">Measure up, calculate materials and labour, build your price and send a professional quote — all from TileIQ.</p>
+        </div>
+        <ul class="pain-grid reveal" style="list-style:none;padding:0;margin:0">
+          <li class="pain-card"><span class="x"><svg class="icon"><use href="#i-x"/></svg></span>No getting home and trying to remember measurements.</li>
+          <li class="pain-card"><span class="x"><svg class="icon"><use href="#i-x"/></svg></span>No spending the evening working out quantities.</li>
+          <li class="pain-card"><span class="x"><svg class="icon"><use href="#i-x"/></svg></span>No sitting at the kitchen table writing quotes.</li>
         </ul>
-        <p class="benefit-closer">Do it once. Do it on site. Get it sent.</p>
+        <p class="closer" style="text-align:center">Do it once. Do it on site. Get it sent.</p>
       </div>
     </section>
 
-    <section class="workflow-wrap" id="workflow">
-      <div class="container workflow-card">
-        <span class="kicker">FROM MEASURE TO QUOTE</span>
-        <h2>Stop entering the same information<br><span>over and over again.</span></h2>
-        <p style="color:#b7c0c5;font-size:16px;max-width:640px;margin:0 0 30px;">The information you put into TileIQ follows the job through — measure it, calculate it, quote it, invoice it. One workflow instead of jumping between calculators, notes, spreadsheets and paperwork.</p>
-        <div class="workflow-grid">
-          <article><span class="step-icon">✉</span><div><b>1. Enquiry</b><p>A new lead comes in — by phone or web form.</p></div></article>
-          <article><span class="step-icon">▦</span><div><b>2. Measure</b><p>Measure the space with your phone or Leica Disto.</p></div></article>
-          <article><span class="step-icon">▣</span><div><b>3. Calculate</b><p>Instant material &amp; labour calculations. No guesswork.</p></div></article>
-          <article><span class="step-icon">£</span><div><b>4. Quote</b><p>Create a professional quote and send it in seconds.</p></div></article>
-          <article><span class="step-icon">✓</span><div><b>5. Job</b><p>Client accepts, you're booked in and the job runs in TileIQ.</p></div></article>
-          <article><span class="step-icon">▤</span><div><b>6. Invoice</b><p>Turn the finished job into a professional invoice, paid faster.</p></div></article>
+    <!-- WORKFLOW -->
+    <section class="section" id="workflow" style="padding-top:0">
+      <div class="container flow">
+        <div>
+          <div class="section-head left reveal">
+            <span class="kicker">From measure to quote</span>
+            <h2 class="h2">Stop entering the same information <span class="accent">over and over again.</span></h2>
+            <p class="lead">The information you put into TileIQ follows the job through — measure it, calculate it, quote it, invoice it. One workflow instead of jumping between calculators, notes, spreadsheets and paperwork.</p>
+          </div>
+          <div class="flow-tabs" role="tablist" aria-label="The TileIQ workflow">
+            <button class="flow-tab" role="tab" id="ft-1" aria-controls="flow-panel" aria-selected="true" data-src="tour/img/02-ad88fa.webp" data-h="1246" data-alt="The New Job form with customer details and job description filled in"><span class="flow-num"><svg class="icon"><use href="#i-inbox"/></svg></span><span><b>1. Enquiry</b><span class="d">A new lead comes in — by phone or web form.</span></span></button>
+            <button class="flow-tab" role="tab" id="ft-2" aria-controls="flow-panel" aria-selected="false" tabindex="-1" data-src="tour/img/03-5fd6a3.webp" data-h="1246" data-alt="The Add Room form with Full Room selected, a room name and measurements"><span class="flow-num"><svg class="icon"><use href="#i-ruler"/></svg></span><span><b>2. Measure</b><span class="d">Measure the space with your phone or Leica Disto.</span></span></button>
+            <button class="flow-tab" role="tab" id="ft-3" aria-controls="flow-panel" aria-selected="false" tabindex="-1" data-src="tour/img/09-b04cdd.webp" data-h="1246" data-alt="The estimated room total with tiles, adhesive, grout, tanking, prep and labour"><span class="flow-num"><svg class="icon"><use href="#i-calc"/></svg></span><span><b>3. Calculate</b><span class="d">Instant material &amp; labour calculations. No guesswork.</span></span></button>
+            <button class="flow-tab" role="tab" id="ft-4" aria-controls="flow-panel" aria-selected="false" tabindex="-1" data-src="tour/img/10-003b2e.webp" data-h="1246" data-alt="A generated quotation in TileIQ Pro"><span class="flow-num"><svg class="icon"><use href="#i-doc"/></svg></span><span><b>4. Quote</b><span class="d">Create a professional quote and send it in seconds.</span></span></button>
+            <button class="flow-tab" role="tab" id="ft-5" aria-controls="flow-panel" aria-selected="false" tabindex="-1" data-src="tour/img/17-c75c8f.webp" data-h="1298" data-alt="The Schedule Job sheet with start and end dates and Save and Send to Customer"><span class="flow-num"><svg class="icon"><use href="#i-briefcase"/></svg></span><span><b>5. Job</b><span class="d">Client accepts, you're booked in and the job runs in TileIQ.</span></span></button>
+            <button class="flow-tab" role="tab" id="ft-6" aria-controls="flow-panel" aria-selected="false" tabindex="-1" data-src="tour/img/24-a5ae21.webp" data-h="1246" data-alt="A quote with Convert to Invoice and an Export Quote button for FreeAgent"><span class="flow-num"><svg class="icon"><use href="#i-invoice"/></svg></span><span><b>6. Invoice</b><span class="d">Turn the finished job into a professional invoice, paid faster.</span></span></button>
+          </div>
+        </div>
+        <div class="flow-visual" id="flow-panel" role="tabpanel" aria-labelledby="ft-1">
+          <div class="phone"><img src="tour/img/02-ad88fa.webp" alt="The New Job form with customer details and job description filled in" width="600" height="1246" loading="lazy"></div>
+          <p class="flow-caption">Real screens from the TileIQ Pro app</p>
         </div>
       </div>
     </section>
 
-    <section class="benefit-row benefit-row-alt">
+    <!-- FEATURES -->
+    <section class="section" id="features">
       <div class="container">
-        <span class="kicker">QUOTE WITH CONFIDENCE</span>
-        <h2>Know your numbers before you give the customer a price.</h2>
-        <p class="lead">TileIQ brings your measurements, materials, labour, waste and pricing together to help you build a properly calculated quote.</p>
-        <ul class="benefit-list">
-          <li>Less guesswork.</li>
-          <li>Less chance of forgetting something.</li>
-          <li>More confidence in the price you're putting forward.</li>
-        </ul>
-        <p class="benefit-closer">Know what you're charging — and why.</p>
+        <div class="section-head reveal">
+          <span class="kicker">Keep the business in one place</span>
+          <h2 class="h2">The job shouldn't be spread across five different apps.</h2>
+          <ul class="hero-tags center" aria-label="What TileIQ covers">
+            <li>Jobs</li><li>Customers</li><li>Calendar</li><li>Quotes</li><li>Invoices</li><li>Materials &amp; Labour</li><li>Expenses</li>
+          </ul>
+        </div>
+        <div class="feature-grid reveal">
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-ruler"/></svg></span><h3>Measure anything</h3><p>Use your phone or connect a Leica Disto for fast, accurate measurements.</p></article>
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-calc"/></svg></span><h3>Material calculator</h3><p>TileIQ calculates exactly what you need. No waste, no running short.</p></article>
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-doc"/></svg></span><h3>Professional quotes</h3><p>Beautiful quotes &amp; invoices that build trust and win more work.</p></article>
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-bt"/></svg></span><h3>Leica Disto™</h3><p>Send measurements straight into TileIQ via Bluetooth. See how it works.</p><a class="more" href="#leica" aria-label="Leica Disto: see how it works"></a></article>
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-users"/></svg></span><h3>Customers &amp; jobs</h3><p>Every enquiry, quote, booking and invoice in one place, with a progress tracker on each job.</p></article>
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-receipt"/></svg></span><h3>Expenses &amp; receipts <span class="tag-new">NEW</span></h3><p>Log what you spend, scan a receipt and keep CIS and payments in order.</p></article>
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-sparkle"/></svg></span><h3>Social posts &amp; reviews <span class="tag-new">NEW</span></h3><p>Turn finished job photos into an AI-written social post, and automatically ask customers for a Google review.</p></article>
+          <article class="feature"><span class="fi"><svg class="icon"><use href="#i-image"/></svg></span><h3>Portfolio website</h3><p>Show off finished jobs on your own portfolio page, with a quote request form built in.</p><a class="more" href="/guides/how-to-create-a-tiling-portfolio-without-a-website/" aria-label="How to create a tiling portfolio without a website"></a></article>
+        </div>
+        <p style="text-align:center;margin-top:36px"><a class="btn btn-ghost" href="/features">See every feature <svg class="icon btn-arrow"><use href="#i-arrow"/></svg></a></p>
       </div>
     </section>
 
-    <section class="features-section" id="features">
-      <div class="container" style="text-align:center;margin-bottom:36px;">
-        <span class="kicker">KEEP THE BUSINESS IN ONE PLACE</span>
-        <h2 style="font:800 clamp(2rem,3.6vw,3.2rem)/1.1 'Manrope';letter-spacing:-.04em;margin:14px auto 0;max-width:720px;">The job shouldn't be spread across five different apps.</h2>
-      </div>
-      <div class="container feature-grid">
-        <article><span class="feature-icon">▯</span><h3>Measure anything</h3><p>Use your phone or connect a Leica Disto for fast, accurate measurements.</p></article>
-        <article><span class="feature-icon">◇</span><h3>Material calculator</h3><p>TileIQ calculates exactly what you need. No waste, no running short.</p></article>
-        <article><span class="feature-icon">£</span><h3>Professional quotes</h3><p>Beautiful quotes &amp; invoices that build trust and win more work.</p></article>
-        <article><a class="feature-card-link" href="#leica"><span class="feature-icon">∞</span><h3>Leica Disto™</h3><p>Send measurements straight into TileIQ via Bluetooth. See how it works.</p></a></article>
-        <article><span class="feature-icon">✦</span><h3>Social posts &amp; reviews <small>NEW</small></h3><p>Turn finished job photos into an AI-written social post, and automatically ask customers for a Google review.</p></article>
-      </div>
-    </section>
-
-
-    <section class="benefit-row benefit-row-alt">
+    <!-- BENEFIT SPLITS -->
+    <section class="section">
       <div class="container">
-        <span class="kicker">LOOK PROFESSIONAL</span>
-        <h2>You're a tiler. Your paperwork should look as good as your work.</h2>
-        <p class="lead">Send professional, branded quotes and invoices directly to your customers. Keep customer and job information organised and give customers a professional experience from their first enquiry through to the final invoice.</p>
-        <p class="benefit-closer">Look established — even if it's just you.</p>
-      </div>
-    </section>
-
-    <section class="leica-detail-section" id="leica">
-      <div class="container leica-detail-card">
-        <div class="leica-copy">
-          <span class="kicker">Leica Disto™ integration</span>
-          <h2>Measure once.<br><span>It’s already in TileIQ.</span></h2>
-          <p>Connect a compatible Leica Disto to TileIQ via Bluetooth and send measurements directly into the app while you survey the job. No writing dimensions down. No typing them in again. No swapping between a laser measure, calculator and notebook.</p>
-
-          <div class="leica-benefits">
-            <div><b>✓</b><span><strong>Faster site surveys</strong><small>Take the measurement and carry on. TileIQ receives it immediately.</small></span></div>
-            <div><b>✓</b><span><strong>Fewer transcription mistakes</strong><small>Reduce the risk of entering a measurement incorrectly later.</small></span></div>
-            <div><b>✓</b><span><strong>Less duplicated admin</strong><small>The figures you capture on site are already where you need them.</small></span></div>
-            <div><b>✓</b><span><strong>Ready for the quote</strong><small>Measurements feed into the room and job workflow so TileIQ can calculate what you need.</small></span></div>
+        <div class="split reveal">
+          <div>
+            <span class="kicker">Quote with confidence</span>
+            <h2 class="h2">Know your numbers before you give the customer a price.</h2>
+            <p class="lead">TileIQ brings your measurements, materials, labour, waste and pricing together to help you build a properly calculated quote.</p>
+            <ul class="check-list">
+              <li>Less guesswork.</li>
+              <li>Less chance of forgetting something.</li>
+              <li>More confidence in the price you're putting forward.</li>
+            </ul>
+            <p class="closer">Know what you're charging — and why.</p>
           </div>
-
-          <a class="btn btn-primary" href="https://tile-iq.com/app/demo">Try TileIQ with Leica Disto <span>→</span></a>
+          <div class="split-visual">
+            <div class="phone small"><img src="tour/img/06-7d2e1d.webp" alt="Wall tile settings with tile type Ceramic, adhesive, tile width and height in millimetres, thickness and grout joint" width="600" height="1246" loading="lazy"></div>
+            <div class="phone"><img src="tour/img/09-b04cdd.webp" alt="The estimated room total with tiles, adhesive, grout, tanking, prep and labour" width="600" height="1246" loading="lazy"></div>
+          </div>
         </div>
 
-        <div class="leica-flow-visual" aria-label="Leica Disto measurements flowing into TileIQ">
-          <div class="leica-photo leica-photo-hand">
-            <img src="images/leica-disto-hand.jpg" alt="Hand holding a Leica DISTO D2 laser measure">
+        <div class="split reverse reveal">
+          <div>
+            <span class="kicker">Look professional</span>
+            <h2 class="h2">You're a tiler. Your paperwork should look as good as your work.</h2>
+            <p class="lead">Send professional, branded quotes and invoices directly to your customers. Keep customer and job information organised and give customers a professional experience from their first enquiry through to the final invoice.</p>
+            <p class="closer">Look established — even if it's just you.</p>
           </div>
-
-          <div class="leica-transfer">
-            <span class="bt-icon">⌁</span>
-            <div class="transfer-line"><i></i><i></i><i></i></div>
-            <small>Bluetooth</small>
-          </div>
-
-          <div class="leica-phone-real">
-            <div class="phone-real-notch"></div>
-            <img src="images/tileiq-add-room-screen.png" alt="TileIQ Add Room screen showing Disto connection">
+          <div class="split-visual">
+            <div class="phone small"><img src="tour/img/13-c971b5.webp" alt="The email a customer receives with their quote and a View Quote button" width="600" height="1298" loading="lazy"></div>
+            <div class="phone"><img src="tour/img/14-55281e.webp" alt="The online quote page with the total and Accept Quote and Decline buttons" width="600" height="1298" loading="lazy"></div>
           </div>
         </div>
-      </div>
 
-      <div class="container leica-steps">
-        <article><span>1</span><div><b>Connect</b><p>Pair your compatible Leica Disto with TileIQ using Bluetooth.</p></div></article>
-        <em>→</em>
-        <article><span>2</span><div><b>Measure</b><p>Take your measurements normally while surveying the job.</p></div></article>
-        <em>→</em>
-        <article><span>3</span><div><b>Send to TileIQ</b><p>The measurement appears in the app without retyping it.</p></div></article>
-        <em>→</em>
-        <article><span>4</span><div><b>Calculate &amp; quote</b><p>Use the measurement in the room, material and quote workflow.</p></div></article>
-      </div>
-    </section>
-
-    <section class="benefit-row">
-      <div class="container">
-        <span class="kicker">RESPOND WHILE YOU'RE STILL ON THE JOB</span>
-        <h2>Customers don't want to wait days for a quote.</h2>
-        <p class="lead">With TileIQ, you can work out the job and get the quote moving while everything is still fresh. No pile of quotes waiting for the weekend.</p>
-        <p class="benefit-closer">Measure today. Quote today. Move on.</p>
-      </div>
-    </section>
-
-
-    <section class="benefit-row">
-      <div class="container">
-        <span class="kicker">TURN A FINISHED JOB INTO YOUR NEXT ONE</span>
-        <h2>The job doesn't have to end when the tiling does.</h2>
-        <p class="lead">Photograph the finished job and let AI turn it into a ready-to-share social media post — then TileIQ automatically emails the customer asking for a Google review a few days later.</p>
-        <ul class="benefit-list">
-          <li>No sitting down to write a caption.</li>
-          <li>No remembering to chase a review.</li>
-          <li>Every finished job works for your next one.</li>
-        </ul>
-        <p class="benefit-closer">Great work should get you more work.</p>
-      </div>
-    </section>
-
-    <section class="benefit-row benefit-row-alt">
-      <div class="container">
-        <span class="kicker">BUILT AROUND TILERS</span>
-        <h2>Not generic job-management software with "tiling" added to the list.</h2>
-        <p class="lead">TileIQ has been built around the way tilers actually work — from the first customer enquiry, through measuring, quoting and invoicing, to marketing the finished job and asking for a review.</p>
-        <p class="benefit-closer">Because running a tiling business involves a lot more than laying tiles.</p>
-      </div>
-    </section>
-
-
-    <section class="benefit-row" style="border-bottom:none;">
-      <div class="container">
-        <h2 style="font-size:clamp(1.6rem,3vw,2.4rem);">You tile all day.<br><span style="color:var(--yellow)">You shouldn't have to admin all night.</span></h2>
-        <p class="benefit-closer" style="font-size:22px;">Tiling — that's you.<br>The rest, that's TileIQ.</p>
-      </div>
-    </section>
-
-    <section class="cta-section pricing-promo-section" id="pricing">
-      <div class="container pricing-promo-card">
-        <div class="pricing-promo-copy">
-          <span class="promo-badge">LIMITED-TIME PROMOTIONAL PRICING</span>
-          <h2>Sign up today.<br><span>Keep this pricing forever.</span></h2>
-          <p>TileIQ is currently available at promotional pricing. Start your subscription while this offer is available and your promotional subscription price will stay locked in for as long as you remain continuously subscribed.</p>
-          <div class="promo-points">
-            <span>✓ Lock in today’s promotional price</span>
-            <span>✓ Keep it while continuously subscribed</span>
-            <span>✓ 30-day free trial</span>
-            <span>✓ Unlimited free quotes for 2 weeks, no account or card needed</span>
+        <div class="split reveal">
+          <div>
+            <span class="kicker">Respond while you're still on the job</span>
+            <h2 class="h2">Customers don't want to wait days for a quote.</h2>
+            <p class="lead">With TileIQ, you can work out the job and get the quote moving while everything is still fresh. No pile of quotes waiting for the weekend.</p>
+            <p class="closer">Measure today. Quote today. Move on.</p>
+          </div>
+          <div class="split-visual">
+            <div class="phone small"><img src="tour/img/15-c43dbe.webp" alt="The Quote Accepted confirmation the customer sees" width="600" height="1298" loading="lazy"></div>
+            <div class="phone"><img src="tour/img/22-11eed7.webp" alt="The Calendar tab showing a job on 28 September" width="600" height="1298" loading="lazy"></div>
           </div>
         </div>
-        <div class="pricing-promo-action">
-          <strong>Founding offer</strong>
-          <div style="margin:10px 0 4px;font-family:'Manrope',sans-serif;font-weight:800;font-size:30px;line-height:1.1;">£9.99 <span style="font-size:14px;font-weight:600;color:#b8c0c6;">/ month</span></div>
-          <div style="font-size:17px;font-weight:700;color:var(--yellow);margin-bottom:10px;">or £79.99 / year</div>
-          <p>Join TileIQ now and secure the current promotional rate.</p>
-          <a class="btn btn-dark" href="https://tile-iq.com/signup.html">Lock in my price <span>→</span></a>
-          <small>Promotional pricing applies while your subscription remains continuously active.</small>
+
+        <div class="split reverse reveal">
+          <div>
+            <span class="kicker">Turn a finished job into your next one</span>
+            <h2 class="h2">The job doesn't have to end when the tiling does.</h2>
+            <p class="lead">Photograph the finished job and let AI turn it into a ready-to-share social media post — then TileIQ automatically emails the customer asking for a Google review a few days later.</p>
+            <ul class="check-list">
+              <li>No sitting down to write a caption.</li>
+              <li>No remembering to chase a review.</li>
+              <li>Every finished job works for your next one.</li>
+            </ul>
+            <p class="closer">Great work should get you more work.</p>
+          </div>
+          <div class="split-visual">
+            <div class="phone small"><img src="tour/img/26-607969.webp" alt="The review request email with a Leave a Review button" width="600" height="1298" loading="lazy"></div>
+            <div class="phone"><img src="tour/img/29-078f83.webp" alt="A caption ready to edit, with Regenerate and Share buttons" width="600" height="1298" loading="lazy"></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="benefit-row" id="faq">
+    <!-- MONEY / ADMIN -->
+    <section class="section" id="business">
+      <div class="container money">
+        <div class="reveal">
+          <span class="kicker">The business side</span>
+          <h2 class="h2">Keep the money side in order too.</h2>
+          <p class="lead">Expenses, receipts, payments and CIS sit alongside your jobs, so the numbers you need at the end of the month are already there.</p>
+          <div class="integrations" aria-label="Works with">
+            <span>FreeAgent</span><span>QuickBooks</span><span>Xero</span><span>Google Calendar</span>
+          </div>
+        </div>
+        <div class="money-cards reveal">
+          <div class="money-card"><span class="fi"><svg class="icon"><use href="#i-receipt"/></svg></span><h3>Track expenses</h3><p>Log materials, fuel and tools against the business, with the receipt kept alongside.</p></div>
+          <div class="money-card"><span class="fi"><svg class="icon"><use href="#i-camera"/></svg></span><h3>Scan a receipt</h3><p>Take a photo and TileIQ fills in the expense for you to check and save.</p></div>
+          <div class="money-card"><span class="fi"><svg class="icon"><use href="#i-mail"/></svg></span><h3>Email in receipts</h3><p>Forward receipts to your own TileIQ address and they wait in a list for you to check.</p></div>
+          <div class="money-card"><span class="fi"><svg class="icon"><use href="#i-pound"/></svg></span><h3>Payments &amp; CIS</h3><p>Record what you've been paid and keep track of CIS deductions on contractor work.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEICA -->
+    <section class="section" id="leica">
       <div class="container">
-        <span class="kicker">QUESTIONS</span>
-        <h2 style="font-size:clamp(1.6rem,3vw,2.4rem);margin-bottom:22px;">Frequently asked questions.</h2>
-        <div class="guide-faq" style="margin:0 auto;text-align:left;">
+        <div class="leica reveal">
+          <div>
+            <span class="kicker">Leica Disto™ integration</span>
+            <h2 class="h2">Measure once.<br><span class="accent">It’s already in TileIQ.</span></h2>
+            <p class="lead">Connect a compatible Leica Disto to TileIQ via Bluetooth and send measurements directly into the app while you survey the job. No writing dimensions down. No typing them in again. No swapping between a laser measure, calculator and notebook.</p>
+            <div class="leica-benefits">
+              <div><span class="fi"><svg class="icon"><use href="#i-check"/></svg></span><span><strong>Faster site surveys</strong><small>Take the measurement and carry on. TileIQ receives it immediately.</small></span></div>
+              <div><span class="fi"><svg class="icon"><use href="#i-check"/></svg></span><span><strong>Fewer transcription mistakes</strong><small>Reduce the risk of entering a measurement incorrectly later.</small></span></div>
+              <div><span class="fi"><svg class="icon"><use href="#i-check"/></svg></span><span><strong>Less duplicated admin</strong><small>The figures you capture on site are already where you need them.</small></span></div>
+              <div><span class="fi"><svg class="icon"><use href="#i-check"/></svg></span><span><strong>Ready for the quote</strong><small>Measurements feed into the room and job workflow so TileIQ can calculate what you need.</small></span></div>
+            </div>
+            <div class="hero-cta" style="margin-top:0">
+              <a class="btn btn-primary" href="https://tile-iq.com/app/demo">Try TileIQ with Leica Disto <svg class="icon btn-arrow"><use href="#i-arrow"/></svg></a>
+              <a class="btn btn-ghost" href="/leica-disto-tiling/">How the Disto integration works</a>
+            </div>
+          </div>
+          <div class="leica-visual" aria-label="Leica Disto measurements flowing into TileIQ">
+            <div class="leica-photo"><img src="images/leica-disto-hand.jpg" alt="Hand holding a Leica DISTO D2 laser measure" width="437" height="568" loading="lazy"></div>
+            <div class="leica-bt"><svg class="icon"><use href="#i-bt"/></svg><span class="dots"><i></i><i></i><i></i></span>Bluetooth</div>
+            <div class="phone"><img src="images/tileiq-add-room-screen.png" alt="TileIQ Add Room screen showing Disto connection" width="864" height="1939" loading="lazy"></div>
+          </div>
+        </div>
+        <ol class="leica-steps reveal">
+          <li><b>Connect</b><p>Pair your compatible Leica Disto with TileIQ using Bluetooth.</p></li>
+          <li><b>Measure</b><p>Take your measurements normally while surveying the job.</p></li>
+          <li><b>Send to TileIQ</b><p>The measurement appears in the app without retyping it.</p></li>
+          <li><b>Calculate &amp; quote</b><p>Use the measurement in the room, material and quote workflow.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- BUILT AROUND TILERS -->
+    <section class="section-tight">
+      <div class="container">
+        <div class="builtby reveal">
+          <div class="builtby-mark"><img src="images/tileiq-icon-192.png" alt="" width="192" height="192"></div>
+          <div>
+            <span class="kicker">Built around tilers</span>
+            <h2 class="h2" style="font-size:clamp(1.7rem,3vw,2.4rem)">Not generic job-management software with "tiling" added to the list.</h2>
+            <p class="lead">TileIQ has been built around the way tilers actually work — from the first customer enquiry, through measuring, quoting and invoicing, to marketing the finished job and asking for a review.</p>
+            <p class="closer">Because running a tiling business involves a lot more than laying tiles.</p>
+            <a class="link" href="/about/">Built by a tiler in Oxfordshire — read the story <svg class="icon" style="width:16px;height:16px"><use href="#i-arrow"/></svg></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- APP PROMO -->
+    <section class="section" id="download">
+      <div class="container app-promo">
+        <div class="app-promo-visual reveal">
+          <div class="phone"><img src="tour/img/30-916846.webp" alt="The TileIQ Pro jobs list with a progress tracker on each job" width="600" height="1246" loading="lazy"></div>
+          <div class="phone"><img src="tour/img/01-3d63ea.webp" alt="TileIQ Pro home screen with New Job, View Jobs, schedule and totals" width="600" height="1246" loading="lazy"></div>
+        </div>
+        <div class="reveal">
+          <span class="kicker">Take it on site</span>
+          <h2 class="h2">Your whole tiling business, in your pocket.</h2>
+          <p class="lead">Download TileIQ Pro for iPhone or Android and pick up exactly where the online demo left off.</p>
+          <div class="app-facts">
+            <div><svg class="icon"><use href="#i-offline"/></svg>Works offline</div>
+            <div><svg class="icon"><use href="#i-refresh"/></svg>Syncs across devices</div>
+            <div><svg class="icon"><use href="#i-bt"/></svg>Leica Disto™ ready</div>
+            <div><svg class="icon"><use href="#i-shield"/></svg>Encrypted &amp; backed up</div>
+          </div>
+          <div class="store-badges">
+            <a class="store-badge google google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="646" height="250" loading="lazy"></a>
+            <a class="store-badge apple app-store-link" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener noreferrer" aria-label="Download TileIQ Pro on the App Store"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="120" height="40" loading="lazy"></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section class="section" id="pricing">
+      <div class="container">
+        <div class="pricing reveal">
+          <div class="pricing-copy">
+            <span class="promo-badge">LIMITED-TIME PROMOTIONAL PRICING</span>
+            <h2 class="h2">Sign up today.<br><span class="accent">Keep this pricing forever.</span></h2>
+            <p class="lead">TileIQ is currently available at promotional pricing. Start your subscription while this offer is available and your promotional subscription price will stay locked in for as long as you remain continuously subscribed.</p>
+            <ul class="check-list">
+              <li>Lock in today’s promotional price</li>
+              <li>Keep it while continuously subscribed</li>
+              <li>30-day free trial</li>
+              <li>Unlimited free quotes for 2 weeks, no account or card needed</li>
+            </ul>
+          </div>
+          <div class="pricing-card">
+            <strong>Founding offer</strong>
+            <div class="price">£9.99 <span>/ month</span></div>
+            <div class="price-alt">or £79.99 / year</div>
+            <p>Join TileIQ now and secure the current promotional rate.</p>
+            <a class="btn btn-primary btn-lg" href="https://tile-iq.com/signup.html">Lock in my price <svg class="icon btn-arrow"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost" href="https://tile-iq.com/app/demo">Try it free first</a>
+            <small>Promotional pricing applies while your subscription remains continuously active.</small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Questions</span>
+          <h2 class="h2">Frequently asked questions.</h2>
+        </div>
+        <div class="faq reveal">
           <details>
             <summary>What exactly does TileIQ do?</summary>
             <p>TileIQ is a complete business app for tilers — measure a room, calculate materials and labour, send a professional quote, manage the job through to completion, invoice, and export to your accounting software.</p>
@@ -378,7 +536,7 @@
           </details>
           <details>
             <summary>Is my data safe?</summary>
-            <p>Yes — your data is encrypted and backed up, and only accessible to you. See our <a href="/privacy" style="color:var(--yellow);">Privacy Policy</a> for details.</p>
+            <p>Yes — your data is encrypted and backed up, and only accessible to you. See our <a href="/privacy">Privacy Policy</a> for details.</p>
           </details>
           <details>
             <summary>Can I cancel anytime?</summary>
@@ -386,55 +544,92 @@
           </details>
           <details>
             <summary>What if I need help getting started?</summary>
-            <p>Just message us via the <a href="/contact" style="color:var(--yellow);">Contact page</a> and we'll get back to you.</p>
+            <p>Just message us via the <a href="/contact">Contact page</a> and we'll get back to you.</p>
           </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="section-tight">
+      <div class="container">
+        <div class="final-cta reveal">
+          <h2 class="h2">You tile all day.<br><span class="accent">You shouldn't have to admin all night.</span></h2>
+          <p class="closer">Tiling — that's you.<br>The rest, that's TileIQ.</p>
+          <div class="hero-cta">
+            <a class="btn btn-primary btn-lg" href="https://tile-iq.com/app/demo">Try TileIQ Free Online <svg class="icon btn-arrow"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="/book-demo">Book a Demo</a>
+          </div>
+          <div class="store-badges">
+            <a class="store-badge google google-play-link" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="646" height="250" loading="lazy"></a>
+            <a class="store-badge apple app-store-link" href="https://apps.apple.com/gb/app/tileiq-pro/id6787447373" target="_blank" rel="noopener noreferrer" aria-label="Download TileIQ Pro on the App Store"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="120" height="40" loading="lazy"></a>
+          </div>
         </div>
       </div>
     </section>
   </main>
 
   <footer>
-    <nav class="container footer-links" aria-label="Site links">
-      <div><h2>Free calculators</h2><ul>
-        <li><a href="/tiling-material-calculator/">Tiling calculator</a></li>
-        <li><a href="/floor-tiling-calculator/">Floor tiling calculator</a></li>
-        <li><a href="/wall-tiling-calculator/">Wall tiling calculator</a></li>
-        <li><a href="/tiling-day-rate-calculator/">Tiler day rate calculator</a></li>
-        <li><a href="/tiling-labour-cost-calculator/">Tiling labour cost calculator</a></li>
-      </ul></div>
-      <div><h2>Tiling guides</h2><ul>
-        <li><a href="/guides/tiling-labour-rates-uk/">How much does a tiler charge?</a></li>
-        <li><a href="/guides/self-employed-tiler-day-rate/">Setting your day rate</a></li>
-        <li><a href="/guides/how-to-quote-bathroom-tiling/">Quoting a bathroom</a></li>
-        <li><a href="/guides/how-much-to-charge-to-tile-a-shower/">Pricing a shower</a></li>
-        <li><a href="/guides/tile-wastage-and-materials/">Tile wastage and materials</a></li>
-        <li><a href="/guides/">All guides</a> · <a href="/blog/">Blog</a></li>
-      </ul></div>
-      <div><h2>TileIQ for tilers</h2><ul>
-        <li><a href="/tiling-quote-app/">Tiling quote app</a></li>
-        <li><a href="/tiling-estimating-software/">Tiling estimating software</a></li>
-        <li><a href="/tiling-quotation-software/">Tiling quotation software</a></li>
-        <li><a href="/invoice-app-for-tilers/">Invoice app for tilers</a></li>
-        <li><a href="/tiling-job-management/">Job management</a></li>
-        <li><a href="/software-for-tilers/">Software for tilers</a></li>
-        <li><a href="/leica-disto-tiling/">Leica Disto integration</a></li>
-        <li><a href="/features">Features</a> · <a href="/about/">About</a> · <a href="/contact">Contact</a></li>
-      </ul></div>
-    </nav>
-    <div class="container footer-grid">
-      <span>◉ 2 weeks of free quotes<br><small>No account or card needed</small></span>
-      <span>↻ Cancel anytime<br><small>No contracts</small></span>
-      <span>♙ Built by a tiler<br><small>In Oxfordshire</small></span>
-      <span>⬡ Secure &amp; reliable<br><small>Your data is safe</small></span>
-      <span class="footer-training"><a href="https://training.tile-iq.com">Training &amp; Business Guides</a><br><small>TileIQ Training Centre</small></span>
-      <span class="footer-phone">☎ <a href="tel:08002461951">0800 246 1951</a><br><small>Call us</small></span>
-    </div>
-    <div class="container footer-social">
-      <a href="https://www.tiktok.com/@tileiq" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on TikTok"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0 1 15.54 3h-3.09v12.4a2.592 2.592 0 0 1-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3s-1.88.09-3.24-1.48z"/></svg></a>
-      <a href="https://www.facebook.com/profile.php?id=61583035084159" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on Facebook"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-2.629c0-4.108 2.505-6.365 6.108-6.365 1.99 0 3.918.354 3.918.354v3.632h-2.303c-1.799 0-2.362 1.107-2.362 2.375v2.633h4.29l-.686 3.667h-3.604v7.98H9.101z"/></svg></a>
-      <a href="https://www.instagram.com/tile.iq" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on Instagram"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg></a>
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="/" aria-label="TileIQ Pro home"><img src="/images/tileiq-pro-logo.png" alt="TileIQ Pro" width="152" height="51" loading="lazy"></a>
+          <p>The business app built for tilers. Measure, quote, invoice and run the job from one app.</p>
+          <a class="btn btn-primary btn-sm" href="https://tile-iq.com/app/demo">Try Free Online</a>
+        </div>
+        <nav class="footer-col" aria-label="Free calculators"><h2>Free calculators</h2><ul>
+          <li><a href="/tiling-material-calculator/">Tiling calculator</a></li>
+          <li><a href="/floor-tiling-calculator/">Floor tiling calculator</a></li>
+          <li><a href="/wall-tiling-calculator/">Wall tiling calculator</a></li>
+          <li><a href="/tiling-day-rate-calculator/">Tiler day rate calculator</a></li>
+          <li><a href="/tiling-labour-cost-calculator/">Tiling labour cost calculator</a></li>
+        </ul></nav>
+        <nav class="footer-col" aria-label="Tiling guides"><h2>Tiling guides</h2><ul>
+          <li><a href="/guides/tiling-labour-rates-uk/">How much does a tiler charge?</a></li>
+          <li><a href="/guides/self-employed-tiler-day-rate/">Setting your day rate</a></li>
+          <li><a href="/guides/how-to-quote-bathroom-tiling/">Quoting a bathroom</a></li>
+          <li><a href="/guides/how-much-to-charge-to-tile-a-shower/">Pricing a shower</a></li>
+          <li><a href="/guides/tile-wastage-and-materials/">Tile wastage and materials</a></li>
+          <li><a href="/guides/">All guides</a> · <a href="/blog/">Blog</a></li>
+          <li><a href="https://training.tile-iq.com">Training &amp; Business Guides</a></li>
+        </ul></nav>
+        <nav class="footer-col" aria-label="TileIQ for tilers"><h2>TileIQ for tilers</h2><ul>
+          <li><a href="/tiling-quote-app/">Tiling quote app</a></li>
+          <li><a href="/tiling-estimating-software/">Tiling estimating software</a></li>
+          <li><a href="/tiling-quotation-software/">Tiling quotation software</a></li>
+          <li><a href="/invoice-app-for-tilers/">Invoice app for tilers</a></li>
+          <li><a href="/tiling-job-management/">Job management</a></li>
+          <li><a href="/software-for-tilers/">Software for tilers</a></li>
+          <li><a href="/leica-disto-tiling/">Leica Disto integration</a></li>
+          <li><a href="/features">Features</a> · <a href="/about/">About</a> · <a href="/contact">Contact</a></li>
+        </ul></nav>
+      </div>
+      <div class="footer-trust">
+        <div><svg class="icon"><use href="#i-check"/></svg><span><b>2 weeks of free quotes</b><small>No account or card needed</small></span></div>
+        <div><svg class="icon"><use href="#i-refresh"/></svg><span><b>Cancel anytime</b><small>No contracts</small></span></div>
+        <div><svg class="icon"><use href="#i-hammer"/></svg><span><b>Built by a tiler</b><small>In Oxfordshire</small></span></div>
+        <div><svg class="icon"><use href="#i-shield"/></svg><span><b>Secure &amp; reliable</b><small>Your data is safe</small></span></div>
+      </div>
+      <div class="footer-bottom">
+        <nav aria-label="Legal and contact">
+          <span>© TileIQ</span>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="tel:08002461951">☎ 0800 246 1951</a>
+          <a href="mailto:info@tile-iq.com">info@tile-iq.com</a>
+        </nav>
+        <div class="footer-social">
+          <a href="https://www.tiktok.com/@tileiq" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on TikTok"><svg class="icon" width="18" height="18"><use href="#i-tiktok"/></svg></a>
+          <a href="https://www.facebook.com/profile.php?id=61583035084159" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on Facebook"><svg class="icon" width="18" height="18"><use href="#i-facebook"/></svg></a>
+          <a href="https://www.instagram.com/tile.iq" target="_blank" rel="noopener noreferrer" aria-label="TileIQ on Instagram"><svg class="icon" width="18" height="18"><use href="#i-instagram"/></svg></a>
+        </div>
+      </div>
     </div>
   </footer>
+
+  <div class="sticky-cta" aria-hidden="true"><a class="btn btn-primary" href="https://tile-iq.com/app/demo" tabindex="-1">Try TileIQ Free Online <svg class="icon btn-arrow"><use href="#i-arrow"/></svg></a></div>
 <script src="mobile-menu.js"></script>
+<script src="/site.js" defer></script>
+<script src="site.js" defer></script>
 </body>
 </html>

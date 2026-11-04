@@ -40,3 +40,18 @@ test("header and footer links point at pages that exist", async ({ page, request
     expect(res.status(), `${path} should exist`).toBe(200);
   }
 });
+
+test.describe("Shared header", () => {
+  test.skip(({ isMobile }) => isMobile, "desktop is enough for the markup check");
+
+  // /tour/ is a full-screen player and /signup/ is the app's sign-up screen: no site header (see tools/site_chrome.py)
+  for (const path of paths.filter(p => !["/tour/", "/signup/"].includes(p))) {
+    test(`${path} has the shared header, footer and the online demo button`, async ({ page }) => {
+      await page.goto(path);
+      await expect(page.locator('link[rel="stylesheet"][href="/site.css"]')).toHaveCount(1);
+      await expect(page.locator(".site-header .nav-actions a.btn-primary")).toHaveAttribute("href", "https://tile-iq.com/app/demo");
+      await expect(page.locator(".site-header .nav-actions a.btn-primary")).toBeVisible();
+      await expect(page.locator("footer .footer-bottom")).toBeVisible();
+    });
+  }
+});

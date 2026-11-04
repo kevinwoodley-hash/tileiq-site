@@ -1,0 +1,168 @@
+/* TileIQ website: shared design system — tokens, buttons, store badges, header, footer.
+ * Loaded on every marketing page, after any page stylesheet (style.css, guides.css, lp.css).
+ * Keep it free of element resets (p, h1–h3 margins, body font size) so inner pages keep their layout;
+ * homepage-only styles live in home.css. The web app (/app) never loads this file. */
+
+:root{
+  --bg:#070a0c;
+  --bg-raised:#0c1114;
+  --surface:#11171b;
+  --surface-2:#161e23;
+  --line:rgba(255,255,255,.08);
+  --line-strong:rgba(255,255,255,.14);
+  --text:#f3f6f7;
+  --text-soft:#c9d1d5;
+  --muted:#93a0a7;
+  --accent:#11b8b3;          /* TileIQ teal */
+  --accent-hi:#2fd6d0;
+  --accent-ink:#022624;      /* text on teal */
+  --accent-wash:rgba(17,184,179,.12);
+  --brand-orange:#f5a623;    /* the logo tile; used sparingly */
+  --radius-sm:10px;
+  --radius:16px;
+  --radius-lg:24px;
+  --shadow:0 24px 60px -20px rgba(0,0,0,.6);
+  --container:1200px;
+  --gutter:20px;
+  --font-head:'Manrope',system-ui,sans-serif;
+  --font-body:'DM Sans',system-ui,sans-serif;
+  --header-h:72px;
+}
+
+
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:calc(var(--header-h) + 12px);-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+img{max-width:100%;height:auto;display:block}
+:focus-visible{outline:2px solid var(--accent-hi);outline-offset:3px;border-radius:6px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip-link{position:absolute;left:12px;top:-60px;z-index:1000;background:var(--accent);color:var(--accent-ink);padding:10px 14px;border-radius:8px;font-weight:700;text-decoration:none}
+.skip-link:focus{top:12px}
+.website-trap{position:absolute!important;left:-10000px;width:1px;height:1px;overflow:hidden}
+
+.container{width:min(100% - var(--gutter)*2,var(--container));margin-inline:auto}
+.icon{width:22px;height:22px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 22px;border-radius:12px;font:700 16px/1 var(--font-head);text-decoration:none;border:1px solid transparent;cursor:pointer;transition:transform .15s ease,background .15s ease,border-color .15s ease,box-shadow .15s ease;white-space:nowrap}
+.btn .icon{width:18px;height:18px}
+.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 10px 30px -10px rgba(17,184,179,.7),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn-primary:hover{background:var(--accent-hi);transform:translateY(-1px)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--text);border-color:var(--line-strong)}
+.btn-ghost:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.25)}
+.btn-lg{min-height:56px;padding:0 28px;font-size:17px;border-radius:14px}
+.btn-sm{min-height:40px;padding:0 16px;font-size:14px;border-radius:10px}
+.btn-arrow{transition:transform .15s ease}
+/* Names the inner pages already use */
+.btn-large{min-height:56px;padding:0 28px;font-size:17px;border-radius:14px}
+.btn-small{min-height:40px;padding:0 16px;font-size:14px;border-radius:10px}
+.btn-dark{background:#0b0f12;color:var(--text);border-color:var(--line-strong)}
+.btn-dark:hover{background:#000;border-color:rgba(255,255,255,.25)}
+.btn span{transition:transform .15s ease}
+.btn:hover span{transform:translateX(3px)}
+.btn:hover .btn-arrow{transform:translateX(3px)}
+
+/* Store badges: official artwork, normalised to the same visual height */
+.store-badges{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.store-badge{display:inline-flex;align-items:center;height:48px;border-radius:10px;overflow:hidden;transition:transform .15s ease}
+.store-badge:hover{transform:translateY(-1px)}
+.store-badge img{height:48px;width:auto}
+.store-badge.google img{height:71px;width:auto;margin:-11.5px -9px}
+
+/* ── Header ────────────────────────────────────────────── */
+.site-header{position:sticky;top:0;z-index:200;height:var(--header-h);background:rgba(7,10,12,.78);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid transparent;transition:border-color .2s ease,background .2s ease}
+.site-header.scrolled{border-bottom-color:var(--line);background:rgba(7,10,12,.92)}
+.nav{height:100%;display:flex;align-items:center;gap:24px}
+.brand{display:flex;align-items:center;flex:none}
+.brand img{height:36px;width:auto}
+.nav-links{display:flex;align-items:center;gap:2px;margin-left:8px}
+.nav-links>a,.nav-drop>button{white-space:nowrap;display:inline-flex;align-items:center;gap:4px;height:40px;padding:0 12px;border-radius:9px;font:600 14.5px/1 var(--font-body);color:var(--text-soft);text-decoration:none;background:none;border:0;cursor:pointer}
+.nav-links>a:hover,.nav-drop>button:hover,.nav-drop.open>button{color:var(--text);background:rgba(255,255,255,.06)}
+.nav-drop{position:relative}
+.nav-drop>button .icon{width:14px;height:14px;transition:transform .2s ease}
+.nav-drop.open>button .icon{transform:rotate(180deg)}
+.nav-menu{position:absolute;top:calc(100% + 8px);left:-8px;min-width:260px;padding:8px;background:var(--surface);border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow);opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .15s ease,transform .15s ease,visibility .15s}
+.nav-drop.open .nav-menu{opacity:1;visibility:visible;transform:none}
+.nav-menu a{display:block;padding:10px 12px;border-radius:9px;font-size:14.5px;font-weight:500;color:var(--text-soft);text-decoration:none}
+.nav-menu a:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.nav-menu small{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+.nav-links .nav-mobile-only{display:none}
+.nav-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.nav-phone{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:10px;color:var(--text-soft);text-decoration:none;font:600 14px/1 var(--font-body)}
+.nav-phone:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.nav-phone .icon{width:17px;height:17px;color:var(--accent-hi)}
+.mobile-menu-btn{display:none;width:44px;height:44px;border-radius:11px;border:1px solid var(--line-strong);background:rgba(255,255,255,.04);cursor:pointer;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.mobile-menu-btn span{display:block;width:18px;height:2px;border-radius:2px;background:var(--text);transition:transform .2s ease,opacity .2s ease}
+.mobile-menu-btn.active span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.mobile-menu-btn.active span:nth-child(2){opacity:0}
+.mobile-menu-btn.active span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+
+@media (max-width:1240px){
+  .nav-phone span{display:none}
+}
+@media (max-width:980px){
+  /* no backdrop-filter here: it would make the fixed menu panel size itself to the header */
+  .site-header,.site-header.scrolled{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(7,10,12,.97)}
+  .mobile-menu-btn{display:flex}
+  .nav-phone{display:none}
+  .nav-links{position:fixed;inset:var(--header-h) 0 0 0;margin:0;flex-direction:column;align-items:stretch;gap:0;padding:12px var(--gutter) calc(32px + env(safe-area-inset-bottom));background:var(--bg);overflow-y:auto;opacity:0;visibility:hidden;transform:translateY(-8px);transition:opacity .2s ease,transform .2s ease,visibility .2s}
+  .nav-links.mobile-open{opacity:1;visibility:visible;transform:none}
+  .nav-links>a,.nav-drop>button{height:auto;min-height:54px;padding:0 4px;font-size:18px;color:var(--text);border-bottom:1px solid var(--line);border-radius:0;justify-content:space-between;width:100%}
+  .nav-links>a:hover,.nav-drop>button:hover,.nav-drop.open>button{background:none}
+  .nav-menu{position:static;min-width:0;padding:4px 0 10px;background:none;border:0;box-shadow:none;opacity:1;visibility:visible;transform:none;display:none}
+  .nav-drop.open .nav-menu{display:block}
+  .nav-menu a{padding:12px 8px;font-size:16px}
+  .nav-links .nav-mobile-only{display:flex}
+  .nav-links .nav-cta{margin-top:20px;border:0;min-height:56px;justify-content:center;font-size:17px;border-radius:14px;background:var(--accent);color:var(--accent-ink)}
+  .nav-links .nav-cta:hover{background:var(--accent-hi)}
+  .nav-links .nav-cta-secondary{margin-top:10px;border:1px solid var(--line-strong);min-height:52px;justify-content:center;border-radius:14px}
+  .nav-actions .btn-primary{display:none}
+  body.menu-open{overflow:hidden}
+}
+
+/* ── Footer ────────────────────────────────────────────── */
+footer{margin-top:clamp(72px,9vw,120px);border-top:1px solid var(--line);background:var(--bg-raised);padding:clamp(48px,6vw,72px) 0 24px;color:var(--text-soft);font-size:15px}
+.footer-top{display:grid;grid-template-columns:1.3fr repeat(3,1fr);gap:32px}
+.footer-brand img{height:36px;width:auto}
+.footer-brand p{color:var(--muted);margin:16px 0 0;max-width:300px;font-size:14.5px}
+.footer-brand .btn{margin-top:20px}
+.footer-col h2{font:700 13px/1 var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--text);margin:6px 0 16px}
+.footer-col ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.footer-col a{color:var(--muted);text-decoration:none}
+.footer-col a:hover{color:var(--text)}
+.footer-trust{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:48px;padding:24px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.footer-trust div{display:flex;gap:12px;align-items:flex-start}
+.footer-trust .icon{color:var(--accent-hi);margin-top:2px}
+.footer-trust b{display:block;color:var(--text);font-size:14.5px}
+.footer-trust small{color:var(--muted);font-size:13.5px}
+.footer-bottom{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;padding-top:22px;font-size:14px;color:var(--muted)}
+.footer-bottom nav{display:flex;flex-wrap:wrap;gap:6px 18px}
+.footer-bottom a{color:var(--muted);text-decoration:none}
+.footer-bottom a:hover{color:var(--text)}
+.footer-social{display:flex;gap:8px}
+.footer-social a{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--line);color:var(--text-soft)}
+.footer-social a:hover{color:var(--text);border-color:var(--line-strong)}
+
+/* ── Mobile sticky CTA ─────────────────────────────────── */
+.sticky-cta{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:150;display:none;transform:translateY(140%);transition:transform .25s ease}
+.sticky-cta.show{transform:none}
+.sticky-cta .btn{width:100%;min-height:54px;box-shadow:0 18px 40px -10px rgba(0,0,0,.8),0 10px 30px -10px rgba(17,184,179,.7)}
+
+@media (max-width:980px){
+  :root{--header-h:64px}
+  .footer-top{grid-template-columns:1fr 1fr}
+  .footer-brand{grid-column:1/-1}
+  .footer-trust{grid-template-columns:1fr 1fr}
+  .sticky-cta{display:block}
+}
+@media (max-width:640px){
+  :root{--gutter:16px}
+  .footer-top,.footer-trust{grid-template-columns:1fr}
+  .footer-bottom{flex-direction:column;align-items:flex-start}
+  .store-badges{justify-content:flex-start}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .site-header,.nav-menu,.nav-links,.btn,.sticky-cta{transition:none}
+}

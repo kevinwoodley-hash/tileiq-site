@@ -3,6 +3,7 @@
 /app/vendor/* /app/vendor/:splat 200
 /app/js/* /app/js/:splat 200
 /app /app/index.html 200
+/contact/ /contact 301
 /competition /  301
 /competition/ /  301
 /ai-receptionist.html /  301
