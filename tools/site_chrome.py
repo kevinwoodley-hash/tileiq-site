@@ -72,9 +72,9 @@ SPRITE = """    <svg width="0" height="0" style="position:absolute" aria-hidden=
 """ + "".join(f'      <symbol id="i-{k}" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="{v}"/></symbol>\n' for k, v in SOCIAL.items()) + """    </defs></svg>"""
 
 CALCULATORS = [
-    ("/tiling-material-calculator/", "Tiling calculator", "Tiles, adhesive and grout"),
-    ("/floor-tiling-calculator/", "Floor tiling calculator", ""),
-    ("/wall-tiling-calculator/", "Wall tiling calculator", ""),
+    ("/tiling-material-calculator/", "Tile calculator", "Tiles, adhesive and grout"),
+    ("/floor-tiling-calculator/", "Floor tile calculator", ""),
+    ("/wall-tiling-calculator/", "Wall tile calculator", ""),
     ("/tiling-labour-cost-calculator/", "Labour cost calculator", ""),
     ("/tiling-day-rate-calculator/", "Day rate calculator", ""),
 ]
@@ -140,9 +140,9 @@ def footer():
           <a class="btn btn-primary btn-sm" href="{DEMO}">Try Free Online</a>
         </div>
         <nav class="footer-col" aria-label="Free calculators"><h2>Free calculators</h2><ul>
-          <li><a href="/tiling-material-calculator/">Tiling calculator</a></li>
-          <li><a href="/floor-tiling-calculator/">Floor tiling calculator</a></li>
-          <li><a href="/wall-tiling-calculator/">Wall tiling calculator</a></li>
+          <li><a href="/tiling-material-calculator/">Tile calculator</a></li>
+          <li><a href="/floor-tiling-calculator/">Floor tile calculator</a></li>
+          <li><a href="/wall-tiling-calculator/">Wall tile calculator</a></li>
           <li><a href="/tiling-day-rate-calculator/">Tiler day rate calculator</a></li>
           <li><a href="/tiling-labour-cost-calculator/">Tiling labour cost calculator</a></li>
         </ul></nav>

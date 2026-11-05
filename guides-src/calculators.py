@@ -1,5 +1,6 @@
-"""Generates the three calculator pages on tile-iq.com from one template:
-/tiling-material-calculator/, /tiling-day-rate-calculator/ and /tiling-labour-cost-calculator/.
+"""Generates the five calculator pages on tile-iq.com from one template:
+/tiling-material-calculator/ (the main 'tile calculator' page), /floor-tiling-calculator/,
+/wall-tiling-calculator/, /tiling-day-rate-calculator/ and /tiling-labour-cost-calculator/.
 
 Header and footer are taken from the current material calculator page so they match the site.
 Run from the site root:  python3 guides-src/calculators.py
@@ -9,18 +10,36 @@ import json, os, re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SITE = "https://tile-iq.com"
 base = open(os.path.join(ROOT, "tiling-material-calculator/index.html"), encoding="utf-8").read()
-HEADER = base[base.index("<body"):base.index("  <main>")]
+# The header comes from whichever calculator page was generated last, so clear its
+# "current page" marker; page() sets it again for each slug.
+HEADER = base[base.index("<body"):base.index("  <main>")].replace(' aria-current="page"', "")
 FOOTER = base[base.index("  <footer>"):base.index("<script src=\"/mobile-menu.js\"></script>")]
 
-def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, script):
+def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, script, app_name="", features=(), faqs=()):
     url = f"{SITE}/{slug}/"
-    ld = {"@context": "https://schema.org", "@graph": [
+    graph = [
         {"@type": "BreadcrumbList", "itemListElement": [
             {"@type": "ListItem", "position": 1, "name": "Home", "item": SITE + "/"},
             {"@type": "ListItem", "position": 2, "name": "Guides", "item": SITE + "/guides/"},
             {"@type": "ListItem", "position": 3, "name": crumb, "item": url}]},
         {"@type": "WebPage", "@id": url + "#webpage", "url": url, "name": title, "description": desc,
-         "isPartOf": {"@id": SITE + "/#website"}, "about": {"@id": SITE + "/#organization"}}]}
+         "isPartOf": {"@id": SITE + "/#website"}, "about": {"@id": SITE + "/#organization"},
+         "mainEntity": {"@id": url + "#calculator"}},
+        # The free calculator on the page itself. No ratings: there are none to show.
+        {"@type": "WebApplication", "@id": url + "#calculator", "name": app_name or crumb, "url": url + "#calculator",
+         "description": desc, "applicationCategory": "UtilitiesApplication", "operatingSystem": "Any",
+         "browserRequirements": "Requires JavaScript", "isAccessibleForFree": True, "inLanguage": "en-GB",
+         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "GBP"},
+         "provider": {"@id": SITE + "/#organization"},
+         **({"featureList": list(features)} if features else {})}]
+    if faqs:   # only questions that are shown on the page, word for word
+        graph.append({"@type": "FAQPage", "@id": url + "#faq", "mainEntity": [
+            {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": re.sub(r"<[^>]+>", "", a)}}
+            for q, a in faqs]})
+    ld = {"@context": "https://schema.org", "@graph": graph}
+    header = HEADER.replace(f'<a href="/{slug}/">', f'<a href="/{slug}/" aria-current="page">', 1)
+    if faqs:
+        sections = sections + faq_section(faqs)
     app = f"/app/?utm_source=calc-{slug}&utm_medium=calculator"
     return f"""<!doctype html>
 <html lang="en-GB">
@@ -46,11 +65,12 @@ def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, scrip
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/site.css" />
   <script type="application/ld+json">
 {json.dumps(ld, indent=2, ensure_ascii=False)}
   </script>
 </head>
-{HEADER}  <main>
+{header}  <main>
     <section class="features-hero calc-hero">
       <div class="container">
         <p class="calc-crumbs"><a href="/">Home</a> › <a href="/guides/">Guides</a> › <span>{crumb}</span></p>
@@ -78,6 +98,7 @@ def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, scrip
   </main>
 
 {FOOTER}<script src="/mobile-menu.js"></script>
+<script src="/site.js" defer></script>
 <script>
 (() => {{
   const $ = id => document.getElementById(id);
@@ -134,6 +155,33 @@ def section(num, kicker, h2, p, articles=""):
       </div>
     </section>"""
 
+def prose(html):
+    """A plain article block (headings, lists, tables) using the site's post-body styles."""
+    return f"""
+    <section class="post-body-section calc-guide">
+      <div class="container post-body">
+{html}
+      </div>
+    </section>"""
+
+def table(head, rows, caption=""):
+    th = "".join(f"<th{' class=\"num\"' if i else ''}>{h}</th>" for i, h in enumerate(head))
+    tr = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
+    cap = f"<caption>{caption}</caption>" if caption else ""
+    return f'<div class="post-table-wrap"><table>{cap}<thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
+
+def faq_section(faqs):
+    items = "\n".join(f'          <details><summary>{q}</summary><p>{a}</p></details>' for q, a in faqs)
+    return f"""
+    <section class="post-body-section calc-faq" id="faq">
+      <div class="container post-body">
+        <h2>Frequently asked questions</h2>
+        <div class="guide-faq">
+{items}
+        </div>
+      </div>
+    </section>"""
+
 # ── Material calculator (upgrade of the existing page, same URL) ─────────────
 mat_calc = "\n".join([
     group("Area and tiles"),
@@ -179,12 +227,75 @@ mat_script = """
     $('res-adhesive').textContent = adhKg.toFixed(0) + ' kg (' + adhBags + ' × ' + adhBag + ' kg)';
     $('res-grout').textContent = groutKg.toFixed(1) + ' kg (' + groutBags + ' × ' + groutBag + ' kg)';
   }"""
-mat_sections = section("01", "HOW THE NUMBERS WORK", "How much adhesive and grout per m²?",
-    "Mapei's data sheet for a standard cement-based adhesive gives about 2 kg/m² for mosaics, 2.5–3 kg/m² for standard tiles and about 5 kg/m² for large-format and external floors. A 20 kg bag covers roughly 6–7.5 m² with a 6 mm notched trowel, or 4–5 m² with a 10 mm one. Grout depends on the tile size, thickness and joint width: narrow joints on big tiles use very little, wide joints on small thick tiles use much more. The calculator adds 10% to the grout for waste.",
-    """<article><h3>Tile wastage</h3><p>10% for a straight lay, 15% for diagonal and 20–25% for herringbone. Allow more for large format and small, awkward rooms.</p><a href="/guides/tile-wastage-and-materials/">Read the wastage guide →</a></article>
-          <article><h3>Round up to full boxes</h3><p>Order whole boxes from the same batch and leave the customer a few spares for future repairs.</p></article>
-          <article><h3>Check the product</h3><p>Coverage changes with the trowel, tile and how flat the surface is. Use the data sheet for the product you are fixing with.</p></article>""") + \
-    section("02", "DOING THIS ON A REAL JOB", "Want TileIQ to calculate this automatically on every job?",
+mat_guide = prose("""        <h2 id="how-to-calculate">How to work out how many tiles you need</h2>
+        <p>You need three things: the area you're tiling, the size of the tile, and how much extra to allow for cuts and breakages.</p>
+        <ol>
+          <li><strong>Measure the area in m².</strong> Multiply the length by the width of a floor, or the width by the tiled height of a wall. Split awkward rooms into rectangles and add them up, then take off anything you won't tile.</li>
+          <li><strong>Add wastage.</strong> Multiply the area by 1.10 for 10%, 1.15 for 15%, and so on. This is the tile area to buy.</li>
+          <li><strong>Divide by the size of one tile</strong> to get the number of tiles, or by the m² in a box to get the number of boxes.</li>
+          <li><strong>Round up to full boxes</strong>, and order them all from the same batch so the shade matches.</li>
+        </ol>
+        <p>If you're measuring a room rather than typing in an area, the <a href="/floor-tiling-calculator/">floor tile calculator</a> works it out from the length and width, and the <a href="/wall-tiling-calculator/">wall tile calculator</a> takes off doors and windows for you.</p>
+
+        <h2 id="worked-example">Worked example: a 12 m² floor in 600 × 600 mm tiles</h2>
+        <p>A 12 m² floor, laid straight with 10% wastage, in 600 × 600 mm porcelain that's 9 mm thick, with 3 mm joints. The tiles come in boxes of 1.44 m² (four tiles), and they're large format on a floor, so the adhesive is 5 kg per m².</p>
+        """ + table(["Step", "Working", "Result"], [
+            ["Tile area to buy", "12 m² × 1.10", "13.20 m²"],
+            ["Size of one tile", "0.6 m × 0.6 m", "0.36 m²"],
+            ["Number of tiles", "13.20 ÷ 0.36 = 36.7, rounded up", "37 tiles"],
+            ["Boxes", "13.20 ÷ 1.44 = 9.17, rounded up", "10 boxes (14.40 m², 40 tiles)"],
+            ["Adhesive", "12 m² × 5 kg", "60 kg (3 × 20 kg bags)"],
+            ["Grout", "0.144 kg per m² × 12 m², plus 10%", "1.9 kg (1 × 2.5 kg bag)"],
+        ]) + """
+        <p>Put the same figures into the calculator above and you'll get the same answer. Adhesive and grout are worked out on the area you're actually tiling, not the extra tile you buy for wastage.</p>
+
+        <h2 id="tiles-per-m2">How many tiles are in a square metre?</h2>
+        <p>Convert the tile size to metres and multiply, which gives the area of one tile. Then divide 1 by that. A 600 × 300 mm tile is 0.6 × 0.3 = 0.18 m², so there are 1 ÷ 0.18 = 5.56 tiles in a square metre.</p>
+        """ + table(["Tile size", "Area of one tile", "Tiles per m²"], [
+            ["100 × 100 mm", "0.01 m²", "100"],
+            ["300 × 300 mm", "0.09 m²", "11.1"],
+            ["600 × 300 mm", "0.18 m²", "5.56"],
+            ["600 × 600 mm", "0.36 m²", "2.78"],
+            ["1200 × 600 mm", "0.72 m²", "1.39"],
+        ]) + """
+        <p>This ignores the grout joints, so the real number laid is slightly lower. That's why it's better to buy by the box and treat the tile count as a check.</p>
+
+        <h2 id="wastage">How much wastage to allow</h2>
+        <p>Every job loses tile to cuts, breakages and the odd bad tile in a box. These are the usual UK allowances, and they're what the layout setting in the calculator fills in:</p>
+        """ + table(["Layout", "Wastage to add"], [
+            ["Straight lay (grid or brick bond)", "10%"],
+            ["Diagonal", "15%"],
+            ["Herringbone or chevron", "20–25% (the calculator uses 25%)"],
+        ]) + """
+        <p>Go higher for large-format tiles, small rooms with lots of corners and boxing, patterned tiles that need matching, and fragile tiles like natural stone. The <a href="/guides/tile-wastage-and-materials/">tile wastage guide</a> goes through each case.</p>
+
+        <h2 id="adhesive">How much tile adhesive you need</h2>
+        <p>Adhesive depends on the tile and the trowel. Mapei's data sheet for a standard cement-based adhesive (Adesilex P9) gives about 2 kg per m² for mosaics, 2.5–3 kg per m² for standard tiles, and about 5 kg per m² for large-format tiles and external floors. A 20 kg bag covers roughly 6–7.5 m² with a 6 mm notched trowel, or 4–5 m² with a 10 mm one.</p>
+        <p>So 10 m² of standard wall tiles at 3 kg per m² needs 30 kg, which is two 20 kg bags. Choose the tile type in the calculator to fill in the rate, or type in the figure from your adhesive's data sheet. There's more detail in <a href="/guides/tile-adhesive-coverage/">how far a 20 kg bag of tile adhesive goes</a>.</p>
+
+        <h2 id="grout">How much grout you need</h2>
+        <p>Grout depends on the tile size, its thickness and the joint width. The calculator uses the formula most grout manufacturers publish, with all sizes in mm:</p>
+        <p><strong>(tile length + tile width) ÷ (tile length × tile width) × joint width × tile thickness × 1.6 = kg per m²</strong></p>
+        <p>For 600 × 600 mm tiles, 9 mm thick with 3 mm joints, that's 1200 ÷ 360,000 × 3 × 9 × 1.6 = 0.144 kg per m². The same joint on 100 × 100 mm tiles uses 0.864 kg per m², six times as much. The calculator adds 10% for waste. Always check the coverage on the bag of the grout you're using.</p>
+
+        <h2 id="more-calculators">Pricing the job as well?</h2>
+        <p>Once you know the materials, the <a href="/tiling-labour-cost-calculator/">tiling labour cost calculator</a> prices the labour for walls, floors and extras like tanking and levelling. Tilers can do all of it in the <a href="/app/demo" data-cta-kind="demo">TileIQ online app</a>, which works out materials for every wall and floor on a job and puts them into the quote.</p>""")
+
+mat_faqs = [
+    ("How many tiles do I need for 10m²?",
+     "With 10% wastage for a straight lay, you need to buy 11 m² of tile. That's 31 tiles at 600 × 600 mm, 62 tiles at 600 × 300 mm, or 123 tiles at 300 × 300 mm. Round up to full boxes, and allow more wastage for a diagonal or herringbone layout."),
+    ("How do I calculate tiles for a bathroom?",
+     "Work out the walls and the floor separately, because they usually use different tiles and adhesive. For the walls, add up the width of each wall you're tiling, multiply by the tiled height, and take off the door and window. For the floor, multiply the length by the width and take off anything that sits on an untiled area, like a bath. Add wastage to each, then round each up to full boxes. The <a href=\"/wall-tiling-calculator/\">wall tile calculator</a> and <a href=\"/floor-tiling-calculator/\">floor tile calculator</a> do the take-offs for you."),
+    ("How much extra should I allow for wastage?",
+     "Allow 10% for a straight lay, 15% for diagonal and 20–25% for herringbone. Go to the top of the range or above it for large-format tiles, small or awkward rooms, and patterned or fragile tiles."),
+    ("How many 600 × 600mm tiles are in 1m²?",
+     "2.78. One 600 × 600 mm tile covers 0.36 m², and 1 ÷ 0.36 = 2.78. In practice, buy by the box: boxes of 600 × 600 mm tiles usually hold three or four tiles (1.08 or 1.44 m²), so check the label."),
+    ("How much tile adhesive do I need?",
+     "Allow about 3 kg per m² for standard tiles, 2 kg per m² for mosaics and 5 kg per m² for large-format tiles and floors. That means 10 m² of standard tiles needs about 30 kg, or two 20 kg bags. Check the data sheet for the adhesive you're using, as coverage changes with the trowel size."),
+]
+
+mat_sections = mat_guide + \
+    section("01", "DOING THIS ON A REAL JOB", "Want TileIQ to calculate this automatically on every job?",
     "On a real job, TileIQ works out tiles, adhesive, grout, sealant and tanking for every wall and floor from the measurements you take, and puts them straight into the quote.",
     """<article><h3>From measurement to quote</h3><p>Material calculations feed straight into a professional quote you can send from site.</p><a href="/tiling-quote-app/">See the quote app →</a></article>
           <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>
@@ -356,14 +467,49 @@ floor_calc, floor_script = tile_calc(
     "600", "600",
     '<option value="3">Standard floor tile (3 kg)</option><option value="5" selected>Large format or solid bed (5 kg)</option>', "5",
     STRAIGHT_DIAG_HB, "10", CALC_NOTE)
-floor_sections = section("01", "HOW THE NUMBERS WORK", "Working out a floor",
-    "Multiply the length by the width of the room, add any bays or alcoves, and take off anything that won't be tiled, like fitted kitchen units or a bath. Add wastage for the layout: about 10% for a straight lay, 15% for diagonal and 20–25% for herringbone. Floors usually need more adhesive than walls. Mapei's data sheet puts large-format tiles and floors that need a solid bed at about 5 kg/m², so that's the starting value here.",
+floor_guide = prose("""        <h2 id="worked-example">Worked example: a kitchen floor with units fitted</h2>
+        <p>A 4.2 × 3.6 m kitchen, where the units are already in and you're tiling up to the plinths. There's a 4 m run of units, 0.6 m deep, so 2.4 m² isn't tiled. The tiles are 600 × 600 mm porcelain, 9 mm thick, laid straight with 3 mm joints, in boxes of 1.44 m².</p>
+        """ + table(["Step", "Working", "Result"], [
+            ["Room", "4.2 m × 3.6 m", "15.12 m²"],
+            ["Take off the units", "15.12 − 2.4", "12.72 m² to tile"],
+            ["Tile area to buy", "12.72 × 1.10", "13.99 m²"],
+            ["Floor tiles", "13.99 ÷ 0.36 = 38.9, rounded up", "39 tiles"],
+            ["Boxes", "13.99 ÷ 1.44 = 9.7, rounded up", "10 boxes (14.40 m²)"],
+            ["Adhesive", "12.72 m² × 5 kg", "64 kg (4 × 20 kg bags)"],
+            ["Grout", "0.144 kg per m² × 12.72 m², plus 10%", "2.0 kg (1 × 2.5 kg bag)"],
+        ]) + """
+        <p>If the floor goes down before the kitchen is fitted, leave the deduction at 0 and tile the whole room.</p>
+
+        <h2 id="measuring">Measuring an awkward floor</h2>
+        <ul>
+          <li><strong>L-shaped rooms:</strong> split the floor into two rectangles. Put the bigger one in as the length and width, and the other in as extra area.</li>
+          <li><strong>Bays, alcoves and door thresholds:</strong> measure each one and add it as extra area. Thresholds are small but they're full of cuts.</li>
+          <li><strong>Baths, shower trays and fitted units:</strong> take them off only if they're already in, or going in on an untiled floor.</li>
+        </ul>
+        <p>Measure to the wall, not the skirting, if the skirting is coming off.</p>
+
+        <h2 id="floor-adhesive">Adhesive and preparation for floor tiles</h2>
+        <p>Floor tiles need more adhesive than wall tiles. Most floor tiles are bigger, and a floor needs a solid bed with no hollow spots under the tile. Mapei's data sheet gives about 5 kg per m² for large-format tiles and floors that need a solid bed, which is the starting value here. Smaller floor tiles on a flat floor can use about 3 kg per m².</p>
+        <p>The flatter the floor, the less adhesive you use and the less likely large tiles are to lip. Levelling, priming and boarding should go on the quote as their own lines: see <a href="/guides/how-much-to-charge-for-floor-preparation/">pricing floor preparation</a>.</p>
+        <p>Only got the area, or tiling walls and floors together? Use the <a href="/tiling-material-calculator/">tile calculator</a>.</p>""")
+
+floor_faqs = [
+    ("How many floor tiles do I need?",
+     "Multiply the length of the room by the width, take off anything you won't tile, and add 10% for a straight lay. Divide that by the area of one tile, or by the m² in a box, and round up. For the 12.72 m² kitchen above, that's 13.99 m² to buy: 39 tiles at 600 × 600 mm, or 10 boxes of 1.44 m²."),
+    ("How much adhesive do I need for floor tiles?",
+     "Plan on about 5 kg per m² for large-format floor tiles and any floor that needs a solid bed, or about 3 kg per m² for smaller tiles on a flat floor. A 20 kg bag at 5 kg per m² covers about 4 m². Check the data sheet for the adhesive you're using."),
+    ("Should I add extra for herringbone on a floor?",
+     "Yes. Allow 20–25% wastage for herringbone or chevron, compared with 10% for a straight lay, because every tile along the edge of the room is a cut. Choose herringbone in the layout setting to use 25%."),
+]
+
+floor_sections = floor_guide + section("01", "FLOOR GUIDES", "Pricing the floor, not just the materials",
+    "Floors often need more than tiling: levelling, boarding and slower layouts like herringbone. These guides cover how to price them.",
     """<article><h3>Uneven floors cost time</h3><p>Levelling, priming and boarding should be priced separately from the tiling.</p><a href="/guides/how-much-to-charge-for-floor-preparation/">Pricing floor preparation →</a></article>
           <article><h3>Quoting a kitchen floor</h3><p>What to measure, what to allow for, and how to price it.</p><a href="/guides/how-to-quote-a-kitchen-floor/">Read the guide →</a></article>
           <article><h3>Herringbone and large format</h3><p>Both use more tile and take longer to lay. Price them accordingly.</p><a href="/guides/how-to-price-herringbone-tiling/">Pricing herringbone →</a></article>""") + \
     section("02", "DOING THIS ON A REAL JOB", "Want TileIQ to do this on every job?",
     "Measure the room in TileIQ, or straight from a Leica Disto by Bluetooth, and it works out tiles, adhesive, grout and prep for every floor and wall, then puts them into the quote.",
-    """<article><h3>Walls too?</h3><p>Work out tiles, adhesive and grout for walls, with doors and windows taken off.</p><a href="/wall-tiling-calculator/">Wall tiling calculator →</a></article>
+    """<article><h3>Walls too?</h3><p>Work out tiles, adhesive and grout for walls, with doors and windows taken off.</p><a href="/wall-tiling-calculator/">Wall tile calculator →</a></article>
           <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>""")
 
 wall_calc, wall_script = tile_calc(
@@ -377,45 +523,87 @@ wall_calc, wall_script = tile_calc(
     "600", "300",
     '<option value="2">Mosaic, small (2 kg)</option><option value="3" selected>Standard wall tile (3 kg)</option><option value="5">Large format (5 kg)</option>', "3",
     STRAIGHT_DIAG_HB, "10", CALC_NOTE)
-wall_sections = section("01", "HOW THE NUMBERS WORK", "Working out walls",
-    "Add up the width of every wall you're tiling and multiply by the tiled height. Use the full height for a floor-to-ceiling bathroom, or measure to the top of the splashback or the half-height line. Take off doors and windows: a standard internal door is about 0.8 m wide and 2 m high, so roughly 1.6 m². Add back window reveals and boxing, which are easy to forget and full of cuts. Mapei's data sheet gives about 2.5–3 kg/m² of adhesive for standard wall tiles, and about 2 kg/m² for mosaics.",
+wall_guide = prose("""        <h2 id="worked-example">Worked example: tiling a bathroom floor to ceiling</h2>
+        <p>A bathroom with walls of 2.4, 1.8, 2.4 and 1.8 m, tiled to a height of 2.4 m. There's one door (about 1.6 m²) and a 0.6 × 0.9 m window (0.54 m²). The tiles are 600 × 300 mm, 9 mm thick, laid straight with 3 mm joints, in boxes of 1.08 m².</p>
+        """ + table(["Step", "Working", "Result"], [
+            ["Total width of walls", "2.4 + 1.8 + 2.4 + 1.8", "8.4 m"],
+            ["Wall area", "8.4 m × 2.4 m", "20.16 m²"],
+            ["Take off the door and window", "20.16 − 1.6 − 0.54", "18.02 m² to tile"],
+            ["Tile area to buy", "18.02 × 1.10", "19.82 m²"],
+            ["Wall tiles", "19.82 ÷ 0.18 = 110.1, rounded up", "111 tiles"],
+            ["Boxes", "19.82 ÷ 1.08 = 18.4, rounded up", "19 boxes (20.52 m²)"],
+            ["Adhesive", "18.02 m² × 3 kg", "54 kg (3 × 20 kg bags)"],
+            ["Grout", "0.216 kg per m² × 18.02 m², plus 10%", "4.3 kg (2 × 2.5 kg bags)"],
+        ]) + """
+        <p>Window reveals aren't in that figure. Measure their depth around the frame and add them as extra area: they're small, but every piece is a cut.</p>
+
+        <h2 id="measuring">Measuring walls for tiles</h2>
+        <ul>
+          <li><strong>Behind a bath:</strong> start the tiled height from the top of the bath, not the floor, and measure the bath panel separately if you're tiling it.</li>
+          <li><strong>Splashbacks and half-height tiling:</strong> use the height you're actually tiling to, such as the top of the splashback or the dado line.</li>
+          <li><strong>Boxing and pipe chases:</strong> add the faces of the boxing as extra area.</li>
+          <li><strong>Showers:</strong> the shower walls need tanking before tiling. Price it as its own line: see <a href="/guides/how-much-to-charge-for-tanking/">pricing tanking</a>.</li>
+        </ul>
+
+        <h2 id="wall-adhesive">Adhesive for wall tiles</h2>
+        <p>Mapei's data sheet gives about 2.5–3 kg per m² for standard wall tiles and about 2 kg per m² for mosaics. Large-format tiles on walls need more, about 5 kg per m², and may need back-buttering. Check the adhesive is rated for the tile's weight and the background, especially on plasterboard.</p>
+        <p>Only got the area, or tiling a floor too? Use the <a href="/tiling-material-calculator/">tile calculator</a>.</p>""")
+
+wall_faqs = [
+    ("How many wall tiles do I need?",
+     "Add up the width of each wall you're tiling, multiply by the tiled height, and take off doors and windows. Add 10% wastage for a straight lay, then divide by the area of one tile, or by the m² in a box, and round up."),
+    ("Do I take off doors and windows when measuring for wall tiles?",
+     "Yes. Take off each door and window, then add back the window reveals, which you'll tile. A standard internal door is about 0.8 m wide and 2 m high, or roughly 1.6 m²."),
+    ("How much adhesive do I need for wall tiles?",
+     "About 2.5–3 kg per m² for standard wall tiles, and about 2 kg per m² for mosaics. So 18 m² of standard wall tiles at 3 kg per m² needs 54 kg, which is three 20 kg bags."),
+]
+
+wall_sections = wall_guide + section("01", "WALL GUIDES", "Quoting bathroom and shower walls",
+    "Bathroom walls bring tanking, boxing and lots of cuts. These guides cover how to price them.",
     """<article><h3>Quoting a bathroom</h3><p>A step-by-step guide with a worked example for a 2.5 × 2 m bathroom.</p><a href="/guides/how-to-quote-bathroom-tiling/">Read the guide →</a></article>
           <article><h3>Showers need tanking</h3><p>Price the waterproofing as its own line on the quote.</p><a href="/guides/how-much-to-charge-for-tanking/">Pricing tanking →</a></article>
           <article><h3>Tile wastage</h3><p>How much extra to allow for each layout, room and tile size.</p><a href="/guides/tile-wastage-and-materials/">Read the wastage guide →</a></article>""") + \
     section("02", "DOING THIS ON A REAL JOB", "Want TileIQ to do this on every job?",
     "Measure each wall in TileIQ, or straight from a Leica Disto by Bluetooth, and it works out tiles, adhesive, grout and tanking for every wall and floor, then puts them into the quote.",
-    """<article><h3>Floor too?</h3><p>Work out tiles, adhesive and grout for the floor from the room size.</p><a href="/floor-tiling-calculator/">Floor tiling calculator →</a></article>
+    """<article><h3>Floor too?</h3><p>Work out tiles, adhesive and grout for the floor from the room size.</p><a href="/floor-tiling-calculator/">Floor tile calculator →</a></article>
           <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>""")
 
+MAT_FEATURES = ["Tile area to buy, with wastage for straight, diagonal and herringbone layouts",
+                "Number of tiles and boxes", "Tile adhesive in kg and bags", "Grout in kg and bags"]
 pages = [
-    ("tiling-material-calculator", "Tiling Calculator: Tiles, Adhesive and Grout | TileIQ",
-     "Free tiling calculator: work out how many tiles and boxes you need, plus adhesive and grout, with wastage for straight, diagonal and herringbone layouts.",
-     "Tiling calculator", "FREE TILING CALCULATOR", "Tiling calculator: tiles,<br>adhesive and grout",
-     "Enter the area, tile size and layout to get tiles, boxes, adhesive and grout. Free, with no sign-up. On a real job, TileIQ works this out from your measurements automatically.",
-     mat_calc, mat_sections, mat_script),
+    ("tiling-material-calculator", "Tile Calculator UK – How Many Tiles Do I Need? | TileIQ",
+     "Free tile calculator for floors and walls. Enter your measurements and tile size to calculate tiles, adhesive, grout and wastage. No sign-up needed.",
+     "Tile calculator", "FREE TILE CALCULATOR", "Free Tile Calculator – How Many Tiles Do I Need?",
+     "Enter the area you're tiling and the tile size to work out how many tiles and boxes you need, plus adhesive and grout, with wastage for straight, diagonal and herringbone layouts. It works for floors and walls, and there's nothing to sign up for.",
+     mat_calc, mat_sections, mat_script,
+     dict(app_name="TileIQ tile calculator", features=MAT_FEATURES, faqs=mat_faqs)),
     ("tiling-day-rate-calculator", "Tiler Day Rate Calculator (UK) | TileIQ",
      "Free day-rate calculator for self-employed tilers: work out the day rate, hourly rate and per m² rate that cover your income, costs, holidays and quoting days.",
      "Tiler day rate calculator", "FREE TILING CALCULATOR", "Tiler day rate calculator",
      "Work out the day rate you need from what you want to earn, your business costs and the days you can actually bill. You also get your hourly rate and a per m² rate for walls and floors.",
-     day_calc, day_sections, day_script),
+     day_calc, day_sections, day_script,
+     dict(features=["Day rate", "Hourly rate", "Per m² rate for walls and floors", "VAT threshold check"])),
     ("tiling-labour-cost-calculator", "Tiling Labour Cost Calculator (UK) | TileIQ",
      "Free tiling labour cost calculator: price walls, floors and extras like tanking and levelling, estimate days on site and check the job against your day rate.",
      "Tiling labour cost calculator", "FREE TILING CALCULATOR", "Tiling labour cost calculator",
      "Price the labour for a tiling job from your per m² rates, add extras such as tanking and levelling, and check what the job earns per day against your day rate.",
-     lab_calc, lab_sections, lab_script),
-    ("floor-tiling-calculator", "Floor Tiling Calculator: Tiles, Adhesive and Grout | TileIQ",
-     "Free floor tiling calculator: enter the room size to work out floor tiles, boxes, adhesive and grout, with wastage for straight, diagonal and herringbone layouts.",
-     "Floor tiling calculator", "FREE TILING CALCULATOR", "Floor tiling calculator",
-     "Enter the room size and tile to work out how many floor tiles, boxes, and how much adhesive and grout you need. Free, with no sign-up.",
-     floor_calc, floor_sections, floor_script),
-    ("wall-tiling-calculator", "Wall Tiling Calculator: Tiles, Adhesive and Grout | TileIQ",
-     "Free wall tiling calculator: enter the wall sizes, take off doors and windows, and work out wall tiles, boxes, adhesive and grout with wastage.",
-     "Wall tiling calculator", "FREE TILING CALCULATOR", "Wall tiling calculator",
-     "Enter the walls and tiled height, take off doors and windows, and get the tiles, boxes, adhesive and grout you need. Free, with no sign-up.",
-     wall_calc, wall_sections, wall_script),
+     lab_calc, lab_sections, lab_script,
+     dict(features=["Wall and floor labour", "Extras such as tanking and levelling", "Days on site", "Check against your day rate"])),
+    ("floor-tiling-calculator", "Floor Tile Calculator: Tiles, Adhesive & Grout | TileIQ",
+     "Free floor tile calculator: enter the room length and width, take off units or a bath, and get the floor tiles, boxes, adhesive and grout you need.",
+     "Floor tile calculator", "FLOOR TILES", "Floor tile calculator",
+     "Enter the length and width of the room, add any bays or alcoves and take off anything you won't tile. You get the floor tiles, boxes, adhesive and grout you need. Free, with no sign-up.",
+     floor_calc, floor_sections, floor_script,
+     dict(app_name="TileIQ floor tile calculator", features=["Floor area from room length and width", "Extra areas and deductions"] + MAT_FEATURES, faqs=floor_faqs)),
+    ("wall-tiling-calculator", "Wall Tile Calculator: Tiles, Adhesive & Grout | TileIQ",
+     "Free wall tile calculator: enter the walls and tiled height, take off doors and windows, and get the wall tiles, boxes, adhesive and grout you need.",
+     "Wall tile calculator", "WALL TILES", "Wall tile calculator",
+     "Enter the width of the walls and the height you're tiling to, take off doors and windows, and get the wall tiles, boxes, adhesive and grout you need. Free, with no sign-up.",
+     wall_calc, wall_sections, wall_script,
+     dict(app_name="TileIQ wall tile calculator", features=["Wall area from width and tiled height", "Doors, windows and extra areas"] + MAT_FEATURES, faqs=wall_faqs)),
 ]
-for slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, script in pages:
+for slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, script, extra in pages:
     os.makedirs(os.path.join(ROOT, slug), exist_ok=True)
     open(os.path.join(ROOT, slug, "index.html"), "w", encoding="utf-8").write(
-        page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, script))
+        page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, script, **extra))
     print("wrote", slug)
