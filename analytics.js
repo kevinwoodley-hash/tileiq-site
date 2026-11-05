@@ -162,7 +162,10 @@
     open: function () { openBanner(true); },
     onChange: function (cb) { listeners.push(cb); },
     isInternal: isInternal,
-    source: function () { return source; },                          // where this visit came from (see below), or null
+    // where this visit came from (see below); for a hop from our own page into the app, the page
+    // that sent them (tq_src); otherwise null. The app keeps it as entry_source for sign-up attribution.
+    source: function () { return source || linkTag; },
+    visitSource: function () { return source; },                     // outside source only, never tq_src
     setInternal: function (on) { if (on) lsSet(INTERNAL_KEY, '1'); else lsDel(INTERNAL_KEY); }
   };
 
@@ -276,6 +279,18 @@
     return { s: '(direct)', m: topWin.location.pathname === '/' ? '(none)' : 'deep link' };
   }
   var source = visitSource();
+
+  // Links from this site into the app carry tq_src / tq_med (e.g. tq_src=guide-tile-adhesive-coverage)
+  // instead of UTM tags, because a UTM on an internal link makes Google Analytics start a new session
+  // and credit it to our own page, hiding the real source (Google, an ad, ChatGPT...). The tag is not a
+  // visit source: it doesn't count a new visit or replace the source already recorded. It only tells
+  // the app which page sent this person, through tileiqConsent.source() below.
+  function internalTag() {
+    var q = new URLSearchParams(topWin.location.search);
+    var s = q.get('tq_src');
+    return s ? { s: s.slice(0, 100), m: (q.get('tq_med') || 'internal').slice(0, 100) } : null;
+  }
+  var linkTag = internalTag();
 
   function beacon(data) {
     if (isInternal()) return;                            // our own testing stays out of the numbers

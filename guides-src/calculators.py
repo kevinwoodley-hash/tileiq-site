@@ -40,7 +40,7 @@ def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, scrip
     header = HEADER.replace(f'<a href="/{slug}/">', f'<a href="/{slug}/" aria-current="page">', 1)
     if faqs:
         sections = sections + faq_section(faqs)
-    app = f"/app/?utm_source=calc-{slug}&utm_medium=calculator"
+    app = f"/app/?tq_src=calc-{slug}&tq_med=calculator"   # not UTM tags: see cta_block in build.py
     return f"""<!doctype html>
 <html lang="en-GB">
 <head>
@@ -271,7 +271,7 @@ mat_guide = prose("""        <h2 id="how-to-calculate">How to work out how many 
 
         <h2 id="adhesive">How much tile adhesive you need</h2>
         <p>Adhesive depends on the tile and the trowel. Mapei's data sheet for a standard cement-based adhesive (Adesilex P9) gives about 2 kg per m² for mosaics, 2.5–3 kg per m² for standard tiles, and about 5 kg per m² for large-format tiles and external floors. A 20 kg bag covers roughly 6–7.5 m² with a 6 mm notched trowel, or 4–5 m² with a 10 mm one.</p>
-        <p>So 10 m² of standard wall tiles at 3 kg per m² needs 30 kg, which is two 20 kg bags. Choose the tile type in the calculator to fill in the rate, or type in the figure from your adhesive's data sheet. There's more detail in <a href="/guides/tile-adhesive-coverage/">how far a 20 kg bag of tile adhesive goes</a>.</p>
+        <p>So 10 m² of standard wall tiles at 3 kg per m² needs 30 kg, which is two 20 kg bags. Choose the tile type in the calculator to fill in the rate, or type in the figure from your adhesive's data sheet. For coverage by trowel size, worked examples and an adhesive calculator, see <a href="/guides/tile-adhesive-coverage/">how much tile adhesive you need per m²</a>.</p>
 
         <h2 id="grout">How much grout you need</h2>
         <p>Grout depends on the tile size, its thickness and the joint width. The calculator uses the formula most grout manufacturers publish, with all sizes in mm:</p>
@@ -456,7 +456,7 @@ def tile_calc(area_rows, area_js, tile_l, tile_w, adh_opts, adh_default, waste_o
     return html, script
 
 STRAIGHT_DIAG_HB = '<option value="10" selected>Straight (10%)</option><option value="15">Diagonal (15%)</option><option value="25">Herringbone (25%)</option>'
-CALC_NOTE = "Planning estimates only. Adhesive figures are typical manufacturer consumption rates (e.g. Mapei Adesilex P9); grout uses the standard formula (L+W)/(L×W) × joint width × tile thickness × 1.6, plus 10%. Always check the data sheet for the product you are using."
+CALC_NOTE = "Planning estimates only. Adhesive figures are typical manufacturer consumption rates (e.g. Mapei Adesilex P9); grout uses the standard formula (L+W)/(L×W) × joint width × tile thickness × 1.6, plus 10%. Always check the data sheet for the product you are using. More on <a href=\"/guides/tile-adhesive-coverage/\">tile adhesive coverage</a>."
 
 floor_calc, floor_script = tile_calc(
     [row("fl-len", "Room length (m)", "4", "0.01"),
@@ -489,7 +489,7 @@ floor_guide = prose("""        <h2 id="worked-example">Worked example: a kitchen
         <p>Measure to the wall, not the skirting, if the skirting is coming off.</p>
 
         <h2 id="floor-adhesive">Adhesive and preparation for floor tiles</h2>
-        <p>Floor tiles need more adhesive than wall tiles. Most floor tiles are bigger, and a floor needs a solid bed with no hollow spots under the tile. Mapei's data sheet gives about 5 kg per m² for large-format tiles and floors that need a solid bed, which is the starting value here. Smaller floor tiles on a flat floor can use about 3 kg per m².</p>
+        <p>Floor tiles need more adhesive than wall tiles. Most floor tiles are bigger, and a floor needs a solid bed with no hollow spots under the tile. Mapei's data sheet gives about 5 kg per m² for large-format tiles and floors that need a solid bed, which is the starting value here. Smaller floor tiles on a flat floor can use about 3 kg per m². The <a href="/guides/tile-adhesive-coverage/">floor tile adhesive coverage guide</a> has figures by trowel size and worked examples.</p>
         <p>The flatter the floor, the less adhesive you use and the less likely large tiles are to lip. Levelling, priming and boarding should go on the quote as their own lines: see <a href="/guides/how-much-to-charge-for-floor-preparation/">pricing floor preparation</a>.</p>
         <p>Only got the area, or tiling walls and floors together? Use the <a href="/tiling-material-calculator/">tile calculator</a>.</p>""")
 
@@ -546,7 +546,7 @@ wall_guide = prose("""        <h2 id="worked-example">Worked example: tiling a b
         </ul>
 
         <h2 id="wall-adhesive">Adhesive for wall tiles</h2>
-        <p>Mapei's data sheet gives about 2.5–3 kg per m² for standard wall tiles and about 2 kg per m² for mosaics. Large-format tiles on walls need more, about 5 kg per m², and may need back-buttering. Check the adhesive is rated for the tile's weight and the background, especially on plasterboard.</p>
+        <p>Mapei's data sheet gives about 2.5–3 kg per m² for standard wall tiles and about 2 kg per m² for mosaics. Large-format tiles on walls need more, about 5 kg per m², and may need back-buttering. Check the adhesive is rated for the tile's weight and the background, especially on plasterboard. See <a href="/guides/tile-adhesive-coverage/">how much adhesive per m² for wall tiles</a>, including wet walls.</p>
         <p>Only got the area, or tiling a floor too? Use the <a href="/tiling-material-calculator/">tile calculator</a>.</p>""")
 
 wall_faqs = [
