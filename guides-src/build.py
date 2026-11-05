@@ -114,6 +114,9 @@ def head(title, desc, url, og_type, ld, robots=None, extra=""):
 
 
 def cta_block(key, source):
+    # Links into the app carry tq_src / tq_med, not UTM tags: a UTM on an internal link makes Google
+    # Analytics start a new session credited to the guide, losing the visit's real source (e.g. Google).
+    # /analytics.js reads tq_src so the app can still trace sign-ups and quotes to the guide.
     h, p = CTAS.get(key, CTAS["quote"])
     src = "guide-" + source
     return f"""<section class="guide-cta" data-cta="{e(source)}">
@@ -121,11 +124,11 @@ def cta_block(key, source):
   <p>{e(p)}</p>
   <p class="guide-cta-free"><strong>Try the real app free.</strong> No sign-up needed, and you can send unlimited quotes free for 2 weeks.</p>
   <div class="guide-cta-actions">
-    <a class="btn btn-primary" href="/app/?utm_source={src}&amp;utm_medium=guide" data-cta-kind="web_app">Start free in your browser</a>
+    <a class="btn btn-primary" href="/app/?tq_src={src}&amp;tq_med=guide" data-cta-kind="web_app">Start free in your browser</a>
     <a class="guide-store" href="{PLAY}" data-cta-kind="google_play">Get it on Google Play</a>
     <a class="guide-store" href="{APPLE}" data-cta-kind="app_store">Download on the App Store</a>
   </div>
-  <p class="guide-cta-demo">Just want a look first? <a href="/app/demo?utm_source={src}&amp;utm_medium=guide" data-cta-kind="demo">Explore the demo with sample jobs</a> (no account, nothing saved).</p>
+  <p class="guide-cta-demo">Just want a look first? <a href="/app/demo?tq_src={src}&amp;tq_med=guide" data-cta-kind="demo">Explore the demo with sample jobs</a> (no account, nothing saved).</p>
 </section>"""
 
 

@@ -40,7 +40,7 @@ def page(slug, title, desc, crumb, kicker, h1, intro, calc_html, sections, scrip
     header = HEADER.replace(f'<a href="/{slug}/">', f'<a href="/{slug}/" aria-current="page">', 1)
     if faqs:
         sections = sections + faq_section(faqs)
-    app = f"/app/?utm_source=calc-{slug}&utm_medium=calculator"
+    app = f"/app/?tq_src=calc-{slug}&tq_med=calculator"   # not UTM tags: see cta_block in build.py
     return f"""<!doctype html>
 <html lang="en-GB">
 <head>
