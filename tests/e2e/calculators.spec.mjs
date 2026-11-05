@@ -40,6 +40,11 @@ test.describe("Floor tiling calculator", () => {
     await expect(page.locator("#calc-adh-rate")).toHaveValue("3");
   });
 
+  test("rounds whole tiles correctly despite floating-point noise", async ({ page }) => {
+    await fill(page, { "fl-len": 6, "calc-tile-w": 300 });   // 6 × 3 m = 18 m² × 1.1 ÷ 0.18 = 110
+    await expect(page.locator("#res-tile-count")).toHaveText("110 tiles");
+  });
+
   test("never shows a negative area", async ({ page }) => {
     await fill(page, { "fl-deduct": 50 });
     await expect(page.locator("#res-area")).toHaveText("0.00 m²");
@@ -79,6 +84,71 @@ test.describe("Tiling material calculator", () => {
     await fill(page, { "calc-area": 10, "calc-tile-l": 300 });
     await expect(page.locator("#res-tile-area")).toHaveText("11.00 m²");
     await expect(page.locator("#res-tile-count")).toHaveText("123 tiles");
+  });
+
+  test("shows the working behind each result", async ({ page }) => {
+    const w = page.locator("#res-working");
+    await expect(w).toContainText("35 m² + 10% wastage = 38.50 m² to buy");
+    await expect(w).toContainText("38.50 ÷ 0.18 m² per tile = 213.9, so 214 tiles");
+    await expect(w).toContainText("35 m² × 3 kg adhesive = 105 kg");
+    await expect(w).toContainText("0.216 kg grout per m² × 35 m² + 10% = 8.3 kg");
+  });
+
+  test("matches the bathroom walls worked example on the page", async ({ page }) => {
+    // 18 m² × 1.1 ÷ 0.18 is 110.00000000000001 in floating point: it must still be 110 tiles
+    await fill(page, { "calc-area": 18, "calc-box-m2": 1.08, "calc-joint": 2, "calc-thick": 8 });
+    await expect(page.locator("#res-tile-area")).toHaveText("19.80 m²");
+    await expect(page.locator("#res-tile-count")).toHaveText("110 tiles");
+    await expect(page.locator("#res-boxes")).toHaveText("19 boxes (20.52 m²)");
+    await expect(page.locator("#res-adhesive")).toHaveText("54 kg (3 × 20 kg)");
+    await expect(page.locator("#res-grout")).toHaveText("2.5 kg (2 × 2.5 kg)");
+    await expect(page.locator("#worked-example-walls")).toBeAttached();
+  });
+
+  test("materials cost is optional and blank until prices are entered", async ({ page }) => {
+    await expect(page.locator("#res-cost")).toHaveText("add prices (optional)");
+    await expect(page.locator("#res-working")).not.toContainText("Tiles £");
+  });
+
+  test("prices tiles per m² in whole boxes, plus adhesive and grout bags", async ({ page }) => {
+    // 38.50 m² ÷ 1.44 → 27 boxes = 38.88 m² × £25 = £972; 6 bags × £12 = £72; 4 bags × £8 = £32
+    await fill(page, { "calc-box-m2": 1.44, "calc-price-m2": 25, "calc-price-adh": 12, "calc-price-grout": 8 });
+    await expect(page.locator("#res-cost")).toHaveText("£1,076.00");
+    await expect(page.locator("#res-working")).toContainText("Tiles £972.00 + adhesive £72.00 + grout £32.00");
+  });
+
+  test("prices tiles per m² on the area to buy when the box size isn't known", async ({ page }) => {
+    await fill(page, { "calc-price-m2": 20 });   // 38.50 m² × £20
+    await expect(page.locator("#res-cost")).toHaveText("£770.00");
+  });
+
+  test("a price per box needs the box size", async ({ page }) => {
+    await fill(page, { "calc-price-box": 30 });
+    await expect(page.locator("#res-cost")).toHaveText("enter m² per box");
+    await fill(page, { "calc-box-m2": 1.44 });   // 27 boxes × £30
+    await expect(page.locator("#res-cost")).toHaveText("£810.00");
+  });
+
+  test("copies the results as plain text", async ({ page, context, browserName }) => {
+    test.skip(browserName !== "chromium", "clipboard permissions are Chromium-only in Playwright");
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await fill(page, { "calc-box-m2": 1.44, "calc-price-m2": 25 });
+    await page.click("#calc-copy");
+    await expect(page.locator("#calc-copied")).toHaveText("Copied");
+    const text = await page.evaluate(() => navigator.clipboard.readText());
+    expect(text).toContain("Area: 35 m², 600 × 300 mm tiles, 10% wastage");
+    expect(text).toContain("Tile area to buy: 38.50 m²");
+    expect(text).toContain("Boxes: 27 boxes (38.88 m²)");
+    expect(text).toContain("Adhesive: 105 kg (6 × 20 kg)");
+    expect(text).toContain("Materials cost: £972.00");
+    expect(text).toContain("Estimates only");
+  });
+
+  test("results come before the optional prices on phones", async ({ page, isMobile }) => {
+    const results = await page.locator(".calc-results").boundingBox();
+    const prices = await page.locator("#calc-price-m2").boundingBox();
+    if (isMobile) expect(results.y).toBeLessThan(prices.y);
+    else expect(prices.x).toBeLessThan(results.x);   // desktop: prices stay in the inputs column
   });
 });
 
