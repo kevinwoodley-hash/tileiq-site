@@ -1,12 +1,12 @@
 <!--meta
 {
-  "title": "Tiling Quote Template: What to Include (Free UK Example) | TileIQ",
-  "h1": "Tiling quote template: what to include",
-  "description": "A free tiling quote template for UK tilers: every section a professional quote needs, an example layout you can copy, and the terms that protect you when a job changes.",
+  "title": "Free Tiling Quote Template (UK): Fill In and Save as PDF",
+  "h1": "Free tiling quote template",
+  "description": "A free tiling quote template for UK tilers: fill it in online, with totals and VAT worked out, then print it or save it as a PDF. No sign-up or app needed.",
   "category": "Running a tiling business",
   "published": "2026-10-20",
-  "updated": "2026-10-20",
-  "quick_answer": "<p>A good tiling quote includes:</p><ul><li>your business and customer details, a quote number, the date and how long it's valid</li><li>a description of the work, area by area</li><li>a price split into labour, materials and extras, with VAT shown if you're registered</li><li>who supplies the tiles</li><li>what's excluded</li><li>your payment terms</li></ul><p>Clear exclusions and a validity date are what protect you if the job changes.</p>",
+  "updated": "2026-11-05",
+  "quick_answer": "<p>Use the free template below. Fill it in on this page and it works out the line totals, VAT and deposit; then print it or save it as a PDF. Nothing is saved or sent anywhere.</p><p>A good tiling quote includes:</p><ul><li>your business and customer details, a quote number, the date and how long it's valid</li><li>a description of the work, area by area</li><li>a price split into labour, materials and extras, with VAT shown if you're registered</li><li>who supplies the tiles</li><li>what's excluded</li><li>your payment terms</li></ul><p>Clear exclusions and a validity date are what protect you if the job changes.</p>",
   "cta": "quote",
   "related": ["how-to-quote-bathroom-tiling", "tiling-labour-rates-uk", "self-employed-tiler-day-rate"],
   "sources": [
@@ -16,6 +16,78 @@
 }
 -->
 <p>A quote is often the first piece of your work a customer sees. A clear one wins the job and heads off arguments later. A vague one invites both. Here's what to put in.</p>
+
+<h2 id="template">Fill in your tiling quote</h2>
+<p>Fill in the boxes, and the template works out each line, the VAT and any deposit. Then press <strong>Print or save as PDF</strong> to get a clean, one-page quote to send to your customer. Everything stays on this page: nothing is saved or sent anywhere, so print or save it before you leave.</p>
+<link rel="stylesheet" href="/guides/quote-template.css">
+<div class="qt" data-quote-template>
+  <noscript><p class="qt-noscript">The template needs JavaScript turned on. The layout further down this page shows the same sections as text.</p></noscript>
+  <fieldset class="qt-part">
+    <legend>Your business</legend>
+    <div class="qt-grid">
+      <label class="qt-wide">Business name<input id="qt-biz" autocomplete="organization" placeholder="e.g. Smith Tiling"></label>
+      <label>Phone<input id="qt-phone" type="tel" autocomplete="tel"></label>
+      <label>Email<input id="qt-email" type="email" autocomplete="email"></label>
+      <label class="qt-wide">Address<input id="qt-bizaddr" autocomplete="street-address"></label>
+      <label>VAT number (if registered)<input id="qt-vatno"></label>
+      <label>Logo (optional)<input id="qt-logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></label>
+    </div>
+  </fieldset>
+  <fieldset class="qt-part">
+    <legend>Customer and quote</legend>
+    <div class="qt-grid">
+      <label>Customer name<input id="qt-cust"></label>
+      <label class="qt-wide">Job address<input id="qt-jobaddr"></label>
+      <label>Quote number<input id="qt-num" value="Q-0001"></label>
+      <label>Date<input id="qt-date" type="date"></label>
+      <label>Valid for (days)<input id="qt-valid" type="number" min="1" step="1" value="30" inputmode="numeric"></label>
+    </div>
+  </fieldset>
+  <fieldset class="qt-part">
+    <legend>The work</legend>
+    <label class="qt-block">Description of the work<textarea id="qt-work" rows="4" placeholder="e.g. Main bathroom: tile walls full height (about 20 m²) and floor (5 m²) in 300×600 mm porcelain, straight lay. Tank the shower area, fit trims to external corners and seal around the bath."></textarea></label>
+    <div class="qt-grid">
+      <label>Tiles supplied by<select id="qt-tiles"><option value="customer">The customer</option><option value="me">Me (included below)</option></select></label>
+      <label>Estimated start<input id="qt-start" type="date"></label>
+      <label>Days on site<input id="qt-days" type="number" min="0" step="0.5" inputmode="decimal"></label>
+    </div>
+  </fieldset>
+  <fieldset class="qt-part">
+    <legend>Price</legend>
+    <p class="qt-hint">One line per item. Leave Qty blank for a fixed price. Lines without a price are left off the printed quote.</p>
+    <div class="qt-items" id="qt-items" role="table" aria-label="Quote lines">
+      <div class="qt-row qt-head" role="row"><span role="columnheader">Item</span><span role="columnheader">Qty</span><span role="columnheader">Unit</span><span role="columnheader">Rate (£)</span><span role="columnheader">Amount</span><span></span></div>
+    </div>
+    <button type="button" class="qt-btn qt-add" id="qt-add">+ Add a line</button>
+    <div class="qt-grid qt-money">
+      <label>VAT<select id="qt-vat"><option value="0">Not VAT registered (no VAT)</option><option value="20">Add VAT at 20%</option></select></label>
+      <label>Deposit (%)<input id="qt-dep" type="number" min="0" max="100" step="1" value="0" inputmode="numeric"></label>
+    </div>
+    <div class="qt-totals" aria-live="polite">
+      <div><span>Subtotal</span><b id="qt-sub">£0.00</b></div>
+      <div id="qt-vat-row" hidden><span>VAT 20%</span><b id="qt-vatamt">£0.00</b></div>
+      <div class="qt-total"><span>Total</span><b id="qt-total">£0.00</b></div>
+      <div id="qt-dep-row" hidden><span>Deposit</span><b id="qt-depamt">£0.00</b></div>
+    </div>
+  </fieldset>
+  <fieldset class="qt-part">
+    <legend>Terms</legend>
+    <label class="qt-block">Not included<textarea id="qt-excl" rows="3">Removing the existing suite, plumbing, electrics, plastering and decorating. Any repairs found after the old tiles come off will be agreed with you before the work is done.</textarea></label>
+    <label class="qt-block">Payment terms<textarea id="qt-pay" rows="2">Balance due on completion by bank transfer.</textarea></label>
+    <label class="qt-block">Guarantee<textarea id="qt-guar" rows="2">Workmanship guaranteed for 12 months.</textarea></label>
+  </fieldset>
+  <label class="qt-check"><input type="checkbox" id="qt-credit" checked> Add a small "Made with TileIQ" line at the bottom of the quote</label>
+  <p class="qt-example-note">Example figures only, to show how it works. They aren't price guidance: use your own rates.</p>
+  <div class="qt-actions">
+    <button type="button" class="btn btn-primary" id="qt-print">Print or save as PDF</button>
+    <button type="button" class="qt-btn" id="qt-example">Fill in an example</button>
+    <button type="button" class="qt-btn" id="qt-clear">Clear</button>
+  </div>
+  <p class="qt-privacy">Your details never leave your device. To save a PDF, choose "Save as PDF" as the printer.</p>
+  <div class="qt-doc" id="qt-doc" aria-hidden="true"></div>
+</div>
+<script src="/guides/quote-template.js" defer></script>
+<p>Quoting every job like this takes time. In <a href="/tiling-quote-app/">TileIQ's quote app</a> you measure the room once and it fills in the labour, materials and tanking from your own rates, then sends the quote for your customer to accept online.</p>
 
 <h2>Quote or estimate?</h2>
 <p>A <strong>quote</strong> is a fixed price for the work described. An <strong>estimate</strong> is your best guess and can change. Customers prefer quotes. If you can't see what's under the old tiles, give a fixed quote for the work you can see and say how anything you find will be priced, for example "making good walls after removal: £X per m² or at day rate if needed".</p>
@@ -38,7 +110,7 @@
 </table>
 
 <h2>Example tiling quote layout</h2>
-<p>Copy this layout and swap in your own details and prices:</p>
+<p>Prefer to write your own? This is the same layout as plain text, ready to copy into an email or document:</p>
 <div class="guide-note">
 <p><strong>QUOTATION Q-1042</strong><br>Issued 20 October 2026 · Valid for 30 days</p>
 <p><strong>Your Tiling Ltd</strong> · 01234 567890 · hello@yourtiling.co.uk<br>

@@ -1,0 +1,75 @@
+/* Free tiling quote template (/guides/tiling-quote-template/). Screen: the form, in the guide's
+   dark style. Print: only the quote document, black on white, when started from the template's
+   button (html.qt-printing); printing the page any other way prints the guide as normal. */
+.qt { background: linear-gradient(155deg, #0e1315, #080b0d); border: 1px solid #222d31; border-radius: 18px; padding: 24px; margin: 18px 0 30px; }
+.qt-part { border: 0; margin: 0 0 22px; padding: 0; min-width: 0; }
+.qt-part legend { font: 800 13px/1 Manrope, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--yellow); margin-bottom: 14px; padding: 0; }
+.qt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.qt-grid .qt-wide { grid-column: 1 / -1; }
+.qt label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #c3ccd0; }
+.qt-block { margin-bottom: 12px; }
+.qt input, .qt select, .qt textarea, .qt output { padding: 10px 12px; border-radius: 8px; border: 1px solid #2a343a; background: #080b0d; color: #fff; font-size: 14px; line-height: 1.4; font-family: inherit; width: 100%; box-sizing: border-box; }
+.qt textarea { resize: vertical; }
+.qt input[type=file] { padding: 7px 8px; font-size: 13px; }
+.qt input:focus, .qt select:focus, .qt textarea:focus { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.qt-hint { font-size: 13px; color: #767e83; margin: -4px 0 10px; }
+.qt-items { display: grid; gap: 8px; margin-bottom: 10px; }
+.qt-row { display: grid; grid-template-columns: minmax(0, 3fr) 70px 78px 92px 96px 36px; gap: 8px; align-items: center; }
+.qt-head span { font-size: 12px; color: #767e83; }
+.qt output { border-color: transparent; background: none; text-align: right; color: var(--yellow); font-weight: 700; padding-right: 2px; }
+.qt-del { background: none; border: 1px solid #2a343a; color: #c3ccd0; border-radius: 8px; height: 38px; cursor: pointer; font-size: 18px; line-height: 1; }
+.qt-del:hover { border-color: #c3ccd0; }
+.qt-btn { background: none; border: 1px solid #2a343a; color: #fff; border-radius: 10px; padding: 10px 16px; font-weight: 600; font-size: 14px; font-family: inherit; cursor: pointer; }
+.qt-btn:hover { border-color: var(--yellow); }
+.qt-money { margin-top: 16px; }
+.qt-totals { margin-top: 16px; padding-top: 14px; border-top: 1px solid #222d31; display: grid; gap: 8px; }
+.qt-totals div { display: flex; justify-content: space-between; font-size: 14px; color: #c3ccd0; }
+.qt-totals div[hidden] { display: none; }
+.qt-totals b { color: #fff; font: 800 16px Manrope, sans-serif; }
+.qt-totals .qt-total b { color: var(--yellow); font-size: 22px; }
+.qt-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.qt-check { flex-direction: row !important; align-items: center; gap: 10px !important; margin: 0 0 14px; }
+.qt .qt-check input { width: 18px; height: 18px; padding: 0; accent-color: var(--yellow); }
+.qt-privacy { font-size: 12px; color: #767e83; margin: 12px 0 0; }
+.qt-example-note { display: none; font-size: 13px; color: var(--yellow); margin: 0 0 12px; }
+.qt-is-example .qt-example-note { display: block; }
+.qt-noscript { color: var(--yellow); }
+.qt-doc { display: none; }
+@media (max-width: 640px) {
+  .qt { padding: 18px 14px; }
+  .qt-grid { grid-template-columns: 1fr; }
+  .qt-head { display: none; }
+  .qt-row.qt-line { grid-template-columns: 1fr 1fr 1fr 36px; padding: 10px; border: 1px solid #222d31; border-radius: 10px; }
+  .qt-line .qt-desc { grid-column: 1 / -1; }
+  .qt-line .qt-amt { grid-column: 1 / 4; text-align: left; padding-left: 0; }
+  .qt-line .qt-del { grid-column: 4; grid-row: 3; }
+}
+
+/* The printed quote */
+@media print {
+  /* Only the quote and the elements that contain it are laid out, so it fits on its own page(s) */
+  html.qt-printing body *:not(.qt-doc):not(.qt-doc *):not(:has(.qt-doc)) { display: none !important; }
+  html.qt-printing body, html.qt-printing body *:has(.qt-doc) { margin: 0 !important; padding: 0 !important; border: 0 !important;
+    background: #fff !important; box-shadow: none !important; max-width: none !important; width: auto !important;
+    position: static !important; display: block !important; min-height: 0 !important; }
+  html.qt-printing .qt-doc { display: block; color: #111; font: 11pt/1.45 'DM Sans', Arial, sans-serif; }
+  @page { margin: 16mm; }
+}
+.qt .qt-doc .qtd-head { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 2px solid #111; }
+.qt .qt-doc .qtd-logo { max-height: 60px; max-width: 180px; margin-bottom: 6px; display: block; }
+.qt .qt-doc .qtd-biz { font-size: 15pt; font-weight: 700; }
+.qt .qt-doc .qtd-small { font-size: 9.5pt; color: #444; }
+.qt .qt-doc .qtd-meta { text-align: right; }
+.qt .qt-doc .qtd-title { font-size: 18pt; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.qt .qt-doc h3 { font-size: 11pt; margin: 14px 0 4px; color: #111; }
+.qt .qt-doc p { margin: 0 0 8px; color: #111; }
+.qt .qt-doc strong { color: #111; }
+.qt .qt-doc .qtd-pre { white-space: pre-wrap; }
+.qt .qt-doc .qtd-table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 10.5pt; }
+.qt .qt-doc .qtd-table th, .qt .qt-doc .qtd-table td { border-bottom: 1px solid #ccc; padding: 6px 4px; text-align: left; color: #111; background: none; }
+.qt .qt-doc .qtd-table th { font-size: 9pt; text-transform: uppercase; letter-spacing: .03em; color: #444; }
+.qt .qt-doc .qtd-table .num { text-align: right; white-space: nowrap; }
+.qt .qt-doc .qtd-table tfoot td { border-top: 0; border-bottom: 0; padding-top: 4px; font-weight: 700; color: #111; }
+.qt .qt-doc .qtd-table tfoot .qtd-total td { font-weight: 800; font-size: 12pt; border-top: 2px solid #111; }
+.qt .qt-doc .qtd-credit { margin-top: 22px; padding-top: 8px; border-top: 1px solid #ddd; font-size: 8.5pt; color: #777; }
+.qt .qt-doc .qtd-credit a { color: #777; font-weight: 400; text-decoration: none; }
