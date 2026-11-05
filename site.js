@@ -1,6 +1,8 @@
 // TileIQ website: header dropdowns, workflow tabs, scroll reveal and the mobile "Try free" bar.
 // The mobile menu itself (open/close, Escape, outside click) stays in mobile-menu.js.
 (() => {
+  if (window.__tileiqSiteJs) return;                     // loaded twice: the second copy would undo every click
+  window.__tileiqSiteJs = true;
   const header = document.querySelector(".site-header");
   const nav = document.getElementById("site-nav");
 

@@ -45,6 +45,20 @@ test.describe("Header navigation", () => {
     await expect(page).toHaveURL(/\/guides\/$/);
   });
 
+  for (const path of ["/", "/features"]) {
+    test(`Calculators and More menus open and their links work on ${path}`, async ({ page, isMobile }) => {
+      await page.goto(path);
+      const nav = page.locator("#site-nav");
+      if (isMobile) await page.locator(".mobile-menu-btn").click();
+      await nav.getByRole("button", { name: "More" }).click();
+      await expect(nav.getByRole("link", { name: "Contact" })).toBeVisible();
+      await nav.getByRole("button", { name: "Calculators" }).click();
+      await expect(nav.getByRole("link", { name: "Contact" })).toBeHidden();
+      await nav.getByRole("link", { name: "Floor tiling calculator" }).click();
+      await expect(page).toHaveURL(/\/floor-tiling-calculator\/$/);
+    });
+  }
+
   test("pages fit the screen without sideways scrolling", async ({ page }) => {
     for (const path of ["/", "/features", "/floor-tiling-calculator/", "/guides/", "/blog/"]) {
       await page.goto(path);
