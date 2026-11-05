@@ -52,6 +52,8 @@ test.describe("Shared header", () => {
       await expect(page.locator(".site-header .nav-actions a.btn-primary")).toHaveAttribute("href", "https://tile-iq.com/app/demo");
       await expect(page.locator(".site-header .nav-actions a.btn-primary")).toBeVisible();
       await expect(page.locator("footer .footer-bottom")).toBeVisible();
+      // a second copy of site.js toggles every menu twice per click
+      await expect(page.locator('script[src="/site.js"], script[src="site.js"]')).toHaveCount(1);
     });
   }
 });

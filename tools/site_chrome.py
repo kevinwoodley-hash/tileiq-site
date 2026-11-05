@@ -195,18 +195,25 @@ SITE_JS = '<script src="/site.js" defer></script>'
 
 
 def ensure_assets(s, path):
-    if 'href="/site.css"' not in s:
+    if not re.search(r'href="/?site\.css"', s):
         sheets = list(re.finditer(r'[ \t]*<link rel="stylesheet" href="[^"]+"\s*/?>', s))
         if sheets:
             s = s[:sheets[-1].end()] + "\n" + SITE_CSS + s[sheets[-1].end():]
         else:
             # Pages with only inline <style>: load site.css first so the page's own rules still win
             s = s.replace("</title>", "</title>\n" + SITE_CSS, 1)
-    if 'src="/site.js"' not in s:
+    # Each script/stylesheet once: a second copy of site.js would toggle the menus twice per click
+    if not re.search(r'src="/?site\.js"', s):
         if '<script src="/mobile-menu.js"></script>' not in s and '<script src="mobile-menu.js"></script>' not in s:
             s = s.replace("</body>", '<script src="/mobile-menu.js"></script>\n</body>', 1)
         s = re.sub(r'(<script src="/?mobile-menu\.js"></script>)', r"\1\n" + SITE_JS, s, count=1)
     return s
+
+
+def check_single_includes(path, s):
+    for pat in (r'src="/?site\.js"', r'href="/?site\.css"', r'src="/?mobile-menu\.js"'):
+        if len(re.findall(pat, s)) > 1:
+            sys.exit(f"{path}: {pat} is included more than once")
 
 
 def apply(path, current, home=False):
@@ -224,6 +231,7 @@ def apply(path, current, home=False):
             re.sub(r"(\s*<script[^>]*src=\"/?mobile-menu\.js\")", "\n" + footer().replace("\\", "\\\\") + r"\1", s, count=1) \
             if "mobile-menu.js" in s else s.replace("</body>", footer() + "\n</body>", 1)
     s = ensure_assets(s, path)
+    check_single_includes(path, s)
     return before, s
 
 
