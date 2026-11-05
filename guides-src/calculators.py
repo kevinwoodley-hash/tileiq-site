@@ -348,7 +348,7 @@ mat_guide = prose("""        <h2 id="how-to-calculate">How to work out how many 
         <p>For 600 × 600 mm tiles, 9 mm thick with 3 mm joints, that's 1200 ÷ 360,000 × 3 × 9 × 1.6 = 0.144 kg per m². The same joint on 100 × 100 mm tiles uses 0.864 kg per m², six times as much. The calculator adds 10% for waste. Always check the coverage on the bag of the grout you're using.</p>
 
         <h2 id="more-calculators">Pricing the job as well?</h2>
-        <p>Once you know the materials, the <a href="/tiling-labour-cost-calculator/">tiling labour cost calculator</a> prices the labour for walls, floors and extras like tanking and levelling. Tilers can do all of it in the <a href="/app/demo" data-cta-kind="demo">TileIQ online app</a>, which works out materials for every wall and floor on a job and puts them into the quote.</p>""")
+        <p>Once you know the materials, the <a href="/tiling-labour-cost-calculator/">tiling labour calculator</a> prices the labour for walls, floors and extras like tanking and levelling. Tilers can do all of it in the <a href="/app/demo" data-cta-kind="demo">TileIQ online app</a>, which works out materials for every wall and floor on a job and puts them into the quote.</p>""")
 
 mat_faqs = [
     ("How many tiles do I need for 10m²?",
@@ -413,8 +413,8 @@ day_script = """
 day_sections = section("01", "HOW IT WORKS", "Day rate = what you need ÷ the days you can bill",
     "Add the income you want to your yearly business costs, then divide by the days you can actually bill. Start from 260 weekdays and take off holidays, quoting and admin days, and time lost to sickness, weather and gaps between jobs. Most self-employed tilers end up with around 200 billable days. Dividing the day rate by how much you lay gives a per m² rate. Checkatrade's typical output is 10–15 m² a day on walls and 8–12 m² on floors.",
     """<article><h3>Step-by-step guide</h3><p>The full method, with a worked example and what to include in your costs.</p><a href="/guides/self-employed-tiler-day-rate/">Read the day-rate guide →</a></article>
-          <article><h3>Compare with the going rate</h3><p>Per m², day and hourly rates across the UK, by region and tile type.</p><a href="/guides/tiling-labour-rates-uk/">UK tiling labour rates →</a></article>
-          <article><h3>Price a job</h3><p>Turn your rates into a labour price for walls, floors and extras.</p><a href="/tiling-labour-cost-calculator/">Labour cost calculator →</a></article>""")
+          <article><h3>Compare with the going rate</h3><p>Typical UK per m², day and hourly rates, and what affects them.</p><a href="/guides/tiling-labour-rates-uk/">How much does a tiler charge? →</a></article>
+          <article><h3>Price a job</h3><p>Turn your rates into a labour price for walls, floors and extras.</p><a href="/tiling-labour-cost-calculator/">Labour calculator →</a></article>""")
 
 # ── Labour cost calculator ───────────────────────────────────────────────────
 lab_calc = "\n".join([
@@ -445,7 +445,7 @@ lab_calc = "\n".join([
     res("lc-res-perday", "Earns per day"),
     '          </div>',
     '          <p class="calc-check" id="lc-check"></p>',
-    '          <p class="calc-note">Labour only: tiles, adhesive and grout are extra (see the <a href="/tiling-material-calculator/">material calculator</a>). Starting values are examples: about £50/m² labour and £200–£350 a day are typical UK figures (Checkatrade, 2026), and levelling is around £18–£35/m². Use your own rates.</p>',
+    '          <p class="calc-note">Labour only: tiles, adhesive and grout are extra (see the <a href="/tiling-material-calculator/">material calculator</a>). Starting values are examples: about £50/m² labour and £200–£350 a day are typical UK figures (Checkatrade, 2026). Use your own rates.</p>',
 ])
 lab_script = """
   function calc() {
@@ -468,11 +468,23 @@ lab_script = """
     else if (diff > 0.25) { c.textContent = 'This works out ' + Math.round(diff * 100) + '% above your day rate. Check it is competitive for the job.'; c.className = 'calc-check high'; }
     else { c.textContent = 'In line with your day rate.'; c.className = 'calc-check ok'; }
   }"""
-lab_sections = section("01", "HOW IT WORKS", "Price the labour, then check it against your day rate",
+lab_example = prose("""        <h2 id="worked-example">Worked example: pricing the labour for a bathroom</h2>
+        <p>A bathroom with 18 m² of wall tiles at £45 per m² and a 4 m² floor at £50 per m². The shower needs tanking (£250), the floor needs levelling (4 m² at £25 per m²) and the trims and sealing come to £60. You lay about 8 m² a day on walls and floors, and your day rate is £300.</p>
+        """ + table(["Step", "Working", "Result"], [
+            ["Tiling labour", "18 m² × £45 + 4 m² × £50", "£1,010"],
+            ["Extras", "£250 tanking + 4 m² × £25 levelling + £60 trims and sealing", "£410"],
+            ["Labour total", "£1,010 + £410", "£1,420"],
+            ["Days tiling", "18 ÷ 8 + 4 ÷ 8 = 2.75, rounded up to the half day", "3 days"],
+            ["Earns per day", "£1,010 ÷ 3 days", "£337"],
+        ]) + """
+        <p>£337 a day is in line with a £300 day rate, so the price works. Put the same figures into the calculator above and you'll get the same answer. The extras are left out of the per day figure on purpose: tanking and levelling have their own costs and drying time, so they're priced on their own.</p>
+        <p>On a small job the sum often comes out well below your day rate, because the setting up and cutting take as long as on a big one. That's what the minimum charge is for. For a full bathroom quote with materials, see <a href="/guides/how-to-quote-bathroom-tiling/">how to quote a bathroom tiling job</a>.</p>""")
+
+lab_sections = lab_example + section("01", "HOW IT WORKS", "Price the labour, then check it against your day rate",
     "Multiply each area by your per m² rate and add any extras priced separately, such as strip-out, tanking and levelling. Then work out how many days the tiling will take from how much you lay a day. Dividing the tiling price by those days shows what the job really earns per day. If it falls well short of your day rate, the job needs a higher rate or a minimum charge. That's common for small bathrooms with lots of cuts.",
     """<article><h3>Quoting a bathroom</h3><p>A step-by-step guide with a worked example for a 2.5 × 2 m bathroom.</p><a href="/guides/how-to-quote-bathroom-tiling/">Read the guide →</a></article>
           <article><h3>Work out your day rate</h3><p>Find the rate that covers your costs and time off.</p><a href="/tiling-day-rate-calculator/">Day-rate calculator →</a></article>
-          <article><h3>Going rates</h3><p>What UK tilers charge per m², per day and by region.</p><a href="/guides/tiling-labour-rates-uk/">UK tiling labour rates →</a></article>""")
+          <article><h3>Going rates</h3><p>What UK tilers charge per m², per day and per hour, and what typical jobs cost.</p><a href="/guides/tiling-labour-rates-uk/">How much does a tiler charge? →</a></article>""")
 
 # ── Floor and wall calculators: the material calculator's maths, with the area worked out from
 # measurements instead of typed in. Same tile, adhesive and grout formulas as above.
@@ -648,16 +660,16 @@ pages = [
      "Enter the area you're tiling and the tile size to work out how many tiles and boxes you need, plus adhesive and grout, with wastage for straight, diagonal and herringbone layouts. It works for floors and walls, and there's nothing to sign up for.",
      mat_calc, mat_sections, mat_script,
      dict(app_name="TileIQ tile calculator", features=MAT_PAGE_FEATURES, faqs=mat_faqs)),
-    ("tiling-day-rate-calculator", "Tiler Day Rate Calculator (UK) | TileIQ",
+    ("tiling-day-rate-calculator", "Tiler Day Rate Calculator: Set Your Own Rate (UK) | TileIQ",
      "Free day-rate calculator for self-employed tilers: work out the day rate, hourly rate and per m² rate that cover your income, costs, holidays and quoting days.",
      "Tiler day rate calculator", "FREE TILING CALCULATOR", "Tiler day rate calculator",
-     "Work out the day rate you need from what you want to earn, your business costs and the days you can actually bill. You also get your hourly rate and a per m² rate for walls and floors.",
+     "For self-employed tilers: work out the day rate you need from what you want to earn, your business costs and the days you can actually bill. You also get your hourly rate and a per m² rate for walls and floors. Want to know what tilers typically charge? See <a href=\"/guides/tiling-labour-rates-uk/\">how much a tiler charges</a>.",
      day_calc, day_sections, day_script,
      dict(features=["Day rate", "Hourly rate", "Per m² rate for walls and floors", "VAT threshold check"])),
-    ("tiling-labour-cost-calculator", "Tiling Labour Cost Calculator (UK) | TileIQ",
-     "Free tiling labour cost calculator: price walls, floors and extras like tanking and levelling, estimate days on site and check the job against your day rate.",
-     "Tiling labour cost calculator", "FREE TILING CALCULATOR", "Tiling labour cost calculator",
-     "Price the labour for a tiling job from your per m² rates, add extras such as tanking and levelling, and check what the job earns per day against your day rate.",
+    ("tiling-labour-cost-calculator", "Tiling Labour Calculator for Tilers: Price a Job | TileIQ",
+     "Free labour calculator for tilers: price walls, floors, tanking and levelling from your own rates, see days on site and check the job against your day rate.",
+     "Tiling labour calculator", "FREE CALCULATOR FOR TILERS", "Tiling labour calculator for tilers",
+     "Price the labour for a job from your own per m² rates, add extras such as tanking and levelling, and see what it earns per day against your day rate. Having a room tiled and want to know what it should cost? See <a href=\"/guides/tiling-labour-rates-uk/\">how much a tiler charges</a>.",
      lab_calc, lab_sections, lab_script,
      dict(features=["Wall and floor labour", "Extras such as tanking and levelling", "Days on site", "Check against your day rate"])),
     ("floor-tiling-calculator", "Floor Tile Calculator: Tiles, Adhesive & Grout | TileIQ",

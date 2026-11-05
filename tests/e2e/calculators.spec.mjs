@@ -215,6 +215,18 @@ test.describe("Tiling labour cost calculator", () => {
     await expect(page.locator("#lc-check")).toHaveClass(/\bhigh\b/);
   });
 
+  test("matches the bathroom worked example on the page", async ({ page }) => {
+    await fill(page, { "lc-walls": 18, "lc-floors": 4, "lc-wrate": 45, "lc-frate": 50,
+                       "lc-tank": 250, "lc-lev-m2": 4, "lc-lev-rate": 25, "lc-other": 60 });
+    await expect(page.locator("#lc-res-tiling")).toHaveText("£1,010");
+    await expect(page.locator("#lc-res-extras")).toHaveText("£410");
+    await expect(page.locator("#lc-res-total")).toHaveText("£1,420");
+    await expect(page.locator("#lc-res-days")).toHaveText("3 days tiling");
+    await expect(page.locator("#lc-res-perday")).toHaveText("£337");
+    await expect(page.locator("#lc-check")).toHaveText("In line with your day rate.");
+    await expect(page.locator("#worked-example")).toBeAttached();
+  });
+
   test("rounds tiling time up to the half day", async ({ page }) => {
     await fill(page, { "lc-walls": 4, "lc-floors": 0 });
     await expect(page.locator("#lc-res-days")).toHaveText("0.5 days tiling");
