@@ -18,9 +18,16 @@ Changes in this folder do not modify the TileIQ app.
 
 ## Website files
 
-- `index.html` — redesigned marketing homepage
-- `style.css` — website-only styling
-- `script.js` — website-only navigation and reveal effects
+- `index.html` — marketing homepage (styles: `site.css` + `home.css`)
+- `site.css` — shared design system: tokens, buttons, store badges, header, footer. Every
+  marketing page loads it after its own stylesheet.
+- `home.css` — homepage sections only
+- `style.css` — inner pages (features, landing pages, calculators, blog, contact, book a demo)
+- `site.js` — header dropdowns, homepage workflow tabs, scroll reveal, mobile "Try free" bar;
+  `mobile-menu.js` opens and closes the mobile menu
+- `tools/site_chrome.py` — the shared header and footer live here and are written into every page.
+  After changing them run `python3 tools/site_chrome.py` and then `python3 guides-src/build.py`
+  (the guides copy the header and footer from a blog page). CI fails if a page is out of date.
 - `_redirects` — retained routing rules for `/app` when deployed alongside the existing app
 
 All main calls-to-action use the existing `/app` route. The app itself is not included here.

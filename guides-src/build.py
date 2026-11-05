@@ -71,10 +71,11 @@ def read_guides():
 def site_chrome():
     blog = open(os.path.join(ROOT, "blog", "how-to-measure-a-room-for-tiling", "index.html"), encoding="utf-8").read()
     header = re.search(r"  <header class=\"site-header contact-header\">.*?</header>", blog, re.S).group(0)
+    # The blog page marks Blog (in the More menu) as current; the guides mark Guides instead.
+    # The header itself comes from tools/site_chrome.py.
+    header = header.replace(' aria-current="page"', '').replace('class="nav-drop active"', 'class="nav-drop"')
     header = header.replace(' class="active" href="/blog/"', ' href="/blog/"')
-    header = header.replace('<a href="/guides/">Guides</a>', '<a class="active" href="/guides/">Guides</a>')
-    if 'href="/guides/"' not in header:
-        header = header.replace('<a href="/blog/">Blog</a>', '<a class="active" href="/guides/">Guides</a>\n        <a href="/blog/">Blog</a>')
+    header = header.replace('<a href="/guides/">Guides</a>', '<a class="active" href="/guides/" aria-current="page">Guides</a>')
     footer = re.search(r"  <footer>.*?</footer>", blog, re.S).group(0)
     return header, footer
 
@@ -107,6 +108,7 @@ def head(title, desc, url, og_type, ld, robots=None, extra=""):
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css" />
   <link rel="stylesheet" href="/guides/guides.css" />
+  <link rel="stylesheet" href="/site.css" />
   <script type="application/ld+json">{json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")}</script>
 </head>"""
 
@@ -212,6 +214,7 @@ def build_guide(g, by_slug, header, footer):
 
 {footer}
 <script src="/mobile-menu.js"></script>
+<script src="/site.js" defer></script>
 <script src="/guides/guides.js" defer></script>
 </body>
 </html>
@@ -258,6 +261,7 @@ def build_hub(guides, header, footer, tools):
   </main>
 {footer}
 <script src="/mobile-menu.js"></script>
+<script src="/site.js" defer></script>
 <script src="/guides/guides.js" defer></script>
 </body>
 </html>
@@ -303,6 +307,7 @@ def build_about(header, footer):
   </main>
 {footer}
 <script src="/mobile-menu.js"></script>
+<script src="/site.js" defer></script>
 </body>
 </html>
 """

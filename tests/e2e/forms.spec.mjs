@@ -48,17 +48,31 @@ test.describe("Contact form (/contact.html)", () => {
   });
 });
 
-test.describe("Contact form (/contact/)", () => {
-  test("posts the form and resets it", async ({ page }) => {
-    await page.route(FORMSPREE, route =>
-      route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
-    await page.goto("/contact/");
-    await page.locator("#name").fill("Test Tiler");
-    await page.locator("#email").fill("test@example.com");
-    await page.locator("#message").fill("Hello");
-    await page.locator("#send-btn").click();
-    await expect(page.locator("#success-msg")).toBeVisible();
-    await expect(page.locator("#name")).toHaveValue("");
+test.describe("Contact form spam trap", () => {
+  // /contact/ used to be a second copy of this form; it now redirects to /contact (see _redirects),
+  // and its honeypot field moved here.
+  test("the hidden website field is off screen and sent with the enquiry", async ({ page }) => {
+    let body = "";
+    await page.route(FORMSPREE, route => {
+      body = route.request().postData() || "";
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' });
+    });
+    await page.goto("/contact.html");
+    const trap = page.locator("#contact-website");
+    await expect(trap).toHaveAttribute("tabindex", "-1");
+    expect((await trap.boundingBox()).x).toBeLessThan(0);
+    await page.locator("#contact-name").fill("Test Tiler");
+    await page.locator("#contact-email").fill("test@example.com");
+    await page.locator("#contact-message").fill("Hello");
+    await page.locator("#contact-submit").click();
+    await expect(page.locator("#contact-success")).toBeVisible();
+    expect(body).toContain('name="website"');
+  });
+
+  test("/contact/ is redirected to /contact", async () => {
+    const fs = await import("node:fs");
+    const rules = fs.readFileSync(new URL("../../_redirects", import.meta.url), "utf8");
+    expect(rules).toMatch(/^\/contact\/ \/contact 301$/m);
   });
 });
 
