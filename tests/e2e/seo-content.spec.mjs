@@ -51,6 +51,34 @@ test.describe("SEO content", () => {
     expect(app.aggregateRating).toBeUndefined();   // no reviews yet: never claim a rating
   });
 
+  test("the labour calculator is for tilers and sends homeowners to the rates guide", async ({ page }) => {
+    await page.goto("/tiling-labour-cost-calculator/");
+    await expect(page).toHaveTitle("Tiling Labour Calculator for Tilers: Price a Job | TileIQ");
+    await expect(page.locator("h1")).toHaveText("Tiling labour calculator for tilers");
+    await expect(page.locator('.calc-intro a[href="/guides/tiling-labour-rates-uk/"]')).toHaveText("how much a tiler charges");
+    await page.goto("/tiling-day-rate-calculator/");
+    await expect(page.locator('.calc-intro a[href="/guides/tiling-labour-rates-uk/"]')).toBeAttached();
+  });
+
+  test("the rates guide answers per m², per day and per hour, with sourced figures only", async ({ page }) => {
+    await page.goto("/guides/tiling-labour-rates-uk/");
+    await expect(page).toHaveTitle("How Much Does a Tiler Charge? Per m², Day & Hour (UK 2026)");
+    for (const q of ["per hour?", "per day?", "per m²?"]) {
+      await expect(page.locator("h3", { hasText: q })).toHaveCount(1);
+    }
+    // figures that the cited sources no longer support must not come back
+    const text = await page.locator("main").innerText();
+    for (const gone of ["£20–£50", "£18–£35", "£60–£95", "£80–£130", "by region and tile type"]) expect(text).not.toContain(gone);
+  });
+
+  test("no page calls the labour calculator a 'labour cost calculator'", async ({ page }) => {
+    for (const path of ["/", "/guides/tiling-labour-rates-uk/", "/tiling-material-calculator/", "/features"]) {
+      await page.goto(path);
+      const names = await page.locator('a[href="/tiling-labour-cost-calculator/"]').allTextContents();
+      expect(names.join(" | ").toLowerCase()).not.toContain("labour cost calculator");
+    }
+  });
+
   test("every JSON-LD block on the changed pages parses", async ({ page }) => {
     for (const path of ["/guides/tile-adhesive-coverage/", "/tiling-estimating-software/", "/tiling-material-calculator/"]) {
       await page.goto(path);

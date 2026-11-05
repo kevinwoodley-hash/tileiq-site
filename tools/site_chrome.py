@@ -75,7 +75,7 @@ CALCULATORS = [
     ("/tiling-material-calculator/", "Tile calculator", "Tiles, adhesive and grout"),
     ("/floor-tiling-calculator/", "Floor tile calculator", ""),
     ("/wall-tiling-calculator/", "Wall tile calculator", ""),
-    ("/tiling-labour-cost-calculator/", "Labour cost calculator", ""),
+    ("/tiling-labour-cost-calculator/", "Labour calculator", "For tilers: price a job"),
     ("/tiling-day-rate-calculator/", "Day rate calculator", ""),
 ]
 
@@ -144,7 +144,7 @@ def footer():
           <li><a href="/floor-tiling-calculator/">Floor tile calculator</a></li>
           <li><a href="/wall-tiling-calculator/">Wall tile calculator</a></li>
           <li><a href="/tiling-day-rate-calculator/">Tiler day rate calculator</a></li>
-          <li><a href="/tiling-labour-cost-calculator/">Tiling labour cost calculator</a></li>
+          <li><a href="/tiling-labour-cost-calculator/">Tiling labour calculator</a></li>
         </ul></nav>
         <nav class="footer-col" aria-label="Tiling guides"><h2>Tiling guides</h2><ul>
           <li><a href="/guides/tiling-labour-rates-uk/">How much does a tiler charge?</a></li>
