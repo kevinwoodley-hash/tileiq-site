@@ -1,16 +1,17 @@
 <!--meta
 {
-  "title": "How Far Does a 20kg Bag of Tile Adhesive Go? (UK Guide)",
-  "h1": "How far does a 20kg bag of tile adhesive go?",
-  "description": "Tile adhesive coverage per 20kg bag and per m², by trowel size, wall or floor and tile size, with UK manufacturer figures and worked examples.",
+  "title": "How Much Tile Adhesive Do I Need? Per m² and Per 20kg Bag",
+  "h1": "How much tile adhesive do I need per m² and per 20kg bag?",
+  "description": "How much tile adhesive per m² and how far a 20kg bag goes, by tile size, trowel and surface, with UK manufacturer figures, a calculator and worked examples.",
   "category": "Estimating & materials",
   "published": "2026-10-24",
-  "updated": "2026-10-24",
-  "quick_answer": "<p>A 20kg bag of cement-based tile adhesive covers roughly <strong>6–7.5 m² with a 6mm notched trowel</strong> and <strong>4–5 m² with a 10mm trowel</strong> (Mapei). On walls with smaller tiles a bag can stretch to 8–10 m². On floors and large-format tiles it can drop to around 4 m².</p><p>As a rule of thumb, allow about <strong>2.5–3 kg per m²</strong> for standard wall tiles and <strong>4–5 kg per m²</strong> for floors and large format.</p>",
+  "updated": "2026-11-05",
+  "quick_answer": "<p>Allow about <strong>2.5–3 kg per m²</strong> for standard tiles, <strong>2 kg per m²</strong> for mosaics and small tiles, and <strong>about 5 kg per m²</strong> for large-format tiles and external floors (Mapei Adesilex P9 data sheet).</p><p>That means a 20kg bag covers roughly <strong>6–7.5 m² with a 6mm notched trowel</strong> and <strong>4–5 m² with a 10mm trowel</strong>. On walls with small tiles a bag can stretch to 8–10 m². Uneven surfaces and back-buttering use more, so round up.</p>",
   "cta": "materials",
   "related": ["tile-wastage-and-materials", "how-to-price-large-format-porcelain-tiling", "how-to-quote-bathroom-tiling"],
   "sources": [
-    ["Mapei Adesilex P9 technical data sheet", "https://cdnmedia.mapei.com/docs/librariesprovider55/products-documents/1_102-adesilex-p9-gbxza_e952432f9ead489eb09651fca2345e3e.pdf?sfvrsn=2fe8b3b8_0", "consumption per m² and coverage per 20kg bag by trowel size"],
+    ["Mapei Adesilex P9 technical data sheet (UK, 102-12-2017)", "https://www.insulationshop.co/image/catalog/pdf/Mapei/Mapei-adesilex-p9-data_sheet.pdf", "consumption by tile size and Mapei trowel number: 2, 2.5–3 and 5 kg/m²; used by the calculator"],
+    ["Mapei Adesilex P9 technical data sheet", "https://cdnmedia.mapei.com/docs/librariesprovider55/products-documents/1_102-adesilex-p9-gbxza_e952432f9ead489eb09651fca2345e3e.pdf?sfvrsn=2fe8b3b8_0", "coverage per 20kg bag by trowel size"],
     ["Mapei Large Format Tile Adhesive technical data sheet", "https://cdnmedia.mapei.com/docs/librariesprovider14/products-documents/31_map011---technical-data-sheet-large-format-tile-adhesive-(1)_10c709f9b9a64d3bb0605fbf4612ba43.pdf?sfvrsn=f8939151_0", "1.2 kg/m² per mm of bed thickness"],
     ["Craven Dunnill: BAL Flex One 20kg", "https://www.cravendunnill.co.uk/bal-flex-one-standard-set-tile-adhesive-white-20kg", "retailer listing; approx. coverage per bag on dry walls, wet walls and floors"],
     ["The Underfloor Heating Store: Ultra Tile ProFlex SP 20kg", "https://www.theunderfloorheatingstore.com/products/proflex-sp-flexible-tile-adhesive", "retailer listing; 4.5 kg/m² at a 3mm bed"]
@@ -18,6 +19,40 @@
 }
 -->
 <p>There's no single answer, because coverage depends on the trowel, the tile and what you're sticking it to. But the manufacturers publish figures, and they're close enough to plan a job and order the right number of bags.</p>
+
+<h2>Tile adhesive calculator</h2>
+<p>Enter the area and the tile size to get an estimate of how much adhesive you need and how many bags to plan for. It gives a range, because real use depends on the product, the surface and how you lay the tiles.</p>
+<div class="calc-box guide-calc" data-calc="adhesive-guide" data-adhesive-calc>
+  <div class="calc-row"><label for="adh-area">Area to tile (m²)</label><input type="number" id="adh-area" value="10" min="0" step="0.1" inputmode="decimal"></div>
+  <div class="calc-row"><label for="adh-type">Tile size</label><select id="adh-type">
+    <option value="2-2">Mosaics and small tiles (2 kg/m²)</option>
+    <option value="2.5-3" selected>Normal size tiles (2.5–3 kg/m²)</option>
+    <option value="5-5">Large tiles and external floors (5 kg/m²)</option>
+    <option value="custom">Custom rate from my adhesive's data sheet</option>
+  </select></div>
+  <div class="calc-row" id="adh-custom-row" hidden><label for="adh-rate">Your adhesive (kg per m²)</label><input type="number" id="adh-rate" value="" min="0" step="0.1" inputmode="decimal" placeholder="from the data sheet"></div>
+  <div class="calc-row"><label for="adh-bag">Bag size (kg)</label><input type="number" id="adh-bag" value="20" min="0" step="1" inputmode="decimal"></div>
+  <div class="calc-row"><label for="adh-allow">Extra allowance (%)</label><input type="number" id="adh-allow" value="10" min="0" step="1" inputmode="decimal"></div>
+  <div class="calc-results" aria-live="polite">
+    <div class="calc-big"><span>Estimated adhesive</span><b id="adh-res-kg">–</b></div>
+    <div class="calc-big"><span>Bags to plan for</span><b id="adh-res-bags">–</b></div>
+    <p class="calc-working" id="adh-res-working"></p>
+  </div>
+  <p class="calc-note" id="adh-assumptions">Estimate only, not an exact quantity. The preset rates are Mapei's published consumption for Adesilex P9, a standard cement-based adhesive: mosaics and small sizes 2 kg/m² (Mapei trowel No. 4), normal sizes 2.5–3 kg/m² (No. 5), large sizes and external floors 5 kg/m² (No. 6). Other adhesives differ, so for any other product choose Custom and enter the figure from its data sheet. The extra allowance covers uneven surfaces, back-buttering and the odd remix; set it to 0 to see the data sheet figure alone. Bags are rounded up from the top of the range.</p>
+</div>
+
+<h2>Adhesive per m² by tile size</h2>
+<p>Mapei's UK data sheet for Adesilex P9 gives consumption by tile size. The bag column is our arithmetic for a 20kg bag, rounded down.</p>
+<table>
+  <thead><tr><th>Tile size (Mapei trowel)</th><th class="num">Adhesive per m²</th><th class="num">One 20kg bag covers about</th></tr></thead>
+  <tbody>
+    <tr><td>Mosaics and small sizes (No. 4)</td><td class="num">2 kg</td><td class="num">10 m²</td></tr>
+    <tr><td>Normal sizes (No. 5)</td><td class="num">2.5–3 kg</td><td class="num">6.5–8 m²</td></tr>
+    <tr><td>Large sizes and external floors (No. 6)</td><td class="num">5 kg</td><td class="num">4 m²</td></tr>
+  </tbody>
+  <caption>Source: Mapei Adesilex P9 technical data sheet (UK, 102-12-2017). Mapei trowel numbers are its own sizes, not notch depths in mm.</caption>
+</table>
+<p>These are the same figures the <a href="/tiling-material-calculator/">tile calculator</a> uses for its adhesive presets, so the two always agree.</p>
 
 <h2>20kg bag coverage by trowel size</h2>
 <p>The trowel notch decides how thick the bed is, and that decides how far a bag goes. Mapei's figures for a standard cement-based adhesive:</p>
@@ -41,7 +76,7 @@
   </tbody>
   <caption>Source: Craven Dunnill listing for BAL Flex One 20kg. The kg/m² column is the bag weight divided by the area.</caption>
 </table>
-<p>Wet walls take more because you want full coverage behind every tile, with no voids for water to sit in.</p>
+<p>Wet walls take more because you want full coverage behind every tile, with no voids for water to sit in. If you're measuring walls from scratch, the <a href="/wall-tiling-calculator/">wall tile calculator</a> takes off doors and windows and works out the adhesive too.</p>
 
 <h2>Large-format tiles</h2>
 <p>Large-format tiles need a thicker, fuller bed, and usually back-buttering too. Mapei gives large-format adhesive use by bed thickness: about <strong>1.2 kg per m² for every mm of bed</strong>.</p>
@@ -54,7 +89,7 @@
   </tbody>
   <caption>Worked from Mapei's 1.2 kg/m² per mm figure. Back-buttering adds to this.</caption>
 </table>
-<p>Different products vary. A retailer listing for Ultra Tile ProFlex SP, for example, gives 4.5 kg/m² at a 3mm bed, or about 4.4 m² per 20kg bag. Always check the data sheet for the adhesive you're using.</p>
+<p>Different products vary. A retailer listing for Ultra Tile ProFlex SP, for example, gives 4.5 kg/m² at a 3mm bed, or about 4.4 m² per 20kg bag. Always check the data sheet for the adhesive you're using. For pricing the labour and extra prep on big tiles, see <a href="/guides/how-to-price-large-format-porcelain-tiling/">how to price large-format porcelain tiling</a>.</p>
 
 <h2>What makes a bag go further or run out sooner</h2>
 <ul>
@@ -67,15 +102,30 @@
 <p>Lift a tile early on to check you're getting full coverage. If you're not, go up a trowel size rather than pressing harder.</p>
 
 <h2>Worked examples</h2>
+<p>Each example uses the data sheet figure, then rounds up. Exact multiples of a bag leave nothing spare, so treat them as the minimum.</p>
 <h3>Bathroom walls</h3>
-<p>20 m² of 300×600mm wall tiles in a shower area, at about 2.5–3 kg/m²: 20 × 3 = 60 kg. <strong>Order 3 bags</strong>, or 4 if the walls are out of true.</p>
+<p>20 m² of 300×600mm wall tiles in a shower area, at about 2.5–3 kg/m²: 20 × 2.5 to 20 × 3 = 50–60 kg. Three 20kg bags cover it only if everything goes to plan. Add 10% for out-of-true walls and the odd remix and it's up to 66 kg, so <strong>plan for 4 bags</strong>. Pricing the whole bathroom? See <a href="/guides/how-to-quote-bathroom-tiling/">how to quote a bathroom tiling job</a>.</p>
 <h3>Kitchen floor</h3>
-<p>12 m² of 600×600mm porcelain with a 10mm trowel, at about 5 kg/m²: 12 × 5 = 60 kg. <strong>Order 3 bags</strong>, plus a fourth if you're back-buttering.</p>
+<p>12 m² of 600×600mm porcelain with a 10mm trowel, at about 5 kg/m²: 12 × 5 = 60 kg, exactly 3 bags with nothing spare. If you're back-buttering or the floor isn't flat, <strong>plan for 4 bags</strong>. The guide to <a href="/guides/how-to-quote-a-kitchen-floor/">quoting a kitchen floor</a> covers the rest of the job.</p>
+<h3>Large-format floor</h3>
+<p>8 m² of 1200×600mm porcelain, at Mapei's 5 kg/m² for large sizes and floors: 8 × 5 = 40 kg, exactly 2 bags. Large tiles nearly always need back-buttering for full coverage, so <strong>plan for 3 bags</strong>.</p>
 <p>For a whole job, the free <a href="/tiling-material-calculator/">tile calculator</a> works out adhesive, grout and tiles together. The <a href="/floor-tiling-calculator/">floor</a> and <a href="/wall-tiling-calculator/">wall</a> calculators work it out from the room size. For wastage, grout and trims, see <a href="/guides/tile-wastage-and-materials/">how much tile and materials to order</a>.</p>
 
 <figure class="guide-figure">
   <img src="/guides/img/app-materials.webp" alt="TileIQ materials screen listing tiles, adhesive bags, grout bags, sealant and tanking kits" width="600" height="1300" loading="lazy">
-  <figcaption>TileIQ works out the adhesive bags for every wall and floor in the job.</figcaption>
+  <figcaption>TileIQ works out the adhesive bags for every wall and floor in the job. See how its <a href="/tiling-estimating-software/">tiling estimating software</a> does it.</figcaption>
 </figure>
+
+<h2>Common questions</h2>
+<h3>How much tile adhesive do I need for 10 m²?</h3>
+<p>For normal size tiles at 2.5–3 kg/m², about 25–30 kg, which is two 20kg bags. Allow a third if the surface is uneven or you're back-buttering. Mosaics need about 20 kg and large tiles about 50 kg.</p>
+<h3>Do floors need more adhesive than walls?</h3>
+<p>Usually, yes. Floor tiles are bigger and go down with a larger notch, so expect around 4–5 kg/m² on floors against 2–3 kg/m² on walls.</p>
+<h3>Does back-buttering use a lot more adhesive?</h3>
+<p>It adds roughly another millimetre of bed across the tile. On large tiles that's worth an extra bag on most floors.</p>
+<h3>Can I use these figures for ready-mixed tub adhesive?</h3>
+<p>No. Ready-mixed tubs are a different product, and their coverage is printed on the tub. Use that figure, or enter it as a custom rate in the calculator.</p>
+<h3>Why does the calculator give a range instead of an exact amount?</h3>
+<p>Manufacturers publish a range for normal tiles, and real use moves with the surface, the trowel and how you lay. The range shows what to expect; the bag count rounds up from the top of it so you don't run short.</p>
 
 <div class="guide-note">Coverage figures are manufacturer and retailer guides (see Sources). They change with the product, trowel, tile and surface. Always check the technical data sheet for the adhesive you're using.</div>
