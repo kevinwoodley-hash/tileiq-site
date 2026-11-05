@@ -95,6 +95,17 @@ test.describe("Tiling quote template", () => {
     await expect(doc).toContainText("Supplied by the customer.");
   });
 
+  test("adds a small Made with TileIQ line that the tiler can turn off", async ({ page }) => {
+    await page.evaluate(() => window.tileiqQuoteTemplate.buildDoc());
+    await expect(page.locator("#qt-doc .qtd-credit")).toContainText("Made with TileIQ");
+    await expect(page.locator("#qt-doc .qtd-credit a")).toHaveAttribute("href", "https://tile-iq.com/?utm_source=quote-template&utm_medium=pdf");
+    await page.locator("#qt-credit").uncheck();
+    await page.evaluate(() => window.tileiqQuoteTemplate.buildDoc());
+    await expect(page.locator("#qt-doc .qtd-credit")).toHaveCount(0);
+    await page.click("#qt-clear");
+    await expect(page.locator("#qt-credit")).toBeChecked();
+  });
+
   test("leaves out empty lines and says no VAT is charged when not registered", async ({ page }) => {
     await setLine(page, 0, { qty: 10, rate: 40 });
     await page.evaluate(() => window.tileiqQuoteTemplate.buildDoc());

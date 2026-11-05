@@ -144,6 +144,11 @@
      para('Payment:', [t.depPct ? 'Deposit of ' + gbp(t.dep) + ' (' + t.depPct + '%) to book the start date.' : '', v('qt-pay')].filter(Boolean).join(' ')),
      para('Guarantee:', v('qt-guar'))
     ].forEach(function (p) { if (p) doc.appendChild(p); });
+    if ($('qt-credit').checked) {   // optional, the tiler can untick it
+      var credit = el('p', 'qtd-credit', 'Made with TileIQ, quoting software for tilers · ');
+      var a = el('a', null, 'tile-iq.com'); a.href = 'https://tile-iq.com/?utm_source=quote-template&utm_medium=pdf';
+      credit.appendChild(a); doc.appendChild(credit);
+    }
   }
 
   // ── Events ──
@@ -174,7 +179,8 @@
     totals(); track('quote_template_example');
   });
   $('qt-clear').addEventListener('click', function () {
-    root.querySelectorAll('input:not([type=file]), textarea').forEach(function (i) { i.value = i.defaultValue; });
+    root.querySelectorAll('input:not([type=file]):not([type=checkbox]), textarea').forEach(function (i) { i.value = i.defaultValue; });
+    root.querySelectorAll('input[type=checkbox]').forEach(function (i) { i.checked = i.defaultChecked; });
     root.querySelectorAll('select').forEach(function (s) { s.selectedIndex = 0; });
     $('qt-logo').value = ''; logo = null;
     $('qt-date').value = today();
