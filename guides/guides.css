@@ -77,3 +77,11 @@
   .guide-page .post-hero { padding-top: 96px; }
   .guide-crumbs span:last-child { display: none; }
 }
+
+/* Inline calculator inside a guide (tile adhesive guide): one column, results under the inputs */
+.guide-body .guide-calc { display: block; max-width: none; margin: 18px 0 30px; padding: 24px; }
+.guide-body .guide-calc > .calc-results { position: static; margin-top: 18px; padding: 18px 0 0; border: 0; border-top: 1px solid #222d31; border-radius: 0; background: none; }
+.guide-body .guide-calc .calc-row { grid-template-columns: 1fr 260px; }
+.guide-body .guide-calc .calc-row[hidden] { display: none; }
+.guide-body .guide-calc .calc-working { font-size: 13px; color: #c3ccd0; margin: 4px 0 0; line-height: 1.5; }
+@media (max-width: 580px) { .guide-body .guide-calc .calc-row { grid-template-columns: 1fr; } .guide-body .guide-calc { padding: 20px 16px; } }

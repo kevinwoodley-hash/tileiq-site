@@ -152,3 +152,77 @@ test.describe("Tiling labour cost calculator", () => {
     await expect(page.locator("#lc-res-days")).toHaveText("1 day tiling");
   });
 });
+
+test.describe("Tile adhesive calculator (adhesive coverage guide)", () => {
+  test.beforeEach(async ({ page }) => { await page.goto("/guides/tile-adhesive-coverage/"); });
+
+  test("shows an estimated range and bags for the default 10 m² of normal tiles", async ({ page }) => {
+    // 10 m² × 2.5–3 kg/m² + 10% = 27.5–33 kg, shown in whole kg; bags round up from 33 kg
+    await expect(page.locator("#adh-res-kg")).toHaveText("about 28–33 kg");
+    await expect(page.locator("#adh-res-bags")).toHaveText("2 × 20 kg");
+    await expect(page.locator("#adh-res-working")).toHaveText(/10 m² × 2\.5–3 kg\/m² \+ 10% allowance\. Estimate/);
+  });
+
+  test("states its assumptions and that it is an estimate", async ({ page }) => {
+    const note = page.locator("#adh-assumptions");
+    await expect(note).toContainText("Estimate only, not an exact quantity");
+    await expect(note).toContainText("Adesilex P9");
+    await expect(note).toContainText("2 kg/m²");
+    await expect(note).toContainText("2.5–3 kg/m²");
+    await expect(note).toContainText("5 kg/m²");
+  });
+
+  test("presets use Mapei's published rates", async ({ page }) => {
+    await page.locator("#adh-type").selectOption("2-2");
+    await expect(page.locator("#adh-res-kg")).toHaveText("about 22 kg");   // 10 × 2 × 1.1
+    await expect(page.locator("#adh-res-bags")).toHaveText("2 × 20 kg");
+    await page.locator("#adh-type").selectOption("5-5");
+    await expect(page.locator("#adh-res-kg")).toHaveText("about 55 kg");   // 10 × 5 × 1.1
+    await expect(page.locator("#adh-res-bags")).toHaveText("3 × 20 kg");
+  });
+
+  test("a zero allowance shows the data sheet figure alone", async ({ page }) => {
+    await fill(page, { "adh-allow": 0 });
+    await expect(page.locator("#adh-res-kg")).toHaveText("about 25–30 kg");
+    await expect(page.locator("#adh-res-working")).not.toContainText("allowance");
+  });
+
+  test("an exact multiple of the bag size doesn't round up an extra bag", async ({ page }) => {
+    await fill(page, { "adh-area": 20, "adh-allow": 0 });   // 50–60 kg
+    await expect(page.locator("#adh-res-bags")).toHaveText("3 × 20 kg");
+  });
+
+  test("custom rate is hidden until chosen, then asks for the data sheet figure", async ({ page }) => {
+    await expect(page.locator("#adh-custom-row")).toBeHidden();
+    await page.locator("#adh-type").selectOption("custom");
+    await expect(page.locator("#adh-custom-row")).toBeVisible();
+    await expect(page.locator("#adh-res-kg")).toHaveText("–");
+    await expect(page.locator("#adh-res-working")).toHaveText(/data sheet/);
+    await fill(page, { "adh-rate": 4 });
+    await expect(page.locator("#adh-res-kg")).toHaveText("about 44 kg");   // 10 × 4 × 1.1
+    await expect(page.locator("#adh-res-bags")).toHaveText("3 × 20 kg");
+    await page.locator("#adh-type").selectOption("2.5-3");
+    await expect(page.locator("#adh-custom-row")).toBeHidden();
+  });
+
+  test("uses the bag size entered", async ({ page }) => {
+    await fill(page, { "adh-bag": 25 });
+    await expect(page.locator("#adh-res-bags")).toHaveText("2 × 25 kg");
+  });
+
+  test("treats blank and negative inputs as zero", async ({ page }) => {
+    await fill(page, { "adh-area": "" });
+    await expect(page.locator("#adh-res-kg")).toHaveText("–");
+    await expect(page.locator("#adh-res-bags")).toHaveText("–");
+    await fill(page, { "adh-area": 10, "adh-bag": -5 });
+    await expect(page.locator("#adh-res-bags")).toHaveText("enter a bag size");
+    await fill(page, { "adh-bag": 20, "adh-allow": -10 });
+    await expect(page.locator("#adh-res-kg")).toHaveText("about 25–30 kg");
+  });
+
+  test("every input has a visible label", async ({ page }) => {
+    for (const id of ["adh-area", "adh-type", "adh-bag", "adh-allow"]) {
+      await expect(page.locator(`label[for="${id}"]`)).toBeVisible();
+    }
+  });
+});
