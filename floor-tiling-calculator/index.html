@@ -8,14 +8,14 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Free floor tiling calculator: enter the room size to work out floor tiles, boxes, adhesive and grout, with wastage for straight, diagonal and herringbone layouts." />
-  <title>Floor Tiling Calculator: Tiles, Adhesive and Grout | TileIQ</title>
+  <meta name="description" content="Free floor tile calculator: enter the room length and width, take off units or a bath, and get the floor tiles, boxes, adhesive and grout you need." />
+  <title>Floor Tile Calculator: Tiles, Adhesive & Grout | TileIQ</title>
   <link rel="canonical" href="https://tile-iq.com/floor-tiling-calculator/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="TileIQ" />
   <meta property="og:url" content="https://tile-iq.com/floor-tiling-calculator/" />
-  <meta property="og:title" content="Floor Tiling Calculator: Tiles, Adhesive and Grout | TileIQ" />
-  <meta property="og:description" content="Free floor tiling calculator: enter the room size to work out floor tiles, boxes, adhesive and grout, with wastage for straight, diagonal and herringbone layouts." />
+  <meta property="og:title" content="Floor Tile Calculator: Tiles, Adhesive & Grout | TileIQ" />
+  <meta property="og:description" content="Free floor tile calculator: enter the room length and width, take off units or a bath, and get the floor tiles, boxes, adhesive and grout you need." />
   <meta property="og:image" content="https://tile-iq.com/images/og-image.jpg" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -45,7 +45,7 @@
         {
           "@type": "ListItem",
           "position": 3,
-          "name": "Floor tiling calculator",
+          "name": "Floor tile calculator",
           "item": "https://tile-iq.com/floor-tiling-calculator/"
         }
       ]
@@ -54,14 +54,75 @@
       "@type": "WebPage",
       "@id": "https://tile-iq.com/floor-tiling-calculator/#webpage",
       "url": "https://tile-iq.com/floor-tiling-calculator/",
-      "name": "Floor Tiling Calculator: Tiles, Adhesive and Grout | TileIQ",
-      "description": "Free floor tiling calculator: enter the room size to work out floor tiles, boxes, adhesive and grout, with wastage for straight, diagonal and herringbone layouts.",
+      "name": "Floor Tile Calculator: Tiles, Adhesive & Grout | TileIQ",
+      "description": "Free floor tile calculator: enter the room length and width, take off units or a bath, and get the floor tiles, boxes, adhesive and grout you need.",
       "isPartOf": {
         "@id": "https://tile-iq.com/#website"
       },
       "about": {
         "@id": "https://tile-iq.com/#organization"
+      },
+      "mainEntity": {
+        "@id": "https://tile-iq.com/floor-tiling-calculator/#calculator"
       }
+    },
+    {
+      "@type": "WebApplication",
+      "@id": "https://tile-iq.com/floor-tiling-calculator/#calculator",
+      "name": "TileIQ floor tile calculator",
+      "url": "https://tile-iq.com/floor-tiling-calculator/#calculator",
+      "description": "Free floor tile calculator: enter the room length and width, take off units or a bath, and get the floor tiles, boxes, adhesive and grout you need.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Any",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "inLanguage": "en-GB",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "GBP"
+      },
+      "provider": {
+        "@id": "https://tile-iq.com/#organization"
+      },
+      "featureList": [
+        "Floor area from room length and width",
+        "Extra areas and deductions",
+        "Tile area to buy, with wastage for straight, diagonal and herringbone layouts",
+        "Number of tiles and boxes",
+        "Tile adhesive in kg and bags",
+        "Grout in kg and bags"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://tile-iq.com/floor-tiling-calculator/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How many floor tiles do I need?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Multiply the length of the room by the width, take off anything you won't tile, and add 10% for a straight lay. Divide that by the area of one tile, or by the m² in a box, and round up. For the 12.72 m² kitchen above, that's 13.99 m² to buy: 39 tiles at 600 × 600 mm, or 10 boxes of 1.44 m²."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How much adhesive do I need for floor tiles?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Plan on about 5 kg per m² for large-format floor tiles and any floor that needs a solid bed, or about 3 kg per m² for smaller tiles on a flat floor. A 20 kg bag at 5 kg per m² covers about 4 m². Check the data sheet for the adhesive you're using."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Should I add extra for herringbone on a floor?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Allow 20–25% wastage for herringbone or chevron, compared with 10% for a straight lay, because every tile along the edge of the room is a cut. Choose herringbone in the layout setting to use 25%."
+          }
+        }
+      ]
     }
   ]
 }
@@ -90,9 +151,9 @@
         <div class="nav-drop active">
           <button type="button" aria-expanded="false" aria-controls="menu-calculators">Calculators <svg class="icon"><use href="#i-chevron"/></svg></button>
           <div class="nav-menu" id="menu-calculators">
-            <a href="/tiling-material-calculator/">Tiling calculator<small>Tiles, adhesive and grout</small></a>
-            <a href="/floor-tiling-calculator/" aria-current="page">Floor tiling calculator</a>
-            <a href="/wall-tiling-calculator/">Wall tiling calculator</a>
+            <a href="/tiling-material-calculator/">Tile calculator<small>Tiles, adhesive and grout</small></a>
+            <a href="/floor-tiling-calculator/" aria-current="page">Floor tile calculator</a>
+            <a href="/wall-tiling-calculator/">Wall tile calculator</a>
             <a href="/tiling-labour-cost-calculator/">Labour cost calculator</a>
             <a href="/tiling-day-rate-calculator/">Day rate calculator</a>
           </div>
@@ -125,10 +186,10 @@
   <main>
     <section class="features-hero calc-hero">
       <div class="container">
-        <p class="calc-crumbs"><a href="/">Home</a> › <a href="/guides/">Guides</a> › <span>Floor tiling calculator</span></p>
-        <span class="kicker">FREE TILING CALCULATOR</span>
-        <h1>Floor tiling calculator</h1>
-        <p class="calc-intro">Enter the room size and tile to work out how many floor tiles, boxes, and how much adhesive and grout you need. Free, with no sign-up.</p>
+        <p class="calc-crumbs"><a href="/">Home</a> › <a href="/guides/">Guides</a> › <span>Floor tile calculator</span></p>
+        <span class="kicker">FLOOR TILES</span>
+        <h1>Floor tile calculator</h1>
+        <p class="calc-intro">Enter the length and width of the room, add any bays or alcoves and take off anything you won't tile. You get the floor tiles, boxes, adhesive and grout you need. Free, with no sign-up.</p>
       </div>
     </section>
 
@@ -167,11 +228,32 @@
       </div>
     </section>
 
+    <section class="post-body-section calc-guide">
+      <div class="container post-body">
+        <h2 id="worked-example">Worked example: a kitchen floor with units fitted</h2>
+        <p>A 4.2 × 3.6 m kitchen, where the units are already in and you're tiling up to the plinths. There's a 4 m run of units, 0.6 m deep, so 2.4 m² isn't tiled. The tiles are 600 × 600 mm porcelain, 9 mm thick, laid straight with 3 mm joints, in boxes of 1.44 m².</p>
+        <div class="post-table-wrap"><table><thead><tr><th>Step</th><th class="num">Working</th><th class="num">Result</th></tr></thead><tbody><tr><td>Room</td><td>4.2 m × 3.6 m</td><td>15.12 m²</td></tr><tr><td>Take off the units</td><td>15.12 − 2.4</td><td>12.72 m² to tile</td></tr><tr><td>Tile area to buy</td><td>12.72 × 1.10</td><td>13.99 m²</td></tr><tr><td>Floor tiles</td><td>13.99 ÷ 0.36 = 38.9, rounded up</td><td>39 tiles</td></tr><tr><td>Boxes</td><td>13.99 ÷ 1.44 = 9.7, rounded up</td><td>10 boxes (14.40 m²)</td></tr><tr><td>Adhesive</td><td>12.72 m² × 5 kg</td><td>64 kg (4 × 20 kg bags)</td></tr><tr><td>Grout</td><td>0.144 kg per m² × 12.72 m², plus 10%</td><td>2.0 kg (1 × 2.5 kg bag)</td></tr></tbody></table></div>
+        <p>If the floor goes down before the kitchen is fitted, leave the deduction at 0 and tile the whole room.</p>
+
+        <h2 id="measuring">Measuring an awkward floor</h2>
+        <ul>
+          <li><strong>L-shaped rooms:</strong> split the floor into two rectangles. Put the bigger one in as the length and width, and the other in as extra area.</li>
+          <li><strong>Bays, alcoves and door thresholds:</strong> measure each one and add it as extra area. Thresholds are small but they're full of cuts.</li>
+          <li><strong>Baths, shower trays and fitted units:</strong> take them off only if they're already in, or going in on an untiled floor.</li>
+        </ul>
+        <p>Measure to the wall, not the skirting, if the skirting is coming off.</p>
+
+        <h2 id="floor-adhesive">Adhesive and preparation for floor tiles</h2>
+        <p>Floor tiles need more adhesive than wall tiles. Most floor tiles are bigger, and a floor needs a solid bed with no hollow spots under the tile. Mapei's data sheet gives about 5 kg per m² for large-format tiles and floors that need a solid bed, which is the starting value here. Smaller floor tiles on a flat floor can use about 3 kg per m².</p>
+        <p>The flatter the floor, the less adhesive you use and the less likely large tiles are to lip. Levelling, priming and boarding should go on the quote as their own lines: see <a href="/guides/how-much-to-charge-for-floor-preparation/">pricing floor preparation</a>.</p>
+        <p>Only got the area, or tiling walls and floors together? Use the <a href="/tiling-material-calculator/">tile calculator</a>.</p>
+      </div>
+    </section>
     <section class="feature-category">
       <div class="container">
         <div class="feature-category-heading">
           <span class="category-num">01</span>
-          <div><span class="kicker">HOW THE NUMBERS WORK</span><h2>Working out a floor</h2><p>Multiply the length by the width of the room, add any bays or alcoves, and take off anything that won't be tiled, like fitted kitchen units or a bath. Add wastage for the layout: about 10% for a straight lay, 15% for diagonal and 20–25% for herringbone. Floors usually need more adhesive than walls. Mapei's data sheet puts large-format tiles and floors that need a solid bed at about 5 kg/m², so that's the starting value here.</p></div>
+          <div><span class="kicker">FLOOR GUIDES</span><h2>Pricing the floor, not just the materials</h2><p>Floors often need more than tiling: levelling, boarding and slower layouts like herringbone. These guides cover how to price them.</p></div>
         </div>
         <div class="feature-detail-grid"><article><h3>Uneven floors cost time</h3><p>Levelling, priming and boarding should be priced separately from the tiling.</p><a href="/guides/how-much-to-charge-for-floor-preparation/">Pricing floor preparation →</a></article>
           <article><h3>Quoting a kitchen floor</h3><p>What to measure, what to allow for, and how to price it.</p><a href="/guides/how-to-quote-a-kitchen-floor/">Read the guide →</a></article>
@@ -184,8 +266,18 @@
           <span class="category-num">02</span>
           <div><span class="kicker">DOING THIS ON A REAL JOB</span><h2>Want TileIQ to do this on every job?</h2><p>Measure the room in TileIQ, or straight from a Leica Disto by Bluetooth, and it works out tiles, adhesive, grout and prep for every floor and wall, then puts them into the quote.</p></div>
         </div>
-        <div class="feature-detail-grid"><article><h3>Walls too?</h3><p>Work out tiles, adhesive and grout for walls, with doors and windows taken off.</p><a href="/wall-tiling-calculator/">Wall tiling calculator →</a></article>
+        <div class="feature-detail-grid"><article><h3>Walls too?</h3><p>Work out tiles, adhesive and grout for walls, with doors and windows taken off.</p><a href="/wall-tiling-calculator/">Wall tile calculator →</a></article>
           <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article></div>
+      </div>
+    </section>
+    <section class="post-body-section calc-faq" id="faq">
+      <div class="container post-body">
+        <h2>Frequently asked questions</h2>
+        <div class="guide-faq">
+          <details><summary>How many floor tiles do I need?</summary><p>Multiply the length of the room by the width, take off anything you won't tile, and add 10% for a straight lay. Divide that by the area of one tile, or by the m² in a box, and round up. For the 12.72 m² kitchen above, that's 13.99 m² to buy: 39 tiles at 600 × 600 mm, or 10 boxes of 1.44 m².</p></details>
+          <details><summary>How much adhesive do I need for floor tiles?</summary><p>Plan on about 5 kg per m² for large-format floor tiles and any floor that needs a solid bed, or about 3 kg per m² for smaller tiles on a flat floor. A 20 kg bag at 5 kg per m² covers about 4 m². Check the data sheet for the adhesive you're using.</p></details>
+          <details><summary>Should I add extra for herringbone on a floor?</summary><p>Yes. Allow 20–25% wastage for herringbone or chevron, compared with 10% for a straight lay, because every tile along the edge of the room is a cut. Choose herringbone in the layout setting to use 25%.</p></details>
+        </div>
       </div>
     </section>
     <section class="cta-section">
@@ -206,9 +298,9 @@
           <a class="btn btn-primary btn-sm" href="https://tile-iq.com/app/demo">Try Free Online</a>
         </div>
         <nav class="footer-col" aria-label="Free calculators"><h2>Free calculators</h2><ul>
-          <li><a href="/tiling-material-calculator/">Tiling calculator</a></li>
-          <li><a href="/floor-tiling-calculator/">Floor tiling calculator</a></li>
-          <li><a href="/wall-tiling-calculator/">Wall tiling calculator</a></li>
+          <li><a href="/tiling-material-calculator/">Tile calculator</a></li>
+          <li><a href="/floor-tiling-calculator/">Floor tile calculator</a></li>
+          <li><a href="/wall-tiling-calculator/">Wall tile calculator</a></li>
           <li><a href="/tiling-day-rate-calculator/">Tiler day rate calculator</a></li>
           <li><a href="/tiling-labour-cost-calculator/">Tiling labour cost calculator</a></li>
         </ul></nav>
