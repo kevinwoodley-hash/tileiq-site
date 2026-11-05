@@ -54,7 +54,7 @@ test.describe("Header navigation", () => {
       await expect(nav.getByRole("link", { name: "Contact" })).toBeVisible();
       await nav.getByRole("button", { name: "Calculators" }).click();
       await expect(nav.getByRole("link", { name: "Contact" })).toBeHidden();
-      await nav.getByRole("link", { name: "Floor tiling calculator" }).click();
+      await nav.getByRole("link", { name: "Floor tile calculator" }).click();
       await expect(page).toHaveURL(/\/floor-tiling-calculator\/$/);
     });
   }
