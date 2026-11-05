@@ -369,6 +369,7 @@
 
   $('calc-layout').addEventListener('change', () => { $('calc-waste').value = $('calc-layout').value; });
   $('calc-adh-type').addEventListener('change', () => { if ($('calc-adh-type').value) $('calc-adh-rate').value = $('calc-adh-type').value; });
+  const up = x => Math.ceil(x - 1e-9);   // round up, ignoring floating-point noise
   function getArea() { return num('fl-len') * num('fl-wid') + num('fl-extra') - num('fl-deduct'); }
   function calc() {
     const area = Math.max(0, getArea()), waste = num('calc-waste'), L = num('calc-tile-l'), W = num('calc-tile-w');
@@ -376,13 +377,13 @@
     const joint = num('calc-joint'), thick = num('calc-thick'), groutBag = num('calc-grout-bag') || 1;
     const buy = area * (1 + waste / 100);
     const tileM2 = (L / 1000) * (W / 1000);
-    const tiles = tileM2 > 0 && area > 0 ? Math.ceil(buy / tileM2) : 0;
-    const adhKg = area * adhRate, adhBags = Math.ceil(adhKg / adhBag);
+    const tiles = tileM2 > 0 && area > 0 ? up(buy / tileM2) : 0;
+    const adhKg = area * adhRate, adhBags = up(adhKg / adhBag);
     const groutPerM2 = L > 0 && W > 0 ? ((L + W) / (L * W)) * joint * thick * 1.6 : 0;
-    const groutKg = area * groutPerM2 * 1.1, groutBags = Math.ceil(groutKg / groutBag);
+    const groutKg = area * groutPerM2 * 1.1, groutBags = up(groutKg / groutBag);
     $('res-area').textContent = area.toFixed(2) + ' m²';
     $('res-tile-area').textContent = buy.toFixed(2) + ' m²';
-    $('res-boxes').textContent = boxM2 > 0 ? Math.ceil(buy / boxM2) + ' boxes (' + (Math.ceil(buy / boxM2) * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
+    $('res-boxes').textContent = boxM2 > 0 ? up(buy / boxM2) + ' boxes (' + (up(buy / boxM2) * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
     $('res-tile-count').textContent = tiles ? tiles + ' tiles' : '–';
     $('res-adhesive').textContent = adhKg.toFixed(0) + ' kg (' + adhBags + ' × ' + adhBag + ' kg)';
     $('res-grout').textContent = groutKg.toFixed(1) + ' kg (' + groutBags + ' × ' + groutBag + ' kg)';

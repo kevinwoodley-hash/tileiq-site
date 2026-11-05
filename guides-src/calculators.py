@@ -205,28 +205,85 @@ mat_calc = "\n".join([
     res("res-tile-count", "Approx. number of tiles"),
     res("res-adhesive", "Adhesive"),
     res("res-grout", "Grout"),
+    res("res-cost", "Materials cost"),
+    '            <p class="calc-working" id="res-working" aria-live="polite"></p>',
+    '            <p class="calc-copy-row"><button type="button" class="calc-copy" id="calc-copy">Copy results</button><span id="calc-copied" role="status"></span></p>',
     '          </div>',
+    # After the results, so on phones the answer comes before the optional extras
+    group("Prices (optional)"),
+    row("calc-price-m2", "Tile price (£ per m²)", "", "0.01"),
+    row("calc-price-box", "Or tile price (£ per box)", "", "0.01"),
+    row("calc-price-adh", "Adhesive (£ per bag)", "", "0.01"),
+    row("calc-price-grout", "Grout (£ per bag)", "", "0.01"),
     '          <p class="calc-note">Planning estimates only. Adhesive figures are typical manufacturer consumption rates (e.g. Mapei Adesilex P9); grout uses the standard formula (L+W)/(L×W) × joint width × tile thickness × 1.6. Always check the data sheet for the product you are using.</p>',
 ])
 mat_script = """
+  // Round up, ignoring floating-point noise (18 m² × 1.1 ÷ 0.18 is 110.00000000000001: that's 110 tiles)
+  const up = x => Math.ceil(x - 1e-9);
+  const n = (x, d) => (+x.toFixed(d)).toLocaleString('en-GB');   // trims trailing zeros: 0.18, 38.5
   $('calc-layout').addEventListener('change', () => { $('calc-waste').value = $('calc-layout').value; });
   $('calc-adh-type').addEventListener('change', () => { if ($('calc-adh-type').value) $('calc-adh-rate').value = $('calc-adh-type').value; });
+  let summary = '';
   function calc() {
     const area = num('calc-area'), waste = num('calc-waste'), L = num('calc-tile-l'), W = num('calc-tile-w');
     const boxM2 = num('calc-box-m2'), adhRate = num('calc-adh-rate'), adhBag = num('calc-adh-bag') || 1;
     const joint = num('calc-joint'), thick = num('calc-thick'), groutBag = num('calc-grout-bag') || 1;
     const buy = area * (1 + waste / 100);
     const tileM2 = (L / 1000) * (W / 1000);
-    const tiles = tileM2 > 0 ? Math.ceil(buy / tileM2) : 0;
-    const adhKg = area * adhRate, adhBags = Math.ceil(adhKg / adhBag);
+    const tiles = tileM2 > 0 ? up(buy / tileM2) : 0;
+    const boxes = boxM2 > 0 ? up(buy / boxM2) : 0;
+    const adhKg = area * adhRate, adhBags = up(adhKg / adhBag);
     const groutPerM2 = L > 0 && W > 0 ? ((L + W) / (L * W)) * joint * thick * 1.6 : 0;
-    const groutKg = area * groutPerM2 * 1.1, groutBags = Math.ceil(groutKg / groutBag);
+    const groutKg = area * groutPerM2 * 1.1, groutBags = up(groutKg / groutBag);
+    const boxesTxt = boxM2 > 0 ? boxes + ' boxes (' + (boxes * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
+    const adhTxt = adhKg.toFixed(0) + ' kg (' + adhBags + ' × ' + adhBag + ' kg)';
+    const groutTxt = groutKg.toFixed(1) + ' kg (' + groutBags + ' × ' + groutBag + ' kg)';
     $('res-tile-area').textContent = buy.toFixed(2) + ' m²';
-    $('res-boxes').textContent = boxM2 > 0 ? Math.ceil(buy / boxM2) + ' boxes (' + (Math.ceil(buy / boxM2) * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
+    $('res-boxes').textContent = boxesTxt;
     $('res-tile-count').textContent = tiles ? tiles + ' tiles' : '–';
-    $('res-adhesive').textContent = adhKg.toFixed(0) + ' kg (' + adhBags + ' × ' + adhBag + ' kg)';
-    $('res-grout').textContent = groutKg.toFixed(1) + ' kg (' + groutBags + ' × ' + groutBag + ' kg)';
-  }"""
+    $('res-adhesive').textContent = adhTxt;
+    $('res-grout').textContent = groutTxt;
+
+    // Optional prices. Tiles are bought in whole boxes when the box size is known.
+    const pM2 = num('calc-price-m2'), pBox = num('calc-price-box'), pAdh = num('calc-price-adh'), pGrout = num('calc-price-grout');
+    const tileCost = pBox > 0 ? (boxM2 > 0 ? boxes * pBox : null) : pM2 > 0 ? (boxM2 > 0 ? boxes * boxM2 : buy) * pM2 : 0;
+    const adhCost = pAdh * adhBags, groutCost = pGrout * groutBags;
+    const priced = pM2 > 0 || pBox > 0 || pAdh > 0 || pGrout > 0;
+    let costTxt = 'add prices (optional)';
+    if (tileCost === null) costTxt = 'enter m² per box';
+    else if (priced) costTxt = gbp2(tileCost + adhCost + groutCost);
+    $('res-cost').textContent = costTxt;
+
+    // The working, so every number can be checked (it matches the worked examples below)
+    const work = [];
+    if (area) work.push(n(area, 2) + ' m² + ' + n(waste, 1) + '% wastage = ' + buy.toFixed(2) + ' m² to buy');
+    if (area && tileM2) work.push(buy.toFixed(2) + ' ÷ ' + n(tileM2, 4) + ' m² per tile = ' + n(buy / tileM2, 1) + ', so ' + tiles + ' tiles');
+    if (area && boxM2) work.push(buy.toFixed(2) + ' ÷ ' + n(boxM2, 2) + ' m² per box = ' + n(buy / boxM2, 2) + ', so ' + boxes + ' boxes');
+    if (area) work.push(n(area, 2) + ' m² × ' + n(adhRate, 1) + ' kg adhesive = ' + adhKg.toFixed(0) + ' kg');
+    if (area && groutPerM2) work.push(n(groutPerM2, 3) + ' kg grout per m² × ' + n(area, 2) + ' m² + 10% = ' + groutKg.toFixed(1) + ' kg');
+    if (priced && tileCost !== null) work.push('Tiles ' + gbp2(tileCost) + ' + adhesive ' + gbp2(adhCost) + ' + grout ' + gbp2(groutCost));
+    $('res-working').textContent = work.join('\\n');
+
+    summary = ['Tile calculator (tile-iq.com)',
+      'Area: ' + n(area, 2) + ' m², ' + n(L, 0) + ' × ' + n(W, 0) + ' mm tiles, ' + n(waste, 1) + '% wastage',
+      'Tile area to buy: ' + buy.toFixed(2) + ' m²', 'Boxes: ' + boxesTxt, 'Tiles: ' + (tiles || '–'),
+      'Adhesive: ' + adhTxt, 'Grout: ' + groutTxt].concat(priced ? ['Materials cost: ' + costTxt] : [])
+      .concat(['Estimates only: check the data sheets for the products you use.']).join('\\n');
+  }
+  // Copy results: plain text for a quote, a supplier order or a message
+  $('calc-copy').addEventListener('click', async () => {
+    let ok = false;
+    try { await navigator.clipboard.writeText(summary); ok = true; } catch (e) {
+      const t = document.createElement('textarea'); t.value = summary; t.setAttribute('readonly', '');
+      t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select();
+      try { ok = document.execCommand('copy'); } catch (e2) {}
+      t.remove();
+    }
+    $('calc-copied').textContent = ok ? 'Copied' : 'Copy failed: select the results and copy them by hand';
+    setTimeout(() => { $('calc-copied').textContent = ''; }, 3000);
+    track('calculator_results_copied', { calculator: box.dataset.calc });
+  });"""
+
 mat_guide = prose("""        <h2 id="how-to-calculate">How to work out how many tiles you need</h2>
         <p>You need three things: the area you're tiling, the size of the tile, and how much extra to allow for cuts and breakages.</p>
         <ol>
@@ -249,6 +306,18 @@ mat_guide = prose("""        <h2 id="how-to-calculate">How to work out how many 
         ]) + """
         <p>Put the same figures into the calculator above and you'll get the same answer. Adhesive and grout are worked out on the area you're actually tiling, not the extra tile you buy for wastage.</p>
 
+        <h2 id="worked-example-walls">Worked example: 18 m² of bathroom walls in 600 × 300 mm tiles</h2>
+        <p>Bathroom walls, laid straight with 10% wastage, in 600 × 300 mm ceramic that's 8 mm thick, with 2 mm joints. The tiles come in boxes of 1.08 m² (six tiles). They're standard wall tiles, so the adhesive is 3 kg per m², the top of Mapei's 2.5–3 kg range for normal size tiles.</p>
+        """ + table(["Step", "Working", "Result"], [
+            ["Tile area to buy", "18 m² × 1.10", "19.80 m²"],
+            ["Size of one tile", "0.6 m × 0.3 m", "0.18 m²"],
+            ["Number of tiles", "19.80 ÷ 0.18 = 110", "110 tiles"],
+            ["Boxes", "19.80 ÷ 1.08 = 18.33, rounded up", "19 boxes (20.52 m², 114 tiles)"],
+            ["Adhesive", "18 m² × 3 kg", "54 kg (3 × 20 kg bags)"],
+            ["Grout", "0.128 kg per m² × 18 m², plus 10%", "2.5 kg (2 × 2.5 kg bags)"],
+        ]) + """
+        <p>The grout comes to 2.53 kg, just over one 2.5 kg bag, so the calculator rounds up to two. Walls and floors usually use different tiles and adhesive, so work them out separately and add the results together.</p>
+
         <h2 id="tiles-per-m2">How many tiles are in a square metre?</h2>
         <p>Convert the tile size to metres and multiply, which gives the area of one tile. Then divide 1 by that. A 600 × 300 mm tile is 0.6 × 0.3 = 0.18 m², so there are 1 ÷ 0.18 = 5.56 tiles in a square metre.</p>
         """ + table(["Tile size", "Area of one tile", "Tiles per m²"], [
@@ -267,7 +336,7 @@ mat_guide = prose("""        <h2 id="how-to-calculate">How to work out how many 
             ["Diagonal", "15%"],
             ["Herringbone or chevron", "20–25% (the calculator uses 25%)"],
         ]) + """
-        <p>Go higher for large-format tiles, small rooms with lots of corners and boxing, patterned tiles that need matching, and fragile tiles like natural stone. The <a href="/guides/tile-wastage-and-materials/">tile wastage guide</a> goes through each case.</p>
+        <p>Go higher for large-format tiles, small rooms with lots of corners and boxing, patterned tiles that need matching, and fragile tiles like natural stone. The <a href="/guides/tile-wastage-and-materials/">tile wastage guide</a> goes through each case, and there's more on pricing the extra time and tile in <a href="/guides/how-to-price-herringbone-tiling/">how to price herringbone tiling</a> and <a href="/guides/how-to-price-large-format-porcelain-tiling/">how to price large-format porcelain</a>.</p>
 
         <h2 id="adhesive">How much tile adhesive you need</h2>
         <p>Adhesive depends on the tile and the trowel. Mapei's data sheet for a standard cement-based adhesive (Adesilex P9) gives about 2 kg per m² for mosaics, 2.5–3 kg per m² for standard tiles, and about 5 kg per m² for large-format tiles and external floors. A 20 kg bag covers roughly 6–7.5 m² with a 6 mm notched trowel, or 4–5 m² with a 10 mm one.</p>
@@ -435,6 +504,7 @@ def tile_calc(area_rows, area_js, tile_l, tile_w, adh_opts, adh_default, waste_o
     script = """
   $('calc-layout').addEventListener('change', () => { $('calc-waste').value = $('calc-layout').value; });
   $('calc-adh-type').addEventListener('change', () => { if ($('calc-adh-type').value) $('calc-adh-rate').value = $('calc-adh-type').value; });
+  const up = x => Math.ceil(x - 1e-9);   // round up, ignoring floating-point noise
   function getArea() { %s }
   function calc() {
     const area = Math.max(0, getArea()), waste = num('calc-waste'), L = num('calc-tile-l'), W = num('calc-tile-w');
@@ -442,13 +512,13 @@ def tile_calc(area_rows, area_js, tile_l, tile_w, adh_opts, adh_default, waste_o
     const joint = num('calc-joint'), thick = num('calc-thick'), groutBag = num('calc-grout-bag') || 1;
     const buy = area * (1 + waste / 100);
     const tileM2 = (L / 1000) * (W / 1000);
-    const tiles = tileM2 > 0 && area > 0 ? Math.ceil(buy / tileM2) : 0;
-    const adhKg = area * adhRate, adhBags = Math.ceil(adhKg / adhBag);
+    const tiles = tileM2 > 0 && area > 0 ? up(buy / tileM2) : 0;
+    const adhKg = area * adhRate, adhBags = up(adhKg / adhBag);
     const groutPerM2 = L > 0 && W > 0 ? ((L + W) / (L * W)) * joint * thick * 1.6 : 0;
-    const groutKg = area * groutPerM2 * 1.1, groutBags = Math.ceil(groutKg / groutBag);
+    const groutKg = area * groutPerM2 * 1.1, groutBags = up(groutKg / groutBag);
     $('res-area').textContent = area.toFixed(2) + ' m²';
     $('res-tile-area').textContent = buy.toFixed(2) + ' m²';
-    $('res-boxes').textContent = boxM2 > 0 ? Math.ceil(buy / boxM2) + ' boxes (' + (Math.ceil(buy / boxM2) * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
+    $('res-boxes').textContent = boxM2 > 0 ? up(buy / boxM2) + ' boxes (' + (up(buy / boxM2) * boxM2).toFixed(2) + ' m²)' : 'enter m² per box';
     $('res-tile-count').textContent = tiles ? tiles + ' tiles' : '–';
     $('res-adhesive').textContent = adhKg.toFixed(0) + ' kg (' + adhBags + ' × ' + adhBag + ' kg)';
     $('res-grout').textContent = groutKg.toFixed(1) + ' kg (' + groutBags + ' × ' + groutBag + ' kg)';
@@ -570,13 +640,14 @@ wall_sections = wall_guide + section("01", "WALL GUIDES", "Quoting bathroom and 
 
 MAT_FEATURES = ["Tile area to buy, with wastage for straight, diagonal and herringbone layouts",
                 "Number of tiles and boxes", "Tile adhesive in kg and bags", "Grout in kg and bags"]
+MAT_PAGE_FEATURES = MAT_FEATURES + ["Optional materials cost from your own prices", "Shows the working for every result"]
 pages = [
     ("tiling-material-calculator", "Tile Calculator UK – How Many Tiles Do I Need? | TileIQ",
      "Free tile calculator for floors and walls. Enter your measurements and tile size to calculate tiles, adhesive, grout and wastage. No sign-up needed.",
      "Tile calculator", "FREE TILE CALCULATOR", "Free Tile Calculator – How Many Tiles Do I Need?",
      "Enter the area you're tiling and the tile size to work out how many tiles and boxes you need, plus adhesive and grout, with wastage for straight, diagonal and herringbone layouts. It works for floors and walls, and there's nothing to sign up for.",
      mat_calc, mat_sections, mat_script,
-     dict(app_name="TileIQ tile calculator", features=MAT_FEATURES, faqs=mat_faqs)),
+     dict(app_name="TileIQ tile calculator", features=MAT_PAGE_FEATURES, faqs=mat_faqs)),
     ("tiling-day-rate-calculator", "Tiler Day Rate Calculator (UK) | TileIQ",
      "Free day-rate calculator for self-employed tilers: work out the day rate, hourly rate and per m² rate that cover your income, costs, holidays and quoting days.",
      "Tiler day rate calculator", "FREE TILING CALCULATOR", "Tiler day rate calculator",
