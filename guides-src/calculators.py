@@ -366,7 +366,7 @@ mat_faqs = [
 mat_sections = mat_guide + \
     section("01", "DOING THIS ON A REAL JOB", "Want TileIQ to calculate this automatically on every job?",
     "On a real job, TileIQ works out tiles, adhesive, grout, sealant and tanking for every wall and floor from the measurements you take, and puts them straight into the quote.",
-    """<article><h3>From measurement to quote</h3><p>Material calculations feed straight into a professional quote you can send from site.</p><a href="/tiling-quote-app/">See the quote app →</a></article>
+    """<article><h3>From measurement to quote</h3><p>Material calculations feed straight into a professional quote you can send from site, using TileIQ's <a href="/tiling-estimating-software/">tiling estimating software</a>.</p><a href="/tiling-quote-app/">See the quote app →</a></article>
           <article><h3>Leica Disto™ integration</h3><p>Connect a compatible Leica Disto by Bluetooth for fast, accurate measurements.</p><a href="/leica-disto-tiling/">See how it works →</a></article>
           <article><h3>Measuring a floor or walls?</h3><p>Enter room or wall sizes instead of the area, with doors and units taken off.</p><a href="/floor-tiling-calculator/">Floor calculator →</a> <a href="/wall-tiling-calculator/">Wall calculator →</a></article>""")
 
