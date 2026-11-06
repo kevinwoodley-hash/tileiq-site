@@ -1015,6 +1015,7 @@ async function loadAssistant() {
       <div class="stat-card"><div class="stat-label">Answers</div><div class="stat-value">${sum(mRows, 'messages')}</div></div>
       <div class="stat-card"><div class="stat-label">Turned away</div><div class="stat-value">${sum(mRows, 'refused')}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">limits and caps</div></div>
       <div class="stat-card"><div class="stat-label">Errors</div><div class="stat-value">${sum(mRows, 'errors')}</div></div>
+      <div class="stat-card"><div class="stat-label">Backup model used</div><div class="stat-value">${sum(mRows, 'fallbacks')}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">when the main model failed</div></div>
       <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value">${gbp(tRow.cost_gbp)}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${Number(tRow.messages || 0)} answers, cap ${gbp(c.daily_cap_gbp)}</div></div>
       <div class="stat-card"><div class="stat-label">Ratings (31 days)</div><div class="stat-value">👍 ${up} · 👎 ${down}</div></div>
     </div>
@@ -1026,12 +1027,30 @@ async function loadAssistant() {
       </div>
       <button class="btn-primary" style="margin-top:16px;" onclick="assistantSaveLimits()">Save limits</button>
     </div>
+    ${modelSummary(mRows, gbp)}
     <div class="card" style="margin-top:16px;"><h2>Last 31 days</h2><p>One row per day. Costs are worked out from the provider's token counts.</p>
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="text-align:left;color:var(--text-muted);"><th style="padding:6px 4px;">Day</th><th>Answers</th><th>Turned away</th><th>Errors</th><th>Cost</th></tr></thead>
-        <tbody>${spend.length ? spend.map(r => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px 4px;">${escHtml(String(r.day).slice(0, 10))}</td><td>${Number(r.messages)}</td><td>${Number(r.refused)}</td><td>${Number(r.errors)}</td><td>${gbp(r.cost_gbp)}</td></tr>`).join('') : '<tr><td colspan="5" style="padding:10px 4px;color:var(--text-muted);">No questions yet.</td></tr>'}</tbody>
+        <thead><tr style="text-align:left;color:var(--text-muted);"><th style="padding:6px 4px;">Day</th><th>Answers</th><th>Turned away</th><th>Errors</th><th>Cost</th><th>Answered by</th></tr></thead>
+        <tbody>${spend.length ? spend.map(r => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px 4px;">${escHtml(String(r.day).slice(0, 10))}</td><td>${Number(r.messages)}</td><td>${Number(r.refused)}</td><td>${Number(r.errors)}</td><td>${gbp(r.cost_gbp)}</td><td style="color:var(--text-muted);">${escHtml(Object.entries(r.by_model || {}).map(([m, v]) => shortModel(m) + ' ' + v.n).join(', ') || '–')}${Number(r.fallbacks) ? ' (' + Number(r.fallbacks) + ' backup)' : ''}</td></tr>`).join('') : '<tr><td colspan="6" style="padding:10px 4px;color:var(--text-muted);">No questions yet.</td></tr>'}</tbody>
       </table>
     </div>`;
+}
+// "claude-haiku-5-5" -> "Haiku 5.5"
+function shortModel(m) {
+  const c = String(m).match(/^claude-([a-z]+)-(\d+)-(\d+)/);
+  return c ? c[1][0].toUpperCase() + c[1].slice(1) + ' ' + c[2] + '.' + c[3] : String(m);
+}
+// This month's answers and cost per model (sql/2026-11-assistant-models.sql adds by_model)
+function modelSummary(rows, gbp) {
+  const t = {};
+  for (const r of rows) for (const [m, v] of Object.entries(r.by_model || {})) {
+    t[m] = t[m] || { n: 0, gbp: 0 }; t[m].n += Number(v.n) || 0; t[m].gbp += Number(v.gbp) || 0;
+  }
+  const list = Object.entries(t).sort((a, b) => b[1].n - a[1].n);
+  if (!list.length) return '';
+  return `<div class="card" style="margin-top:16px;"><h2>Answered by (this month)</h2><p>Which AI model wrote the answers, and what each cost. The backup only answers when the main model fails.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="text-align:left;color:var(--text-muted);"><th style="padding:6px 4px;">Model</th><th>Answers</th><th>Cost</th><th>Per answer</th></tr></thead>
+    <tbody>${list.map(([m, v]) => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px 4px;">${escHtml(shortModel(m))}</td><td>${v.n}</td><td>${gbp(v.gbp)}</td><td>${v.n ? (v.gbp / v.n * 100).toFixed(2) + 'p' : '–'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 async function assistantSave(patch) {
   if (patch.enabled === false && !confirm('Switch the assistant off for everyone? The chat button disappears from the website within a few minutes.')) return;
