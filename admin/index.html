@@ -480,6 +480,9 @@ body {
       <button class="nav-item" onclick="showPage('demovisits')" id="nav-demovisits">
         <span class="nav-icon">🎮</span> Demo visits
       </button>
+      <button class="nav-item" onclick="showPage('assistant')" id="nav-assistant">
+        <span class="nav-icon">💬</span> Assistant
+      </button>
       <button class="nav-item" onclick="showPage('backups')" id="nav-backups">
         <span class="nav-icon">💾</span> Backups
       </button>
@@ -810,6 +813,16 @@ body {
     </div>
 
     <!-- Backups Page -->
+    <div class="page" id="page-assistant">
+      <div class="page-header">
+        <h1>Assistant</h1>
+        <p>The "Ask TileIQ" chat on tile-iq.com: on/off, spending caps and what it has cost. No questions or answers are stored.</p>
+      </div>
+      <div class="stats-page">
+        <div id="as-body" style="max-width:900px;"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
     <div class="page" id="page-backups">
       <div class="page-header">
         <h1>Backups</h1>
@@ -960,8 +973,75 @@ function showPage(name) {
   if (name === 'traffic') loadTraffic();
   if (name === 'demovisits') loadDemoVisits();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
+  if (name === 'assistant') loadAssistant();
   if (name === 'checklist') loadChecklist();
   if (name === 'autotest') clearTestResults();
+}
+
+// ── Assistant ──────────────────────────────────────────────────
+// GET /api/admin/assistant and POST /api/admin/assistant/config (worker, assistant/handler.js).
+// Settings live in Supabase assistant_config and take effect within a minute.
+const AS_FIELDS = [
+  ['monthly_cap_gbp', 'Monthly cap (£)', 'Stops answering for the rest of the month once spent. Alerts by email at 50%, 80% and 100%.', 0.5],
+  ['daily_cap_gbp', 'Daily cap (£)', 'Stops answering for the rest of the day once spent.', 0.1],
+  ['visitor_daily', 'Questions a day per website chat', '', 1],
+  ['ip_daily', 'Questions a day per network', 'Shared by everyone on the same connection, e.g. an office.', 1],
+  ['user_daily', 'Questions a day per signed-in tiler', 'For the app Help screen (phase 2).', 1],
+  ['max_output_tokens', 'Longest answer (tokens)', 'About 600 is a few short paragraphs.', 50]
+];
+async function loadAssistant() {
+  const box = document.getElementById('as-body');
+  let d;
+  try { d = await api('/api/admin/assistant'); }
+  catch (e) { box.innerHTML = '<div class="card"><h2>Not available</h2><p>Couldn\'t load the assistant (' + escHtml(e.message) + '). Check the worker is deployed and sql/2026-11-assistant.sql has been run in Supabase.</p></div>'; return; }
+  const c = d.config || {};
+  const spend = d.spend || [];
+  const month = new Date().toISOString().slice(0, 7), todayStr = new Date().toISOString().slice(0, 10);
+  const sum = (rows, k) => rows.reduce((n, r) => n + Number(r[k] || 0), 0);
+  const mRows = spend.filter(r => String(r.day).slice(0, 7) === month), tRow = spend.find(r => String(r.day).slice(0, 10) === todayStr) || {};
+  const gbp = n => { n = Number(n || 0); return '£' + (n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)); };   // a single answer costs fractions of a penny
+  const up = (d.feedback || []).filter(f => f.rating === 1).length, down = (d.feedback || []).filter(f => f.rating === -1).length;
+  const missing = Object.entries({ 'Anthropic key': d.keys?.anthropic, 'TURNSTILE_SITE_KEY': d.keys?.siteKey, 'TURNSTILE_SECRET': d.keys?.turnstile, 'ASSISTANT_SECRET': d.keys?.secret }).filter(([, v]) => !v).map(([k]) => k);
+  const state = d.switched_off_by_env ? 'Off (worker variable AI_DISABLED or ASSISTANT_DISABLED)' : c.enabled ? 'On' : 'Off';
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;"><h2>Status: ${escHtml(state)}</h2>
+        <p style="margin:0;">Model ${escHtml(c.model || '')}, falling back to ${escHtml(c.fallback_model || '')}. Knowledge base ${escHtml(d.kb || '')}.${missing.length ? ' <strong style="color:#ef4444;">Not set up: ' + escHtml(missing.join(', ')) + '.</strong>' : ''}</p></div>
+      <button class="btn-primary" id="as-toggle" onclick="assistantSave({ enabled: ${!c.enabled} })" style="${c.enabled ? 'background:#ef4444;' : ''}">${c.enabled ? 'Switch off now' : 'Switch on'}</button>
+    </div>
+    <div class="stats-section-label">This month</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Spent</div><div class="stat-value">${gbp(sum(mRows, 'cost_gbp'))}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">of ${gbp(c.monthly_cap_gbp)} cap</div></div>
+      <div class="stat-card"><div class="stat-label">Answers</div><div class="stat-value">${sum(mRows, 'messages')}</div></div>
+      <div class="stat-card"><div class="stat-label">Turned away</div><div class="stat-value">${sum(mRows, 'refused')}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">limits and caps</div></div>
+      <div class="stat-card"><div class="stat-label">Errors</div><div class="stat-value">${sum(mRows, 'errors')}</div></div>
+      <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value">${gbp(tRow.cost_gbp)}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${Number(tRow.messages || 0)} answers, cap ${gbp(c.daily_cap_gbp)}</div></div>
+      <div class="stat-card"><div class="stat-label">Ratings (31 days)</div><div class="stat-value">👍 ${up} · 👎 ${down}</div></div>
+    </div>
+    <div class="card" style="margin-top:16px;"><h2>Limits</h2><p>Changes apply within a minute.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;">
+        ${AS_FIELDS.map(([k, label, help, step]) => `<label style="display:block;font-size:13px;font-weight:600;">${escHtml(label)}
+          <input id="as-${k}" type="number" min="0" step="${step}" value="${escHtml(c[k] ?? '')}" style="display:block;width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;">
+          ${help ? `<span style="display:block;font-weight:400;color:var(--text-muted);font-size:12px;margin-top:4px;">${escHtml(help)}</span>` : ''}</label>`).join('')}
+      </div>
+      <button class="btn-primary" style="margin-top:16px;" onclick="assistantSaveLimits()">Save limits</button>
+    </div>
+    <div class="card" style="margin-top:16px;"><h2>Last 31 days</h2><p>One row per day. Costs are worked out from the provider's token counts.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="text-align:left;color:var(--text-muted);"><th style="padding:6px 4px;">Day</th><th>Answers</th><th>Turned away</th><th>Errors</th><th>Cost</th></tr></thead>
+        <tbody>${spend.length ? spend.map(r => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px 4px;">${escHtml(String(r.day).slice(0, 10))}</td><td>${Number(r.messages)}</td><td>${Number(r.refused)}</td><td>${Number(r.errors)}</td><td>${gbp(r.cost_gbp)}</td></tr>`).join('') : '<tr><td colspan="5" style="padding:10px 4px;color:var(--text-muted);">No questions yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+async function assistantSave(patch) {
+  if (patch.enabled === false && !confirm('Switch the assistant off for everyone? The chat button disappears from the website within a few minutes.')) return;
+  try { await api('/api/admin/assistant/config', { method: 'POST', body: JSON.stringify(patch) }); showToast('Saved'); loadAssistant(); }
+  catch (e) { showToast('Couldn\'t save (' + e.message + ')', 'error'); }
+}
+function assistantSaveLimits() {
+  const patch = {};
+  for (const [k] of AS_FIELDS) { const v = document.getElementById('as-' + k).value; if (v !== '') patch[k] = Number(v); }
+  assistantSave(patch);
 }
 
 // ── Demo visits ────────────────────────────────────────────────
