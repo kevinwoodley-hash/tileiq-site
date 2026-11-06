@@ -142,16 +142,41 @@
       document.head.appendChild(s);
     });
   }
+  // Usually invisible. If Cloudflare wants a tick, say so (no time limit while it waits for the
+  // person); if it's silently stuck for TS_WAIT_MS, give up with a Try again rather than "…" forever.
+  const TS_WAIT_MS = 30000;
+  const TS_FAIL = "We couldn't check you're not a bot. Please try again.";
+  let tsPrompt = null, tsTimer = null;
+  function tsSettle(fn) {
+    clearTimeout(tsTimer); tsTimer = null;
+    if (tsPrompt) { tsPrompt.remove(); tsPrompt = null; }
+    tsWaiters.splice(0).forEach(fn);
+  }
+  function tsFail() { tsSettle(w => w.fail(Object.assign(new Error("turnstile"), { friendly: TS_FAIL }))); }
   function turnstileToken() {
     return new Promise((ok, fail) => {
       tsWaiters.push({ ok, fail });
-      if (tsWidget !== null) { try { window.turnstile.reset(tsWidget); } catch (e) {} return; }
-      tsWidget = window.turnstile.render(el.ts, {
-        sitekey: status.siteKey, appearance: "interaction-only", action: "assistant",
-        callback: t => tsWaiters.splice(0).forEach(w => w.ok(t)),
-        "error-callback": () => tsWaiters.splice(0).forEach(w => w.fail(new Error("turnstile"))),
-        "expired-callback": () => {}
-      });
+      clearTimeout(tsTimer);
+      tsTimer = setTimeout(tsFail, window.__tqTsWaitMs || TS_WAIT_MS);   // __tqTsWaitMs: tests only
+      if (tsWidget !== null) { try { window.turnstile.reset(tsWidget); } catch (e) { tsFail(); } return; }
+      try {
+        tsWidget = window.turnstile.render(el.ts, {
+          sitekey: status.siteKey, appearance: "interaction-only", action: "assistant",
+          callback: t => tsSettle(w => w.ok(t)),
+          "error-callback": () => { tsFail(); return true; },
+          "timeout-callback": tsFail,
+          "before-interactive-callback": () => {
+            clearTimeout(tsTimer); tsTimer = null;            // waiting for the person now, not stuck
+            typing(false);
+            if (!tsPrompt) tsPrompt = note("Tick the box below so we know you're not a bot, and your question will send.");
+          },
+          "after-interactive-callback": () => {
+            if (tsPrompt) { tsPrompt.remove(); tsPrompt = null; }
+            typing(true);
+          },
+          "expired-callback": () => {}
+        });
+      } catch (e) { tsWidget = null; tsFail(); }
     });
   }
   async function visitorToken() {

@@ -1,5 +1,5 @@
 /* TileIQ assistant chat panel. Loaded only after the "Ask TileIQ" button is tapped (see site.js). */
-.tq-chat{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:170;width:min(400px,calc(100vw - 32px));height:min(620px,calc(100vh - 110px));display:flex;flex-direction:column;background:var(--bg-raised,#0c1114);color:var(--text,#f3f6f7);border:1px solid var(--line-strong,rgba(255,255,255,.14));border-radius:var(--radius,16px);box-shadow:0 30px 70px -20px rgba(0,0,0,.85);font:15px/1.5 var(--font-body,'DM Sans',system-ui,sans-serif);overflow:hidden}
+.tq-chat{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:2147483001;width:min(400px,calc(100vw - 32px));height:min(620px,calc(100vh - 110px));display:flex;flex-direction:column;background:var(--bg-raised,#0c1114);color:var(--text,#f3f6f7);border:1px solid var(--line-strong,rgba(255,255,255,.14));border-radius:var(--radius,16px);box-shadow:0 30px 70px -20px rgba(0,0,0,.85);font:15px/1.5 var(--font-body,'DM Sans',system-ui,sans-serif);overflow:hidden}
 .tq-chat[hidden]{display:none}
 .tq-chat *{box-sizing:border-box}
 .tq-chat-head{display:flex;align-items:center;gap:8px;padding:12px 10px 12px 16px;border-bottom:1px solid var(--line,rgba(255,255,255,.08));background:var(--surface,#11171b)}
@@ -43,3 +43,5 @@
   .tq-chat{right:0;left:0;bottom:0;width:100%;height:min(88vh,calc(100dvh - 40px));border-radius:var(--radius,16px) var(--radius,16px) 0 0;border-bottom:0}
 }
 @media (prefers-reduced-motion:reduce){.tq-typing i{animation:none}}
+/* z-index: the open chat (something the visitor chose) sits over the cookie banner
+   (analytics.js, 2147483000); the banner is still there when the chat is minimised or closed. */

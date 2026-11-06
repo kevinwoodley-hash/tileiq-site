@@ -128,10 +128,18 @@
         .catch(() => { loading = null; b.removeAttribute("aria-busy"); location.href = "/contact.html"; });
     });
     document.body.appendChild(b);
-    // Sit above the mobile "Try free" bar when it's showing
+    // Sit above the mobile "Try free" bar and the cookie banner when they're showing
     const bar = document.querySelector(".sticky-cta");
-    if (bar) new MutationObserver(() => { b.style.bottom = bar.classList.contains("show") ? "calc(84px + env(safe-area-inset-bottom))" : "calc(16px + env(safe-area-inset-bottom))"; })
-      .observe(bar, { attributes: true, attributeFilter: ["class"] });
+    const place = () => {
+      const consent = document.getElementById("tileiq-consent");
+      const above = consent ? Math.ceil(consent.getBoundingClientRect().height) + 24 : 0;
+      const base = bar && bar.classList.contains("show") ? 84 : 16;
+      b.style.bottom = `calc(${Math.max(base, above)}px + env(safe-area-inset-bottom))`;
+    };
+    if (bar) new MutationObserver(place).observe(bar, { attributes: true, attributeFilter: ["class"] });
+    new MutationObserver(place).observe(document.body, { childList: true });
+    window.addEventListener("resize", place);
+    place();
   };
   const later = window.requestIdleCallback || (fn => setTimeout(fn, 1500));
   later(() => getStatus().then(addButton), { timeout: 4000 });
