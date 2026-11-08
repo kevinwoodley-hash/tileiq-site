@@ -16,3 +16,20 @@ test("Android assetlinks.json is valid and lists the Play app-signing key", asyn
   expect(app.target.sha256_cert_fingerprints).toEqual(expect.arrayContaining([PLAY_APP_SIGNING, UPLOAD_KEY]));
   for (const fp of app.target.sha256_cert_fingerprints) expect(fp).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
 });
+
+test("iOS apple-app-site-association lets the TileIQ app open /become-a-tester", async ({ request }) => {
+  const res = await request.get("/.well-known/apple-app-site-association");
+  expect(res.status()).toBe(200);
+  const aasa = JSON.parse(await res.text());                         // served without a .json extension
+  const d = aasa.applinks.details[0];
+  expect(d.appIDs).toEqual(["S46AB9AH2K.com.tileiq.pro"]);
+  expect(d.appID).toBe("S46AB9AH2K.com.tileiq.pro");                 // older iOS versions read appID + paths
+  expect(d.components.map(c => c["/"])).toEqual(["/become-a-tester", "/become-a-tester/*"]);
+  expect(d.paths).toEqual(["/become-a-tester", "/become-a-tester/*"]);
+});
+
+test("Cloudflare serves the iOS file as JSON", async () => {
+  const { readFileSync } = await import("node:fs");
+  const headers = readFileSync(new URL("../../_headers", import.meta.url), "utf8");
+  expect(headers).toMatch(/\/\.well-known\/apple-app-site-association\n\s+Content-Type: application\/json/);
+});

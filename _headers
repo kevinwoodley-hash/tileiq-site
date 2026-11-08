@@ -1,6 +1,10 @@
 /.well-known/assetlinks.json
   Content-Type: application/json
 
+# iOS Universal Links: Apple fetches this extensionless file and needs it served as JSON
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+
 /guides-src/*
   X-Robots-Tag: noindex
 
