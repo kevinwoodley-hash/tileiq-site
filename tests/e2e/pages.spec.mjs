@@ -57,3 +57,31 @@ test.describe("Shared header", () => {
     });
   }
 });
+
+test("/signup.html has one h1 naming the page; the after-sign-up message is an h2", async ({ page }) => {
+  await page.goto("/signup.html");
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator("h1")).toHaveText("Create your TileIQ account");
+  await expect(page.locator("#download-panel h2")).toContainText("Account created");
+});
+
+test.describe("Training pages (served at training.tile-iq.com)", () => {
+  const pages = { "index.html": "https://training.tile-iq.com/",
+                  "how-much-to-charge.html": "https://training.tile-iq.com/how-much-to-charge",
+                  "pricing-tiling-jobs.html": "https://training.tile-iq.com/pricing-tiling-jobs" };
+  for (const [file, canonical] of Object.entries(pages)) {
+    test(`${file} has its canonical and links to the main site by full address`, async () => {
+      const fs = await import("node:fs");
+      const html = fs.readFileSync(new URL(`../../training/${file}`, import.meta.url), "utf8");
+      expect(html).toContain(`<link rel="canonical" href="${canonical}">`);
+      // On the subdomain a root-relative link like /guides/ would 404; only the training home and its #courses stay relative
+      const relative = [...html.matchAll(/(?:href|src)="(\/[^"]*)"/g)].map(m => m[1]).filter(p => p !== "/" && p !== "/#courses");
+      expect(relative).toEqual([]);
+    });
+  }
+  test("the training sitemap lists the canonical addresses", async () => {
+    const fs = await import("node:fs");
+    const xml = fs.readFileSync(new URL("../../training/sitemap.xml", import.meta.url), "utf8");
+    expect([...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]).sort()).toEqual(Object.values(pages).sort());
+  });
+});
