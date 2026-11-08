@@ -483,6 +483,9 @@ body {
       <button class="nav-item" onclick="showPage('assistant')" id="nav-assistant">
         <span class="nav-icon">💬</span> Assistant
       </button>
+      <button class="nav-item" onclick="showPage('feedback')" id="nav-feedback">
+        <span class="nav-icon">🗣️</span> Feedback
+      </button>
       <button class="nav-item" onclick="showPage('backups')" id="nav-backups">
         <span class="nav-icon">💾</span> Backups
       </button>
@@ -823,6 +826,23 @@ body {
       </div>
     </div>
 
+    <div class="page" id="page-feedback">
+      <div class="page-header">
+        <h1>Feedback</h1>
+        <p>Tilers who've opted in to help improve TileIQ, and what they said when the app asked them a quick question after using a feature.</p>
+      </div>
+      <div class="stats-page">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <label style="font-size:13px;font-weight:600;">Period
+            <select id="fb-days" onchange="loadFeedback()" style="margin-left:6px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;">
+              <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option>
+            </select></label>
+          <button class="btn-sm" onclick="loadFeedback()">Refresh</button>
+        </div>
+        <div id="fb-body" style="max-width:900px;"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
     <div class="page" id="page-backups">
       <div class="page-header">
         <h1>Backups</h1>
@@ -974,6 +994,7 @@ function showPage(name) {
   if (name === 'demovisits') loadDemoVisits();
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
   if (name === 'assistant') loadAssistant();
+  if (name === 'feedback') loadFeedback();
   if (name === 'checklist') loadChecklist();
   if (name === 'autotest') clearTestResults();
 }
@@ -1042,6 +1063,147 @@ function assistantSaveLimits() {
   const patch = {};
   for (const [k] of AS_FIELDS) { const v = document.getElementById('as-' + k).value; if (v !== '') patch[k] = Number(v); }
   assistantSave(patch);
+}
+
+// ── Feedback (tester programme) ────────────────────────────────
+// GET /api/admin/feedback, POST /api/admin/feedback/prompt and /config (worker, feedback/handler.js).
+// Data lives in Supabase: sql/2026-11-testers-feedback.sql in the app repo.
+let feedbackData = null;
+const FB_SOURCES = { landing_page: 'Website page', invite_link: 'Invite link', app_setting: 'App settings', app_prompt: 'In-app invite' };
+const fbEsc = s => escHtml(s == null ? '' : String(s));
+const fbPct = (n, d) => d ? Math.round(100 * n / d) + '%' : '–';
+function fbWho(id) {
+  const u = users.find(x => x.id === id);
+  return u ? (u.name || u.email) : 'Tiler ' + String(id).slice(0, 8);
+}
+function fbAnswer(r, p) {
+  if (r.rating != null) return '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+  return fbEsc(r.answer);
+}
+function fbBreakdown(p) {
+  const a = p.answers || {};
+  const keys = p.answer_type === 'rating5' ? ['5', '4', '3', '2', '1'] : p.answer_type === 'yes_no' ? ['Yes', 'No'] : (p.choices || []);
+  const total = Object.values(a).reduce((n, v) => n + Number(v), 0);
+  if (!total) return '<span style="color:var(--text-muted);">No answers yet</span>';
+  return keys.map(k => `<span style="display:inline-block;margin:0 10px 4px 0;">${p.answer_type === 'rating5' ? k + '★' : fbEsc(k)}: <strong>${Number(a[k] || 0)}</strong></span>`).join('');
+}
+async function loadFeedback() {
+  const box = document.getElementById('fb-body');
+  box.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    if (!users.length) await loadUsers();
+    feedbackData = await api('/api/admin/feedback?days=' + document.getElementById('fb-days').value);
+  } catch (e) {
+    box.innerHTML = '<div class="card"><h2>Not available</h2><p>Couldn\'t load feedback (' + fbEsc(e.message) + '). Check the worker is deployed and sql/2026-11-testers-feedback.sql has been run in Supabase.</p></div>';
+    return;
+  }
+  renderFeedback();
+}
+function renderFeedback() {
+  const { summary: s, config: c = {}, recent = [] } = feedbackData;
+  const t = s.testers || {}, tot = s.totals || {};
+  const prompts = s.prompts || [];
+  const byKey = Object.fromEntries(prompts.map(p => [p.key, p]));
+  const filter = document.getElementById('fb-filter')?.value || '';
+  const commentsOnly = document.getElementById('fb-comments')?.checked || false;
+  const rows = recent.filter(r => (!filter || r.prompt_key === filter) && (!commentsOnly || r.comment));
+  const sources = Object.entries(t.by_source || {}).map(([k, n]) => `${fbEsc(FB_SOURCES[k] || k)} ${Number(n)}`).join(' · ');
+  const box = document.getElementById('fb-body');
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;"><h2>Questions: ${c.enabled ? 'On' : 'Off'}</h2>
+        <p style="margin:0;">When off, testers aren't asked anything and no answers are saved. Joining and leaving still work.</p></div>
+      <button class="btn-primary" onclick="feedbackSaveConfig({ enabled: ${!c.enabled} })" style="${c.enabled ? 'background:#ef4444;' : ''}">${c.enabled ? 'Switch off' : 'Switch on'}</button>
+    </div>
+    <div class="stats-section-label">Testers</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Testing now</div><div class="stat-value">${Number(t.active || 0)}</div>${sources ? `<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${sources}</div>` : ''}</div>
+      <div class="stat-card"><div class="stat-label">Joined</div><div class="stat-value">${Number(t.joined_period || 0)}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${Number(t.joined_7d || 0)} in the last 7 days</div></div>
+      <div class="stat-card"><div class="stat-label">Left</div><div class="stat-value">${Number(t.left_period || 0)}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${Number(t.left || 0)} not testing now</div></div>
+    </div>
+    <div class="stats-section-label">Questions (${Number(s.days)} days)</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Asked</div><div class="stat-value">${Number(tot.shown || 0)}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">to ${Number(tot.people || 0)} testers</div></div>
+      <div class="stat-card"><div class="stat-label">Answered</div><div class="stat-value">${fbPct(Number(tot.answered || 0) + Number(tot.partial || 0), Number(tot.shown || 0))}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${Number(tot.answered || 0)} with a comment</div></div>
+      <div class="stat-card"><div class="stat-label">Closed without answering</div><div class="stat-value">${Number(tot.dismissed || 0)}</div></div>
+    </div>
+    <div class="card" style="margin-top:16px;"><h2>The questions</h2>
+      <p>Each is asked once per tester, straight after they do the thing it's about, at most ${Number(c.max_per_week ?? 2)} a week and ${Number(c.min_hours_between ?? 72)} hours apart.</p>
+      ${prompts.map(p => `
+        <div style="border-top:1px solid var(--border);padding:12px 0;${p.active ? '' : 'opacity:.6;'}">
+          <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+            <div style="flex:1;min-width:240px;">
+              <div style="font-weight:700;">${fbEsc(p.question)}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Then: ${p.follow_up ? fbEsc(p.follow_up) : '<em>no comment step</em>'} · after ${p.nth === 1 ? 'the first' : 'the ' + Number(p.nth) + 'th'} <code>${fbEsc(p.trigger_event)}</code></div>
+              <div style="font-size:13px;margin-top:6px;">${fbBreakdown(p)}${p.avg_rating != null ? ` <span style="margin-left:6px;">Average <strong>${Number(p.avg_rating).toFixed(1)}★</strong></span>` : ''}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Asked ${Number(p.shown)}, answered ${fbPct(Number(p.answered) + Number(p.partial), Number(p.shown))}, closed ${Number(p.dismissed)}</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn-sm" onclick="feedbackEditPrompt('${fbEsc(p.key)}')">Edit</button>
+              <button class="btn-sm" onclick="feedbackSavePrompt('${fbEsc(p.key)}', { active: ${!p.active} })">${p.active ? 'Switch off' : 'Switch on'}</button>
+            </div>
+          </div>
+        </div>`).join('') || '<p>No questions set up.</p>'}
+    </div>
+    <div class="card" style="margin-top:16px;"><h2>Pacing</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;">
+        <label style="display:block;font-size:13px;font-weight:600;">Hours between questions
+          <input id="fb-hours" type="number" min="0" max="2160" value="${Number(c.min_hours_between ?? 72)}" style="display:block;width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;"></label>
+        <label style="display:block;font-size:13px;font-weight:600;">Most questions a week
+          <input id="fb-week" type="number" min="0" max="20" value="${Number(c.max_per_week ?? 2)}" style="display:block;width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;"></label>
+      </div>
+      <button class="btn-primary" style="margin-top:16px;" onclick="feedbackSaveConfig({ min_hours_between: Number(document.getElementById('fb-hours').value), max_per_week: Number(document.getElementById('fb-week').value) })">Save pacing</button>
+    </div>
+    <div class="card" style="margin-top:16px;"><h2>Answers</h2>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <select id="fb-filter" onchange="renderFeedback()" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;">
+          <option value="">All questions</option>${prompts.map(p => `<option value="${fbEsc(p.key)}" ${p.key === filter ? 'selected' : ''}>${fbEsc(p.question)}</option>`).join('')}
+        </select>
+        <label style="font-size:13px;"><input type="checkbox" id="fb-comments" onchange="renderFeedback()" ${commentsOnly ? 'checked' : ''}> With comments only</label>
+        <button class="btn-sm" style="margin-left:auto;" onclick="feedbackCsv()">Download CSV</button>
+      </div>
+      ${rows.length ? rows.map(r => `
+        <div style="border-top:1px solid var(--border);padding:10px 0;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--text-muted);font-size:12px;">
+            <span>${fbEsc(fbWho(r.user_id))} · ${fbEsc(r.platform || '')}${r.app_version ? ' ' + fbEsc(r.app_version) : ''}</span>
+            <span>${new Date(r.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+          </div>
+          <div style="margin-top:4px;">${fbEsc(byKey[r.prompt_key]?.question || r.prompt_key)} <strong style="margin-left:6px;">${fbAnswer(r)}</strong></div>
+          ${r.comment ? `<div style="margin-top:4px;padding:8px 10px;background:var(--bg);border-radius:8px;white-space:pre-wrap;">${fbEsc(r.comment)}</div>` : ''}
+        </div>`).join('') : '<p style="color:var(--text-muted);">No answers in this period yet.</p>'}
+      ${recent.length >= 300 ? '<p style="font-size:12px;color:var(--text-muted);">Showing the newest 300.</p>' : ''}
+    </div>`;
+}
+async function feedbackSavePrompt(key, patch) {
+  try { await api('/api/admin/feedback/prompt', { method: 'POST', body: JSON.stringify({ key, ...patch }) }); showToast('Saved'); loadFeedback(); }
+  catch (e) { showToast('Couldn\'t save (' + e.message + ')', 'error'); }
+}
+function feedbackEditPrompt(key) {
+  const p = (feedbackData.summary.prompts || []).find(x => x.key === key);
+  if (!p) return;
+  const question = prompt('Question (step 1), 5–160 characters:', p.question);
+  if (question === null) return;
+  const follow = prompt('Comment question (step 2). Leave empty for no comment step:', p.follow_up || '');
+  if (follow === null) return;
+  const nth = prompt(`Ask after how many times they do it (${p.trigger_event})?`, String(p.nth));
+  if (nth === null) return;
+  feedbackSavePrompt(key, { question: question.trim(), follow_up: follow.trim(), nth: Number(nth) });
+}
+async function feedbackSaveConfig(patch) {
+  if (patch.enabled === false && !confirm('Stop asking testers questions? Nothing is deleted, and you can switch it back on.')) return;
+  try { await api('/api/admin/feedback/config', { method: 'POST', body: JSON.stringify(patch) }); showToast('Saved'); loadFeedback(); }
+  catch (e) { showToast('Couldn\'t save (' + e.message + ')', 'error'); }
+}
+function feedbackCsv() {
+  const byKey = Object.fromEntries((feedbackData.summary.prompts || []).map(p => [p.key, p]));
+  const cell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const lines = [['When', 'Tester', 'Question', 'Rating', 'Answer', 'Comment', 'Platform', 'App version'].map(cell).join(',')]
+    .concat(feedbackData.recent.map(r => [r.created_at, fbWho(r.user_id), byKey[r.prompt_key]?.question || r.prompt_key,
+      r.rating, r.answer, r.comment, r.platform, r.app_version].map(cell).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = 'tileiq-feedback-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
 }
 
 // ── Demo visits ────────────────────────────────────────────────
