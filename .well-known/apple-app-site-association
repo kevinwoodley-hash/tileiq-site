@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["S46AB9AH2K.com.tileiq.pro"],
+        "appID": "S46AB9AH2K.com.tileiq.pro",
+        "components": [
+          { "/": "/become-a-tester", "comment": "Tester invite: opens Help Improve TileIQ in the app" },
+          { "/": "/become-a-tester/*", "comment": "Tester invite with a trailing slash or extras" }
+        ],
+        "paths": ["/become-a-tester", "/become-a-tester/*"]
+      }
+    ]
+  }
+}
