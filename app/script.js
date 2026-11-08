@@ -210,6 +210,7 @@ function show(id) {
     if (id === "screen-home") {
         if (currentUser && !currentUser.is_anonymous) rememberRealAccount();
         try { TQA.maybeAsk(); } catch (_) {}
+        try { TesterFeedback.onHome(); } catch (_) {}
         // Portfolio counts for the Home link: fetched once, then kept up to date by the portfolio screens
         setTimeout(() => { try { if (!PortfolioUI.loaded) PortfolioUI.load().then(() => PortfolioUI.homeSubtitle()).catch(() => {}); } catch (_) {} }, 1500);
     }
@@ -560,6 +561,9 @@ const TQA = (() => {
     // person accepts and thrown away if they decline; nothing leaves the device without consent.
     const pending = [];
     function track(name, params) {
+        // Testers' feedback questions follow what they do in the app, whatever the analytics choice
+        // (nothing is sent from here; see TesterFeedback).
+        try { if (typeof TesterFeedback !== "undefined") TesterFeedback.onEvent(name); } catch (_) {}
         const c = consent();
         if (c === "granted") return send(name, params);
         if (!c && pending.length < 30) pending.push([name, params]);
@@ -1005,6 +1009,374 @@ document.addEventListener("DOMContentLoaded", () => {
     // Web: the choice can also be made in the site's cookie banner — keep the Settings box in step
     if (window.tileiqConsent) window.tileiqConsent.onChange(() => { TQA.consentChanged(); TQA.renderSettings(); });
 });
+
+// ── Help Improve TileIQ: tester programme and in-app feedback questions ──────────────────
+// Tilers choose to join (Settings → Help Improve TileIQ, or an invite link) and can leave any time.
+// Only testers are ever asked anything. A question comes straight after the tiler does the thing it's
+// about (an app event from TQA.track, counted on this device whatever the analytics choice), once per
+// question, spaced out (feedback_config: hours apart, a week's maximum). Step 1 is one tap; it then
+// moves straight on to an optional comment; a thank-you closes itself after 1.5 seconds.
+// Everything lives in Supabase (sql/2026-11-testers-feedback.sql), written with the tiler's own
+// sign-in: tester_enrolments, feedback_prompts / feedback_config (read), feedback_responses.
+// Nothing is sent for the demo account or guests, and answers wait on the phone when offline.
+const TesterFeedback = (() => {
+    const INVITE_KEY = "tileiq-tester-invite";            // an invite opened before signing in
+    const CACHE_MS = 6 * 3600e3;
+    const SOURCES = ["landing_page", "invite_link", "app_setting", "app_prompt"];
+    const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (_) { return null; } };
+    const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+    const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const userId = () => (typeof currentUser !== "undefined" && currentUser && currentUser.id) || null;
+    const isDemo = () => typeof isDemoAccount === "function" && isDemoAccount();
+    const isGuestUser = () => !!(typeof currentUser !== "undefined" && currentUser && currentUser.is_anonymous);
+    const canSend = () => !!userId() && !isDemo() && !isGuestUser();
+    const online = () => navigator.onLine !== false;
+    const key = what => `tileiq-tester-${what}-${userId() || "anon"}`;
+    let version = "";
+    (async () => { try { version = (await window.Capacitor?.Plugins?.App?.getInfo?.())?.version || ""; } catch (_) {} })();
+
+    // ── Supabase, with the tiler's own sign-in ──
+    async function rest(method, path, body, prefer) {
+        let tok = "";
+        try { const { data } = await sb.auth.getSession(); tok = data?.session?.access_token || ""; } catch (_) {}
+        if (!tok) throw new Error("Not signed in");
+        const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+            method, headers: { "apikey": SB_KEY, "Authorization": "Bearer " + tok, "Content-Type": "application/json", ...(prefer ? { "Prefer": prefer } : {}) },
+            body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        if (!r.ok) { const e = new Error(`${r.status} ${(await r.text().catch(() => "")).slice(0, 160)}`); e.status = r.status; throw e; }
+        return r.status === 204 ? null : r.json().catch(() => null);
+    }
+
+    // ── Am I a tester? Kept on the phone (state) and sent when there's signal ──
+    // state: { status: "active"|"left"|null, source, since, dirty }
+    const state = () => lsGet(key("state")) || { status: null };
+    const setState = s => { lsSet(key("state"), s); renderSettings(); };
+    const isTester = () => canSend() && state().status === "active";
+
+    async function pushState() {
+        const s = state();
+        if (!s.dirty || !canSend() || !online()) return;
+        try {
+            await rest("POST", "tester_enrolments?on_conflict=user_id", { user_id: userId(), status: s.status, source: s.source || "app_setting",
+                platform: TQA.platform(), app_version: version || null }, "resolution=merge-duplicates,return=minimal");
+            const now = state();
+            if (now.status === s.status) setState({ ...now, dirty: false });
+        } catch (e) { console.warn("tester sync failed:", e.message); }
+    }
+    async function pullState() {
+        if (!canSend() || !online() || state().dirty) return;
+        try {
+            const rows = await rest("GET", `tester_enrolments?select=status,source,joined_at&user_id=eq.${userId()}`) || [];
+            const r = rows[0];
+            setState(r ? { status: r.status, source: r.source, since: r.joined_at, dirty: false } : { status: null });
+        } catch (e) { console.warn("tester status check failed:", e.message); }
+    }
+
+    function join(source) {
+        if (!canSend()) return false;
+        setState({ status: "active", source: SOURCES.includes(source) ? source : "app_setting", since: new Date().toISOString(), dirty: true });
+        lsSet(INVITE_KEY, null);
+        pushState();
+        refreshQuestions(true);
+        return true;
+    }
+    function leave() {
+        if (!canSend() || state().status !== "active") return;
+        setState({ ...state(), status: "left", dirty: true });
+        closePrompt(false);
+        pushState();
+    }
+
+    // ── The join sheet ──
+    function sheetShell(id, inner) {
+        document.getElementById(id)?.remove();
+        const el = document.createElement("div");
+        el.id = id;
+        el.setAttribute("role", "dialog");
+        el.setAttribute("aria-modal", "true");
+        el.style.cssText = "position:fixed;inset:0;z-index:99995;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;";
+        el.innerHTML = `<div class="tf-card" style="width:100%;max-width:480px;background:var(--surface);color:var(--ink);border-radius:18px 18px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.25);font-size:14px;line-height:1.45;">${inner}</div>`;
+        document.body.appendChild(el);
+        return el;
+    }
+    const BTN = "border:0;border-radius:12px;padding:13px 14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;";
+    const PRIMARY = BTN + "background:var(--amber);color:#111418;";
+    const PLAIN = BTN + "background:transparent;color:var(--muted);border:1px solid var(--border);";
+
+    // Shown from Settings (app_setting), an invite link (landing_page / invite_link) or after sign-in
+    // when an invite was opened while signed out. Resolves true if they joined.
+    function openJoin(source) {
+        return new Promise(resolve => {
+            const done = joined => { el.remove(); resolve(joined); };
+            let body;
+            if (isTester()) {
+                body = `<div style="font-size:18px;font-weight:800;margin-bottom:6px;">You're already helping improve TileIQ 👍</div>
+                    <p style="margin:0 0 16px;color:var(--muted);">Thanks for testing. You can leave any time in Settings → Help Improve TileIQ.</p>
+                    <button type="button" data-a="close" style="${PRIMARY}width:100%;">OK</button>`;
+            } else if (!userId() || isGuestUser()) {
+                body = `<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Help improve TileIQ</div>
+                    <p style="margin:0 0 16px;color:var(--muted);">Testers need their own free TileIQ account, so their answers stay with them. Create one and you'll be asked to join straight after.</p>
+                    <div style="display:flex;gap:8px;"><button type="button" data-a="close" style="${PLAIN}flex:1;">Not now</button>
+                    <button type="button" data-a="account" style="${PRIMARY}flex:2;">Create free account</button></div>`;
+            } else if (isDemo()) {
+                body = `<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Help improve TileIQ</div>
+                    <p style="margin:0 0 16px;color:var(--muted);">This is the demo, so nothing can be saved here. Get the TileIQ app or sign up for your own free account to join the testers.</p>
+                    <button type="button" data-a="close" style="${PRIMARY}width:100%;">OK</button>`;
+            } else {
+                body = `<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Help improve TileIQ</div>
+                    <p style="margin:0 0 10px;">Join the testers and help shape the app. Built by a tiler, for tilers.</p>
+                    <ul style="margin:0 0 14px;padding-left:18px;color:var(--muted);">
+                        <li>Now and then, straight after you use a feature, you'll get one quick question. One tap, plus a comment if you want.</li>
+                        <li>No more than ${Number(config().max_per_week ?? 2)} a week. You can close any question.</li>
+                        <li>Your answers are linked to your account so Kevin can follow up. Never your customers, quotes or prices.</li>
+                        <li>Leave whenever you like: Settings → Help Improve TileIQ.</li>
+                    </ul>
+                    <div style="display:flex;gap:8px;"><button type="button" data-a="close" style="${PLAIN}flex:1;">Not now</button>
+                    <button type="button" data-a="join" style="${PRIMARY}flex:2;">Join the testers</button></div>`;
+            }
+            const el = sheetShell("tester-join", body);
+            el.addEventListener("click", e => {
+                const a = e.target.closest?.("[data-a]")?.getAttribute("data-a");
+                if (e.target === el) return done(false);
+                if (a === "close") return done(false);
+                if (a === "account") {
+                    lsSet(INVITE_KEY, { source: SOURCES.includes(source) ? source : "invite_link", at: Date.now() });
+                    done(false);
+                    if (typeof showCreateAccountSheet === "function") showCreateAccountSheet(false);
+                    return;
+                }
+                if (a === "join") {
+                    join(source);
+                    el.querySelector(".tf-card").innerHTML = `<div style="text-align:center;padding:10px 0 6px;">
+                        <div style="font-size:30px;">🙌</div><div style="font-size:18px;font-weight:800;margin:6px 0;">You're in. Thank you!</div>
+                        <p style="margin:0;color:var(--muted);">Just use TileIQ as normal. Questions will pop up now and then.</p></div>`;
+                    setTimeout(() => done(true), 1800);
+                }
+            });
+        });
+    }
+
+    // An invite (link, website page, deep link). Signed out: remembered until they sign in.
+    function invite(source) {
+        source = SOURCES.includes(source) ? source : "invite_link";
+        if (!userId()) { lsSet(INVITE_KEY, { source, at: Date.now() }); return; }
+        openJoin(source);
+    }
+    // Home showing (sign-in, restored session): offer a remembered invite once, refresh questions.
+    function onHome() {
+        const inv = lsGet(INVITE_KEY);
+        if (inv && Date.now() - (inv.at || 0) > 30 * 864e5) lsSet(INVITE_KEY, null);
+        else if (inv && userId() && !isGuestUser()) {
+            lsSet(INVITE_KEY, null);
+            if (!isTester()) setTimeout(() => openJoin(inv.source), 600);
+        }
+        if (canSend()) { pushState(); pullState().then(() => refreshQuestions(false)); flushAnswers(); }
+    }
+    // Web app opened as /app/?tester=join[&src=landing_page]
+    function fromUrl(search) {
+        const p = new URLSearchParams(search || location.search);
+        if (p.get("tester") !== "join") return false;
+        invite(p.get("src") || "landing_page");
+        return true;
+    }
+    // App Links / Universal Links / tileiq:// (handleDeepLink)
+    function fromDeepLink(url) {
+        try {
+            const u = new URL(String(url).replace(/^tileiq:\/\//, "https://tile-iq.com/"));
+            if (!/^\/become-a-tester\/?$/.test(u.pathname) && u.searchParams.get("tester") !== "join") return false;
+            invite(u.searchParams.get("src") || "landing_page");
+            return true;
+        } catch (_) { return false; }
+    }
+
+    // ── Settings → Help Improve TileIQ ──
+    function renderSettings() {
+        const box = document.getElementById("set-tester");
+        if (!box) return;
+        const s = state();
+        box.checked = isTester();
+        box.disabled = !canSend();
+        const note = document.getElementById("set-tester-note");
+        if (note) {
+            note.textContent = isDemo() ? "Not available in the demo."
+                : isGuestUser() || !userId() ? "Create a free account to join."
+                : isTester() ? `You're a tester${s.since ? " since " + new Date(s.since).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : ""}. Thank you!`
+                : "Get the odd quick question after using a feature, and help shape what's next.";
+        }
+    }
+    async function settingChanged(on) {
+        if (on) { const joined = await openJoin("app_setting"); if (!joined) renderSettings(); }
+        else if (confirm("Leave the testers? You won't be asked any more questions. You can join again any time.")) leave();
+        else renderSettings();
+    }
+
+    // ── The questions ──
+    // fb: { counts: {event: n}, asked: {promptKey: iso}, last: iso, week: [iso...], pending: [rows] }
+    const fb = () => lsGet(key("fb")) || { counts: {}, asked: {}, week: [], pending: [] };
+    const setFb = v => lsSet(key("fb"), v);
+    const cache = () => lsGet("tileiq-fb-questions") || { at: 0, prompts: [], config: {} };
+    const config = () => ({ enabled: true, min_hours_between: 72, max_per_week: 2, thank_you_ms: 1500, ...(cache().config || {}) });
+
+    async function refreshQuestions(force) {
+        if (!isTester() || !online()) return;
+        if (!force && Date.now() - cache().at < CACHE_MS) return;
+        try {
+            const [prompts, cfg, mine] = await Promise.all([
+                rest("GET", "feedback_prompts?select=key,trigger_event,nth,question,answer_type,choices,follow_up,sort&active=eq.true&order=sort.asc"),
+                rest("GET", "feedback_config?select=enabled,min_hours_between,max_per_week,thank_you_ms&id=eq.1"),
+                rest("GET", `feedback_responses?select=prompt_key,created_at&user_id=eq.${userId()}`)
+            ]);
+            lsSet("tileiq-fb-questions", { at: Date.now(), prompts: prompts || [], config: (cfg || [])[0] || {} });
+            const f = fb();                                    // questions already asked on another phone
+            (mine || []).forEach(r => { if (!f.asked[r.prompt_key]) f.asked[r.prompt_key] = r.created_at; });
+            setFb(f);
+        } catch (e) { console.warn("feedback questions not loaded:", e.message); }
+    }
+
+    let showing = null, waiting = null;
+    // Every app event comes through here (TQA.track), before any analytics choice is applied.
+    function onEvent(name) {
+        if (!isTester()) return;
+        const f = fb();
+        f.counts[name] = (f.counts[name] || 0) + 1;
+        setFb(f);
+        if (showing || waiting) return;
+        const cfg = config();
+        if (!cfg.enabled) return;
+        const now = Date.now();
+        if (f.last && now - Date.parse(f.last) < cfg.min_hours_between * 3600e3) return;
+        const week = (f.week || []).filter(t => now - Date.parse(t) < 7 * 864e5);
+        if (week.length >= cfg.max_per_week) return;
+        const p = (cache().prompts || []).find(q => q.trigger_event === name && !f.asked[q.key] && f.counts[name] >= (q.nth || 1));
+        if (!p) return;
+        // A moment for the thing they just did to finish (sharing a quote opens another app: wait until they're back).
+        waiting = setTimeout(function go() {
+            if (document.hidden) { waiting = setTimeout(go, 1000); return; }
+            waiting = null;
+            if (isTester() && !document.getElementById("tester-join")) ask(p);
+        }, 1500);
+    }
+
+    function ask(p) {
+        const f = fb(), now = new Date().toISOString();
+        f.asked[p.key] = now; f.last = now;
+        f.week = (f.week || []).filter(t => Date.now() - Date.parse(t) < 7 * 864e5).concat(now);
+        setFb(f);
+        const ans = { rating: null, answer: null };
+        showing = { p, ans, step: 1 };
+        const el = sheetShell("fb-prompt", "");
+        el.style.background = "rgba(0,0,0,.25)";
+        const card = el.querySelector(".tf-card");
+        const close = `<button type="button" data-a="close" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;border:0;background:transparent;color:var(--muted);font-size:20px;cursor:pointer;">✕</button>`;
+        card.style.position = "relative";
+        const head = `<div style="font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--amber);margin-bottom:6px;">QUICK QUESTION · TESTERS</div>`;
+        function step1() {
+            let choices;
+            if (p.answer_type === "rating5") {
+                choices = `<div style="display:flex;gap:6px;justify-content:space-between;">${[1, 2, 3, 4, 5].map(n =>
+                    `<button type="button" data-r="${n}" aria-label="${n} out of 5" style="${BTN}flex:1;padding:12px 0;font-size:22px;background:var(--bg);color:var(--amber);border:1px solid var(--border);">★<div style="font-size:12px;color:var(--muted);font-weight:700;">${n}</div></button>`).join("")}</div>
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px;"><span>Poor</span><span>Great</span></div>`;
+            } else {
+                const opts = p.answer_type === "yes_no" ? ["Yes", "No"] : (Array.isArray(p.choices) ? p.choices : []);
+                choices = `<div style="display:flex;flex-direction:${opts.length > 2 ? "column" : "row"};gap:8px;">${opts.map(o =>
+                    `<button type="button" data-c="${esc(o)}" style="${BTN}flex:1;background:var(--bg);color:var(--ink);border:1px solid var(--border);text-align:${opts.length > 2 ? "left" : "center"};">${esc(o)}</button>`).join("")}</div>`;
+            }
+            card.innerHTML = `${close}${head}<div style="font-size:17px;font-weight:800;margin:0 36px 14px 0;">${esc(p.question)}</div>${choices}`;
+        }
+        function step2() {
+            showing.step = 2;
+            card.innerHTML = `${close}${head}<div style="font-size:17px;font-weight:800;margin:0 36px 10px 0;">${esc(p.follow_up)}</div>
+                <textarea id="fb-comment" rows="3" maxlength="1000" placeholder="Optional" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:12px;padding:10px 12px;font:inherit;font-size:15px;background:var(--bg);color:var(--ink);resize:vertical;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:10px;"><button type="button" data-a="skip" style="${PLAIN}flex:1;">Skip</button>
+                <button type="button" data-a="send" style="${PRIMARY}flex:2;">Send</button></div>`;
+        }
+        function thanks(outcome, comment) {
+            record(p, outcome, ans, comment);
+            showing = null;
+            card.innerHTML = `<div style="text-align:center;padding:14px 0 8px;" role="status"><div style="font-size:28px;">🙏</div>
+                <div style="font-size:17px;font-weight:800;margin-top:6px;">Thanks, that really helps</div></div>`;
+            setTimeout(() => el.remove(), Number(config().thank_you_ms) || 1500);
+        }
+        el.addEventListener("click", e => {
+            const t = e.target.closest?.("button");
+            if (!t) return;
+            const a = t.getAttribute("data-a");
+            if (a === "close") { closePrompt(true); return; }
+            if (t.hasAttribute("data-r") || t.hasAttribute("data-c")) {
+                if (showing?.step !== 1) return;
+                if (t.hasAttribute("data-r")) ans.rating = Number(t.getAttribute("data-r"));
+                else ans.answer = t.getAttribute("data-c");
+                t.style.background = "var(--amber)"; t.style.color = "#111418";
+                // Straight on to the comment (or the thank-you), no extra tap
+                setTimeout(() => { if (showing?.p === p) (p.follow_up ? step2() : thanks("answered")); }, 250);
+                return;
+            }
+            if (a === "skip") return thanks("partial");
+            if (a === "send") {
+                const c = (document.getElementById("fb-comment")?.value || "").trim().slice(0, 1000);
+                return thanks(c ? "answered" : "partial", c || null);
+            }
+        });
+        step1();
+        showing.el = el;
+    }
+    // Closed with ✕ (or leaving testing): step 1 not answered counts as dismissed, otherwise partial.
+    function closePrompt(save) {
+        if (waiting) { clearTimeout(waiting); waiting = null; }
+        const s = showing;
+        showing = null;
+        document.getElementById("fb-prompt")?.remove();
+        if (!s || !save) return;
+        const answered = s.ans.rating != null || s.ans.answer != null;
+        record(s.p, answered ? "partial" : "dismissed", s.ans, null);
+    }
+
+    function record(p, outcome, ans, comment) {
+        const row = { id: (crypto.randomUUID ? crypto.randomUUID() : null), user_id: userId(), prompt_key: p.key, outcome,
+            rating: outcome === "dismissed" ? null : ans.rating, answer: outcome === "dismissed" ? null : ans.answer,
+            comment: outcome === "answered" ? (comment || null) : null,
+            platform: TQA.platform(), app_version: version || null, screen: (document.querySelector(".screen:not(.hidden)")?.id || "").replace(/^screen-/, "").slice(0, 40) || null };
+        if (!row.id) delete row.id;
+        const f = fb();
+        f.pending = (f.pending || []).concat(row).slice(-50);
+        setFb(f);
+        flushAnswers();
+    }
+    let flushing = false;
+    async function flushAnswers() {
+        if (flushing || !canSend() || !online()) return;
+        const f = fb();
+        if (!(f.pending || []).length) return;
+        flushing = true;
+        const sending = f.pending.slice();
+        try {
+            await rest("POST", "feedback_responses" + (sending.every(r => r.id) ? "?on_conflict=id" : ""), sending,
+                       "resolution=ignore-duplicates,return=minimal");
+            const now = fb();
+            now.pending = (now.pending || []).filter(r => !sending.includes(r) && !sending.some(s => s.id && s.id === r.id));
+            setFb(now);
+        } catch (e) {
+            // Refused (left testing, feedback switched off, daily limit): drop them rather than retry forever.
+            if (e.status && e.status >= 400 && e.status < 500) {
+                const now = fb();
+                now.pending = (now.pending || []).filter(r => !sending.some(s => s === r || (s.id && s.id === r.id)));
+                setFb(now);
+            }
+            console.warn("feedback not sent:", e.message);
+        }
+        flushing = false;
+    }
+    window.addEventListener("online", () => { if (canSend()) { pushState(); flushAnswers(); } });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && canSend()) { pushState(); flushAnswers(); refreshQuestions(false); } });
+
+    return { join, leave, invite, openJoin, onHome, fromUrl, fromDeepLink, renderSettings, settingChanged, onEvent, isTester,
+             refreshQuestions, flushAnswers, closePrompt, _state: state, _fb: fb, _ask: ask };
+})();
+document.addEventListener("DOMContentLoaded", () => {
+    TesterFeedback.renderSettings();
+    TesterFeedback.fromUrl();               // web app opened from the website's tester page: /app/?tester=join
+});
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 // ── Demo account guard ────────────────────────────────────────
@@ -1409,6 +1781,7 @@ function isAppAdmin(user) {
 // Handle deep link for password reset
 function handleDeepLink(url) {
     if (!url) return;
+    if (TesterFeedback.fromDeepLink(url)) return;       // https://tile-iq.com/become-a-tester, tileiq://become-a-tester
     if (url.startsWith("tileiq://reset-password") || url.startsWith("https://tileiq.app/reset-password")) {
         const urlObj = url.startsWith("tileiq://")
             ? new URL(url.replace("tileiq://reset-password", "https://tileiq.app/reset"))
@@ -12649,6 +13022,7 @@ function openJobFromCal(jobId) {
 
 function goSettings() {
     settingsTab("profile"); // always open on profile tab
+    try { TesterFeedback.renderSettings(); } catch (_) {}
     const s = settings;
     updateGCalButton();
     document.getElementById("set-ai-receptionist").checked = s.aiReceptionistEnabled || false;

@@ -3017,6 +3017,13 @@
                 <span style="margin-left:auto;color:#ef4444;">›</span>
             </button>
             <div class="form-card" style="margin-bottom:12px;">
+                <div class="form-section-label">Help Improve TileIQ</div>
+                <label class="checkbox-label" style="align-items:flex-start;">
+                    <input type="checkbox" id="set-tester" onchange="TesterFeedback.settingChanged(this.checked)">
+                    <span>Join the testers<br><span id="set-tester-note" style="font-size:12px;color:var(--muted);">Get the odd quick question after using a feature, and help shape what's next.</span></span>
+                </label>
+            </div>
+            <div class="form-card" style="margin-bottom:12px;">
                 <div class="form-section-label" onclick="TQA.titleTap()">Analytics</div>
                 <label class="checkbox-label" style="align-items:flex-start;">
                     <input type="checkbox" id="set-analytics-consent" onchange="TQA.setConsent(this.checked ? 'granted' : 'denied')">
