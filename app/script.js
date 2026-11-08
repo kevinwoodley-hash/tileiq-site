@@ -1107,19 +1107,27 @@ const StartHere = (() => {
     function render() {
         if (!el) return;
         const n = track.items.length, d = st.done.length, all = d >= n;
-        const sig = JSON.stringify([st, all]);
+        const sig = JSON.stringify([st.done, st.collapsed, st.dismissed, all]); // not st.pos: moving it needs no redraw
         if (sig === lastSig) return;
         lastSig = sig;
         if (st.collapsed && !all) {
-            el.innerHTML = `<button type="button" class="sh-pill" onclick="StartHere.expand()">🧭 Start here · ${d}/${n}</button>`;
+            el.innerHTML = `<div class="sh-pillrow">
+                <button type="button" class="sh-pill" data-sh-drag onclick="StartHere.expand()">🧭 Start here · ${d}/${n}</button>
+                <button type="button" class="sh-close" aria-label="Close the guide" onclick="StartHere.dismiss()">✕</button>
+            </div>`;
+            placeIt();
             return;
         }
         el.innerHTML = `
             <div class="sh-card">
-                <div class="sh-head">
+                <div class="sh-head" data-sh-drag>
                     <div><div class="sh-kicker">START HERE · ${d}/${n}</div><div class="sh-title">${all ? "That's TileIQ" : track.title}</div></div>
-                    <button type="button" class="sh-x" aria-label="${all ? "Close" : "Minimise"}" onclick="StartHere.${all ? "dismiss" : "collapse"}()">${all ? "✕" : "–"}</button>
+                    <div class="sh-btns">
+                        ${all ? "" : `<button type="button" class="sh-x" aria-label="Minimise" onclick="StartHere.collapse()">–</button>`}
+                        <button type="button" class="sh-x" aria-label="Close the guide" onclick="StartHere.dismiss()">✕</button>
+                    </div>
                 </div>
+                ${all ? "" : `<p class="sh-tip">Drag this bar to move the guide.</p>`}
                 ${all ? `
                 <p class="sh-p">Now try it on your own jobs. 30-day free trial, no card needed.</p>
                 <a class="sh-cta" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener">Get it on Google Play</a>
@@ -1135,16 +1143,52 @@ const StartHere = (() => {
                 }).join("")}</ol>
                 ${track.note ? `<p class="sh-note">${track.note}</p>` : ""}`}
             </div>`;
+        placeIt();
+    }
+
+    // Moving the guide: drag the pill or the card's top bar. A drag (more than a few px) doesn't
+    // count as a tap. The spot is kept for the visit and pulled back on screen if it won't fit.
+    function placeIt() {
+        if (!el || !st.pos) return;
+        el.style.right = "auto"; el.style.bottom = "auto";
+        const w = el.offsetWidth || 160, h = el.offsetHeight || 50;
+        const x = Math.min(Math.max(8, st.pos.x), Math.max(8, window.innerWidth - w - 8));
+        const y = Math.min(Math.max(8, st.pos.y), Math.max(8, window.innerHeight - h - 8));
+        el.style.left = x + "px"; el.style.top = y + "px";
+    }
+    function wireDrag() {
+        let start = null, moved = false;
+        el.addEventListener("pointerdown", e => {
+            if (!e.target.closest("[data-sh-drag]") || (e.target.closest("button") && !e.target.closest(".sh-pill"))) return;
+            const r = el.getBoundingClientRect();
+            start = { px: e.clientX, py: e.clientY, x: r.left, y: r.top, id: e.pointerId }; moved = false;
+        });
+        // Follow the pointer on the window: a quick drag leaves the button before the first move arrives
+        window.addEventListener("pointermove", e => {
+            if (!start || e.pointerId !== start.id) return;
+            const dx = e.clientX - start.px, dy = e.clientY - start.py;
+            if (!moved && Math.hypot(dx, dy) < 6) return;
+            if (!moved) { moved = true; el.classList.add("sh-moving"); }
+            st.pos = { x: start.x + dx, y: start.y + dy };
+            placeIt(); e.preventDefault();
+        });
+        const end = () => { if (!start) return; start = null; el.classList.remove("sh-moving"); if (moved) { save(); makeRoom(); } };
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+        // The tap that ends a drag mustn't also open the checklist
+        el.addEventListener("click", e => { if (moved) { moved = false; e.stopPropagation(); e.preventDefault(); } }, true);
+        window.addEventListener("resize", placeIt);
     }
 
     function poll() {
         const visible = isDemoAccount() && jobs.length > 0 && !st.dismissed && SHOW_ON.includes(screen());
-        if (!visible) { if (el) el.hidden = true; return; }
+        if (!visible) { if (el) el.hidden = true; makeRoom(); return; }
         if (!el) {
             el = document.createElement("div");
             el.id = "start-here";
             el.dataset.tqSpot = "demo_start_here";
             document.body.appendChild(el);
+            wireDrag();
         }
         el.hidden = false;
         let changed = false;
@@ -1154,6 +1198,24 @@ const StartHere = (() => {
         if (st.done.length >= track.items.length) TQA.tourDone(trackKey);
         if (changed) { if (st.done.length >= track.items.length) st.collapsed = false; save(); }
         render();
+        makeRoom();
+    }
+
+    // The guide is fixed over the bottom-right corner, so at the end of a page it sat on top of
+    // buttons like Save Room. Leave that much empty space at the end of the screen showing, so
+    // anything under it can always be scrolled clear.
+    function makeRoom() {
+        const r = el && !el.hidden ? el.getBoundingClientRect() : null;
+        // Only needed while the guide sits at the bottom; moved up out of the way, it covers nothing at the end
+        const on = !!r && r.bottom > window.innerHeight - 160;
+        // Pages already leave room for the bottom menu, so only the part of the guide above it needs space
+        const scr = document.querySelector(".screen:not(.hidden)");
+        const nav = document.getElementById("bottom-nav");
+        const navTop = nav && nav.getClientRects().length ? nav.getBoundingClientRect().top : Infinity;
+        const floor = Math.min(window.innerHeight, navTop, scr ? scr.getBoundingClientRect().bottom : Infinity);
+        const space = on ? Math.max(0, Math.ceil(floor - r.top) + 12) : 0;
+        document.documentElement.style.setProperty("--sh-space", space + "px");
+        document.body.classList.toggle("sh-on", on);
     }
 
     return {
@@ -1169,7 +1231,7 @@ const StartHere = (() => {
         collapse() { st.collapsed = true; save(); render(); },
         dismiss() {
             if (st.done.length < track.items.length) TQA.tourDismissed(trackKey, st.done.length);
-            st.dismissed = true; save(); if (el) el.hidden = true;
+            st.dismissed = true; save(); if (el) el.hidden = true; makeRoom();
         },
     };
 })();
