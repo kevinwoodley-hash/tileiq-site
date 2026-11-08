@@ -389,11 +389,11 @@ function _updateSyncBadge(hasPending) {
     if (!badge) return;
     if (!navigator.onLine) {
         badge.style.display = "inline-block";
-        badge.textContent   = "✈ Offline";
+        badge.innerHTML     = '✈<span class="badge-word"> Offline</span>';   // the word is hidden on narrow phones
         badge.style.background = "#dc2626";
     } else if (hasPending || localStorage.getItem(SYNC_PENDING_KEY)) {
         badge.style.display = "inline-block";
-        badge.textContent   = "⟳ Syncing";
+        badge.innerHTML     = '⟳<span class="badge-word"> Syncing</span>';
         badge.style.background = "#d97706";
     } else {
         badge.style.display = "none";
@@ -934,8 +934,12 @@ const TQA = (() => {
             if (p.has_opted_out_capturing()) p.opt_in_capturing();
             if (webDemo()) {
                 // Demo visitors stay anonymous: never identified (everyone shares the demo account)
+                // traffic_source = where the visit came from outside the site (Google, an ad...). A click from
+                // our own guide or calculator (tq_src) isn't a visit source, so it never overwrites the source
+                // the website pages already registered. Older /analytics.js without visitSource(): source().
+                const tc = window.tileiqConsent, visit = tc?.visitSource ? tc.visitSource() : tc?.source?.();
                 p.register({ platform_type: "web", app_mode: "demo", demo_track: new URLSearchParams(location.search).get("try") || "tour",
-                    traffic_source: window.tileiqConsent?.source?.()?.s || undefined, is_internal_test: internal() ? "true" : "false" });
+                    is_internal_test: internal() ? "true" : "false", ...(visit?.s ? { traffic_source: visit.s } : {}) });
                 return;
             }
             if (currentUser && phUser !== currentUser.id) {
@@ -1937,6 +1941,8 @@ async function authSignUp() {
     if (!email || !password) { authShowError("signup-error", "Please fill in all fields."); return; }
     if (password.length < 6)  { authShowError("signup-error", "Password must be at least 6 characters."); return; }
     if (password !== confirm)  { authShowError("signup-error", "Passwords do not match."); return; }
+    // The box says they agree to the Privacy Policy and Terms: it has to be ticked to sign up.
+    if (!document.getElementById("su-privacy")?.checked) { authShowError("signup-error", "Please tick the box to agree to the Privacy Policy and Terms of Service."); return; }
     if (isNaN(captcha) || captcha !== _captchaAnswer) {
         authShowError("signup-error", "Incorrect answer — please try again.");
         generateCaptcha();
@@ -3812,10 +3818,65 @@ function newJobFromCustomer(id) {
     goAddRoom();
 }
 
+// Jobs don't store a customer id (details are copied in), so a job belongs to a saved
+// customer when the name matches and the email / phone don't contradict it.
+function jobsForCustomer(c) {
+    if (!c) return [];
+    const norm = v => String(v || "").trim().toLowerCase();
+    const digits = v => String(v || "").replace(/\D/g, "");
+    const name = norm(c.name);
+    if (!name) return [];
+    return jobs.filter(j => {
+        if (norm(j.customerName) !== name) return false;
+        if (norm(c.email) && norm(j.email) && norm(c.email) !== norm(j.email)) return false;
+        if (digits(c.phone) && digits(j.phone) && digits(c.phone) !== digits(j.phone)) return false;
+        return true;
+    });
+}
+
+// Removes one job everywhere (local, calendar, D1, Supabase) - shared by deleteJob()
+// and deleteCustomer(). Payments and job costs are left in the money records.
+function removeJobRecord(job) {
+    if (!job) return;
+    const deletedId = job.id;
+    if (job.gcalEventId) deleteGCalEvent(job.gcalEventId);
+    jobs = jobs.filter(j => j.id !== deletedId);
+    if (currentJobId === deletedId) currentJobId = null;
+    if (currentUser) {
+        fetch(AI_PROXY_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "d1_delete_job", user_id: currentUser.id, job_id: deletedId })
+        }).catch(e => console.error("deleteJob D1 error:", e));
+        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
+        fetch(SB_URL + "/rest/v1/jobs?id=eq." + deletedId + "&user_id=eq." + currentUser.id, {
+            method: "DELETE",
+            headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY) }
+        }).catch(e => console.error("deleteJob Supabase error:", e));
+    }
+}
+
 function deleteCustomer(id) {
-    if (!confirm('Delete this saved customer?')) return;
+    const customer = getSavedCustomers().find(c => String(c.id) === String(id));
+    const linked = jobsForCustomer(customer);
+    if (linked.length) {
+        const word = settings?.docType === "estimate" ? "estimate" : "quote";
+        const n = linked.length;
+        const sent = linked.filter(j => j.quoteToken).length;
+        const paid = linked.reduce((t, j) => t + FinStore.forJob(j.id).filter(p => p.status !== "void").length
+            + FinExpenses.forJob(j.id).filter(e => e.status !== "void").length, 0);
+        let msg = `⚠️ ${customer.name} has ${n} job${n === 1 ? "" : "s"} with ${word}s saved.\n\n`
+            + `Deleting this customer will also delete ${n === 1 ? "that job and its " + word : "those jobs and their " + word + "s"}.`;
+        if (sent) msg += `\n\n${sent === 1 ? "A " + word + " has" : sent + " " + word + "s have"} already been sent - the customer's link won't be cancelled.`;
+        if (paid) msg += `\n\nPayments and job costs already recorded stay in your money records.`;
+        msg += `\n\nThis cannot be undone. Delete anyway?`;
+        if (!confirm(msg)) return;
+        linked.forEach(removeJobRecord);
+        saveAll();
+    } else if (!confirm('Delete this saved customer?')) return;
     const customers = getSavedCustomers().filter(c => String(c.id) !== String(id));
     saveCustomers(customers);
+    if (linked.length && typeof renderDashboard === "function") renderDashboard();
     renderCustomersScreen(document.getElementById('customers-search')?.value || '');
     // Also close modal if open
     document.getElementById('saved-customers-modal')?.remove();
@@ -4045,7 +4106,10 @@ function renderHomeScreen() {
     // Sync offline badge
     const badge = document.getElementById("offline-badge-home");
     const mainBadge = document.getElementById("offline-badge");
-    if (badge && mainBadge) badge.style.display = mainBadge.style.display;
+    if (badge && mainBadge) {
+        badge.style.display = mainBadge.style.display;
+        if (mainBadge.innerHTML.trim()) { badge.innerHTML = mainBadge.innerHTML; badge.style.background = mainBadge.style.background; }   // Offline or Syncing, as on Jobs
+    }
 
     renderHomeDashboard();
 }
@@ -4328,6 +4392,7 @@ function renderHomeDashboard() {
         <div style="font-size:18px;font-weight:800;color:var(--ink);margin-top:1px;">${fmt(monthAccepted)}</div>
     </div>`;
 
+    if (typeof FinInbox !== "undefined" && currentUser && !isDemoAccount()) { finUpdateHomeMoneyRow(); FinInbox.loadIfStale(); }
     if (typeof FinStore !== "undefined" && getDashboardWidgetOrder().some(id => id === "money_in_month" || id === "owed")) {
         const mr = FinCore.periodRange("month", FinCore.localDate());
         const mo = FinCore.overview(finPayments(), [], mr.from, mr.to);
@@ -5092,7 +5157,7 @@ async function extractCustomerFromText() {
     try {
         const resp = await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: await jobsAuthHeaders(),
             body: JSON.stringify({ action: 'extract_customer', text })
         });
         const data = await resp.json();
@@ -5669,8 +5734,65 @@ async function loadMessagesBadge(quoteToken) {
     } catch(e) {}
 }
 
-async function goMessages() {
+// Shown at the top of Messages after the tiler sends something: whether the customer was emailed.
+let tilerMessageNotice = null;
+function renderMessagesNotice() {
+    const el = document.getElementById("messages-notice");
+    if (!el) return;
+    const n = tilerMessageNotice;
+    el.style.display = n ? "block" : "none";
+    el.innerHTML = n ? `<div style="background:${n.ok ? "#064e3b" : "#78350f"};color:${n.ok ? "#a7f3d0" : "#fde68a"};border-radius:10px;padding:10px 14px;font-size:13.5px;line-height:1.5;margin-bottom:12px;">${n.text}</div>` : "";
+}
+function renderMessagesCompose(j) {
+    const box = document.getElementById("messages-compose");
+    if (!box) return;
+    box.style.display = j && j.quoteToken ? "block" : "none";
+    if (!j) return;
+    const first = String(j.customerName || "").trim().split(/\s+/)[0];
+    document.getElementById("messages-compose-name").textContent = first || "your customer";
+    document.getElementById("messages-compose-hint").textContent = j.email
+        ? `They'll see it on their quote page and get an email to ${j.email} letting them know.`
+        : "They'll see it on their quote page. There's no email for this customer, so they won't be told — add one on the job to email them.";
+}
+// What the tiler is told after sending, from the worker's answer.
+function tilerMessageResult(data, j) {
+    const who = esc(String(j?.customerName || "").trim().split(/\s+/)[0] || "Your customer");
+    if (data && data.emailed) return { ok: true, text: `✅ Sent. ${who} has been emailed to let them know.` };
+    if (data && data.reason === "no_email") return { ok: false, text: `Sent to their quote page, but there's no email for this customer, so they haven't been told. Add their email on the job, or let them know another way.` };
+    return { ok: false, text: `Sent to their quote page, but the email to let ${who} know didn't go. Let them know another way.` };
+}
+async function postTilerMessage(text, messageId) {
+    const j = getJob();
+    const resp = await fetch(AI_PROXY_URL, { method: "POST", headers: await jobsAuthHeaders(), body: JSON.stringify({
+        action: "send_tiler_reply", token: j.quoteToken, reply: text,
+        ...(messageId ? { message_id: messageId } : {}),
+        customerEmail: j.email || "", customerName: j.customerName || "" }) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || "send failed");
+    tilerMessageNotice = tilerMessageResult(data, j);
+    TQA.feature(messageId ? "customer_reply_sent" : "customer_message_sent");
+}
+async function sendTilerMessage() {
+    if (demoBlocked("Messaging customers")) return;
+    const input = document.getElementById("tiler-new-msg");
+    const btn = document.getElementById("tiler-new-msg-btn");
+    const text = input?.value.trim();
+    if (!text) return;
+    if (btn) { btn.disabled = true; btn.textContent = "Sending\u2026"; }
+    try {
+        await postTilerMessage(text);
+        input.value = "";
+        await goMessages(true);
+    } catch(e) {
+        alert("Couldn't send your message — check your signal and try again.");
+    } finally { if (btn) { btn.disabled = false; btn.textContent = "Send"; } }
+}
+
+async function goMessages(keepNotice) {
     show("screen-messages");
+    if (!keepNotice) tilerMessageNotice = null;
+    renderMessagesNotice();
+    renderMessagesCompose(getJob());
     const loading = document.getElementById("messages-loading");
     const list    = document.getElementById("messages-list");
     const empty   = document.getElementById("messages-empty");
@@ -5710,18 +5832,18 @@ async function goMessages() {
                 return `
                     <div class="form-card" style="margin-bottom:12px;">
                         <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">\u{1F4AC} Customer question \u00B7 ${date}</div>
-                        <div style="font-size:15px;color:#1e293b;font-weight:500;line-height:1.6;margin-bottom:10px;">"${esc(item.message)}"</div>
+                        <div style="font-size:15px;color:var(--ink);font-weight:500;line-height:1.6;margin-bottom:10px;white-space:pre-wrap;">"${esc(item.message)}"</div>
                         <div style="margin-top:10px;">
                             <textarea id="reply-input-${item.id}" rows="2" placeholder="Type your reply\u2026"
-                                style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid var(--border);border-radius:8px;color:#e2e8f0;padding:10px;font-size:14px;resize:none;margin-bottom:8px;"></textarea>
+                                style="width:100%;box-sizing:border-box;border-radius:8px;padding:10px;font-size:15px;resize:vertical;margin-bottom:8px;"></textarea>
                             <button onclick="sendTilerReply('${item.id}','${j.quoteToken}')" class="btn-primary" style="width:100%;padding:11px;">Send Reply</button>
                         </div>
                     </div>`;
             } else if (item._type === "tiler_reply") {
                 return `
                     <div class="form-card" style="margin-bottom:12px;border-left:3px solid #f59e0b;">
-                        <div style="font-size:11px;color:#64748b;margin-bottom:6px;">Your reply · ${date}</div>
-                        <div style="font-size:15px;color:#e2e8f0;line-height:1.6;">${esc(item.message)}</div>
+                        <div style="font-size:11px;color:#64748b;margin-bottom:6px;">You · ${date}</div>
+                        <div style="font-size:15px;color:var(--ink);line-height:1.6;white-space:pre-wrap;">${esc(item.message)}</div>
                     </div>`;
             } else {
                 const start = new Date(item.start_date+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"long"});
@@ -5910,10 +6032,12 @@ async function sendTilerReply(messageId, quoteToken) {
     const btn = input.nextElementSibling;
     if (btn) { btn.disabled = true; btn.textContent = "Sending\u2026"; }
     try {
-        const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev", { method:"POST", headers: emailAuthHeaders(), body:JSON.stringify({action:"send_tiler_reply",message_id:messageId,token:quoteToken,reply}) });
-        if (!resp.ok) throw new Error();
-        await goMessages();
-    } catch(e) { if (btn) { btn.disabled = false; btn.textContent = "Send Reply"; } }
+        await postTilerMessage(reply, messageId);
+        await goMessages(true);
+    } catch(e) {
+        alert("Couldn't send your reply — check your signal and try again.");
+        if (btn) { btn.disabled = false; btn.textContent = "Send Reply"; }
+    }
 }
 
 async function respondDateSuggestion(sid, status, quoteToken) {
@@ -7833,13 +7957,19 @@ function renderJobView() {
             ${parts ? `<button onclick="getDirections('${job.id}')" style="background:#E07A2F;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;margin-top:6px;display:inline-block;">🗺️ Directions</button>` : ""}
         </div>
     `;
-    // Attach touch/click listeners via delegation — more reliable in Android WebView
-    _custBar.addEventListener("click", function _stepperClick(e) {
-        const dot = e.target.closest("[data-setstatus]");
-        if (dot) { setJobStatus(dot.dataset.setstatus); return; }
-        const adv = e.target.closest("[data-advance]");
-        if (adv) advanceStatus();
-    }, { once: false });
+    // Attach touch/click listeners via delegation — more reliable in Android WebView.
+    // Only once: the bar is redrawn on every renderJobView (and every stage tap redraws it), so
+    // adding a listener here each time doubled them on every tap until one tap ran hundreds of
+    // redraws and the app hung.
+    if (!_custBar._stepperBound) {
+        _custBar._stepperBound = true;
+        _custBar.addEventListener("click", function _stepperClick(e) {
+            const dot = e.target.closest("[data-setstatus]");
+            if (dot) { setJobStatus(dot.dataset.setstatus); return; }
+            const adv = e.target.closest("[data-advance]");
+            if (adv) advanceStatus();
+        });
+    }
 
     // Rooms
     const roomsEl  = document.getElementById("job-rooms-list");
@@ -8201,6 +8331,7 @@ function advanceStatus() {
 function deleteRoom(idx) {
     if (!confirm("Delete this room?")) return;
     getJob().rooms.splice(idx, 1);
+    finRefreezeQuoteFigures(getJob());
     saveAll();
     renderJobView();
 }
@@ -8222,24 +8353,9 @@ function deleteJob() {
     } else {
         if (!confirm(`Delete job for ${job.customerName}? This cannot be undone.`)) return;
     }
-    const deletedId = currentJobId;
-    if (job.gcalEventId) deleteGCalEvent(job.gcalEventId);
-    jobs = jobs.filter(j => j.id !== deletedId);
+    removeJobRecord(job);
     currentJobId = null;
     saveAll(); // update localStorage immediately so totals recalculate correctly
-    if (currentUser) {
-        fetch(AI_PROXY_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "d1_delete_job", user_id: currentUser.id, job_id: deletedId })
-        }).catch(e => console.error("deleteJob D1 error:", e));
-        // Also delete from Supabase
-        const tok = JSON.parse(localStorage.getItem("sb-lzwmqabxpxuuznhbpewm-auth-token") || "{}").access_token;
-        fetch(SB_URL + "/rest/v1/jobs?id=eq." + deletedId + "&user_id=eq." + currentUser.id, {
-            method: "DELETE",
-            headers: { "apikey": SB_KEY, "Authorization": "Bearer " + (tok || SB_KEY) }
-        }).catch(e => console.error("deleteJob Supabase error:", e));
-    }
     goDashboard();
 }
 
@@ -8274,6 +8390,8 @@ function goEditJob() {
     document.getElementById("ej-cis").value = cisOn ? "true" : "false";
     document.getElementById("ej-cis-rate").value = String(cisOn ? j.cis.ratePct : (settings.cisRatePct ?? 20));
     document.getElementById("ej-cis-rate-wrap").style.display = cisOn ? "" : "none";
+    document.getElementById("ej-cis-rc").value = cisOn && j.cis.reverseCharge ? "true" : "false";
+    document.getElementById("ej-cis-rc-wrap").style.display = cisOn ? "" : "none";
     applyRegionUnitsArea();
     show("screen-edit-job");
 }
@@ -8293,13 +8411,18 @@ function saveEditJob() {
     j.tileSupply   = document.getElementById("ej-supply").value;
     j.areaMeta     = parseFloat(document.getElementById("ej-area").value) || null;
     j.workType     = document.getElementById("ej-worktype").value || null;
+    const wasCis = !!(j.cis && j.cis.applies);
     if (document.getElementById("ej-cis-row").style.display !== "none") {
         const cisOn = document.getElementById("ej-cis").value === "true";
-        if (cisOn) j.cis = { applies: true, ratePct: numOr(document.getElementById("ej-cis-rate").value, 20) };
+        if (cisOn) j.cis = { applies: true, ratePct: numOr(document.getElementById("ej-cis-rate").value, 20),
+                             reverseCharge: document.getElementById("ej-cis-rc").value === "true" };
         else if (j.cis) j.cis = { ...j.cis, applies: false };
     }
     saveAll();
     goJob();
+    // CIS on or off changes the materials markup, so an accepted job's materials estimate is
+    // taken again once the job screen has repriced the rooms.
+    if (wasCis !== !!(j.cis && j.cis.applies) && j.quoteFigures) { finRefreezeQuoteFigures(j); renderJobView(); }
 }
 
 /* ================================================================
@@ -10058,9 +10181,55 @@ function updateNiche(zone, id, field, value) {
     rmCalc();
 }
 
+// ── Materials markup ──────────────────────────────────────────────
+// Home customers pay the materials markup from Settings; CIS jobs (for main contractors) get
+// materials at cost, so the CIS invoice's materials line is what they cost and the contractor's
+// deduction comes off the labour only. Pricing code works on rooms, surfaces and niche lists
+// rather than jobs, so jobOwning() finds the job a room/surface belongs to (indexed once, and
+// again whenever something new turns up); objects that aren't saved in a job yet, such as the
+// room editor's form, are priced for the job that's open.
+const _pricingIndex = new WeakMap();   // room/surface/niche list -> its job
+const _roomIndex = new WeakMap();      // surface -> its room
+function _indexJobs() {
+    (typeof jobs !== "undefined" && Array.isArray(jobs) ? jobs : []).forEach(j => {
+        _pricingIndex.set(j, j);
+        (j.rooms || []).forEach(r => {
+            _pricingIndex.set(r, j);
+            if (Array.isArray(r.niches)) _pricingIndex.set(r.niches, j);
+            (r.surfaces || []).forEach(sf => { _pricingIndex.set(sf, j); _roomIndex.set(sf, r); });
+        });
+    });
+}
+function jobOwning(obj) {
+    if (!obj || typeof obj !== "object") return null;
+    if (!_pricingIndex.has(obj)) _indexJobs();
+    return _pricingIndex.get(obj) || null;
+}
+function roomOwning(surface) {
+    if (!surface || typeof surface !== "object") return null;
+    if (!_roomIndex.has(surface)) _indexJobs();
+    return _roomIndex.get(surface) || null;
+}
+// £ per 20kg bag of the adhesive a room uses (grey/white, standard/rapid set).
+function adhUnitPriceFor(adhType, adhColour) {
+    const rapid = adhType === "rapid", white = adhColour === "white";
+    return rapid ? (white ? numOr(settings.rapidAdhPriceWhite, 30) : numOr(settings.rapidAdhPrice, 28))
+                 : (white ? numOr(settings.adhesivePriceWhite, 24) : numOr(settings.adhesivePrice, 22));
+}
+// The adhesive price for a surface: its own room's choice when it's saved in a job; the room
+// editor's current choice (settings._adhUnitPrice, set from the form) for one being edited.
+// It used to be the editor's last choice for every room, so a white or rapid set room was
+// priced at whatever adhesive the editor last showed.
+function adhUnitPriceOf(surface) {
+    const room = roomOwning(surface);
+    return room ? adhUnitPriceFor(room.adhType, room.adhColour) : numOr(settings._adhUnitPrice, settings.adhesivePrice);
+}
+function markupPctFor(job) { return job && job.cis && job.cis.applies ? 0 : (parseFloat(settings.markup) || 0); }
+function markupPctOf(obj) { return markupPctFor(jobOwning(obj) || (typeof getJob === "function" ? getJob() : null)); }
+
 function getNicheSurfaces(zone, list = niches[zone]) {
     const S = settings;
-    const mult = 1 + (S.markup || 0) / 100;
+    const mult = 1 + markupPctOf(list) / 100;
     return (list || []).map((n, i) => {
         const W = parseFloat(n.width)  || 0;
         const H = parseFloat(n.height) || 0;
@@ -10445,9 +10614,10 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     const tileCost = customerTiles ? 0 : s.area * tileUnitPrice;
     // Price adhesive/grout pro-rata by kg
     const groutCost = (totalGroutKg / bagSize) * bagPrice;
-    const adhCost   = (s.adhKg / 20) * numOr(S._adhUnitPrice, S.adhesivePrice);
+    const adhUnitPrice = adhUnitPriceOf(s);
+    const adhCost   = (s.adhKg / 20) * adhUnitPrice;
     const matRaw    = tileCost + groutCost + adhCost;
-    const mult     = 1 + S.markup / 100;
+    const mult     = 1 + markupPctOf(s) / 100;
     s.materialSell = matRaw * mult;
 
     // Labour: separate wall/floor rates + tile type multiplier
@@ -10468,14 +10638,16 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
 
     // UFH adds only what the tiler entered (mat, stat, other, labour per m²). Blank = nothing:
     // there used to be a hidden £15/m² labour default, so ticking UFH added money nobody typed in.
+    // Mat, stat and other are materials, marked up like other materials; the labour isn't.
     s.ufhCost = (s.ufh && s.type === "floor") ? (
-        (s.ufhMat || 0) + (s.ufhStat || 0) + (s.ufhOther || 0) + s.area * (s.ufhLabour || 0)
+        ((s.ufhMat || 0) + (s.ufhStat || 0) + (s.ufhOther || 0)) * mult + s.area * (s.ufhLabour || 0)
     ) : 0;
 
     // Wet room tray flat rate (per-job price overrides settings)
     s.trayCost = s.wetRoomTray ? (s.wetRoomTrayPrice || parseFloat(S.wetRoomTrayRate) || 150) : 0;
 
-    // Prep costs — all rates are £/m², multiplied by surface area.
+    // Prep costs — all rates are £/m², multiplied by surface area. Prep materials carry the
+    // materials markup (none on CIS jobs); prep labour is never marked up.
     // prepMatCost/prepLabCost split the same total for the tiler's own
     // internal breakdown (never shown to the customer — their quote still
     // sees prep folded into the one Materials line as before).
@@ -10491,26 +10663,29 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             const labRate  = parseFloat(S.cbLabour)    || 6;
             const adhRate  = parseFloat(S.cbAdhKgM2)   || 4;
             const boards   = Math.ceil(s.area / 0.96);
-            const matCost  = s.area * matRate;
+            const matCost  = s.area * matRate * mult;
             const labCost  = s.area * labRate;
             const adhKg    = s.area * adhRate;
+            // The adhesive that bonds the boards, at the room's adhesive price with markup (it used
+            // to be added to the bag count but never charged for).
+            const adhCostCb = (adhKg / 20) * adhUnitPrice * mult;
             s.cementBoards  = boards;
             s.prepAdhKg    += adhKg;
-            s.prepCost     += matCost + labCost;
-            s.prepMatCost  += matCost;
+            s.prepCost     += matCost + labCost + adhCostCb;
+            s.prepMatCost  += matCost + adhCostCb;
             s.prepLabCost  += labCost;
-            s.prepLines.push(`Cement Board: ${boards} board${boards !== 1 ? "s" : ""} · material ${currencySymbol()}${matCost.toFixed(2)} · fitting labour ${currencySymbol()}${labCost.toFixed(2)} · +${adhKg.toFixed(1)}kg adhesive`);
+            s.prepLines.push(`Cement Board: ${boards} board${boards !== 1 ? "s" : ""} · material ${currencySymbol()}${matCost.toFixed(2)} · fitting labour ${currencySymbol()}${labCost.toFixed(2)} · bonding adhesive ${adhKg.toFixed(1)}kg ${currencySymbol()}${adhCostCb.toFixed(2)}`);
         }
         if (s.membrane) {
             const matRate     = parseFloat(S.membrane)      || 8;
             const labRate     = parseFloat(S.memLabour)     || 3;
             const adhRate     = parseFloat(S.memAdhKgM2)    || 3;
             const rapidPrice  = numOr(S.rapidAdhPrice, 28);
-            const matCost     = s.area * matRate;
+            const matCost     = s.area * matRate * mult;
             const labCost     = s.area * labRate;
             const adhKg       = s.area * adhRate;
             const rapidBags   = Math.ceil(adhKg / 20);
-            const rapidCost   = rapidBags * rapidPrice * (1 + (parseFloat(S.markup) || 0) / 100);
+            const rapidCost   = rapidBags * rapidPrice * (1 + markupPctOf(s) / 100);
             s.rapidAdhKg     += adhKg;
             s.prepCost       += matCost + labCost + rapidCost;
             s.prepMatCost    += matCost + rapidCost; // rapid set adhesive is a material cost
@@ -10527,21 +10702,21 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
             const bagCov   = coverage * (3 / depth);  // adjust coverage for depth
             const bags     = Math.ceil(s.area / bagCov);
             const bagPrice = parseFloat(S.compoundBagPrice) || 12;
-            const matCost  = bags * bagPrice;
+            const matCost  = bags * bagPrice * mult;
             const labCost  = s.area * labRate;
             const totalCost = matCost + labCost;
             s.levelBags  = bags;
             s.prepCost += totalCost;
             s.prepMatCost += matCost;
             s.prepLabCost += labCost;
-            s.prepLines.push(`Levelling Compound ${depth}mm: ${bags} bag${bags !== 1 ? "s" : ""} (${currencySymbol()}${bagPrice.toFixed(2)}/bag) + labour = ${currencySymbol()}${totalCost.toFixed(2)}`);
+            s.prepLines.push(`Levelling Compound ${depth}mm: ${bags} bag${bags !== 1 ? "s" : ""} (${currencySymbol()}${bagPrice.toFixed(2)}/bag${mult !== 1 ? " + markup" : ""}) + labour = ${currencySymbol()}${totalCost.toFixed(2)}`);
         }
     }
     if (s.tanking) {
         const kitPrice   = tankingKitPrice();
         const kitCoverM2 = 6;
         const kits       = Math.ceil(s.area / kitCoverM2);
-        const kitCost    = kits * kitPrice;
+        const kitCost    = kits * kitPrice * mult;
         const labRate    = parseFloat(S.tankingLabour) || 8;
         const labCost    = s.area * labRate;
         const c          = kitCost + labCost;
@@ -10549,15 +10724,15 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         s.prepMatCost += kitCost;
         s.prepLabCost += labCost;
         s.tankingKits = kits;
-        s.prepLines.push(`Tanking Kit: ${kits} kit${kits!==1?"s":""} × ${currencySymbol()}${kitPrice} (covers ${fmtArea(kitCoverM2)}${areaUnit()} each) = ${currencySymbol()}${kitCost.toFixed(2)}`);
+        s.prepLines.push(`Tanking Kit: ${kits} kit${kits!==1?"s":""} × ${currencySymbol()}${kitPrice}${mult !== 1 ? " + markup" : ""} (covers ${fmtArea(kitCoverM2)}${areaUnit()} each) = ${currencySymbol()}${kitCost.toFixed(2)}`);
         s.prepLines.push(`Tanking Labour: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(labRate).toFixed(2)}/${areaUnit()} = ${currencySymbol()}${labCost.toFixed(2)}`);
     }
     // Primer (floors and walls)
     if (s.primer) {
         const rate = parseFloat(S.primerPrice) || 3.50;
-        const c    = s.area * rate;
+        const c    = s.area * rate * mult;
         s.prepCost += c; s.prepMatCost += c;
-        s.prepLines.push(`Primer: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(rate).toFixed(2)}/${areaUnit()} = ${currencySymbol()}${c.toFixed(2)}`);
+        s.prepLines.push(`Primer: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(rate).toFixed(2)}/${areaUnit()}${mult !== 1 ? " + markup" : ""} = ${currencySymbol()}${c.toFixed(2)}`);
     }
     // Natural stone install surcharge — extra labour for cutting/handling stone
     if (s.stone) {
@@ -10570,10 +10745,10 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
     // Stone sealer (only available when stone is selected)
     if (s.stone && s.sealer) {
         const rate = parseFloat(S.sealerPrice) || 5.00;
-        const c    = s.area * rate;
+        const c    = s.area * rate * mult;
         s.stoneSealerCost = c;
         s.prepCost += c; s.prepMatCost += c;
-        s.prepLines.push(`Stone Sealer: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(rate).toFixed(2)}/${areaUnit()} = ${currencySymbol()}${c.toFixed(2)}`);
+        s.prepLines.push(`Stone Sealer: ${fmtArea(s.area)}${areaUnit()} × ${currencySymbol()}${dispRate(rate).toFixed(2)}/${areaUnit()}${mult !== 1 ? " + markup" : ""} = ${currencySymbol()}${c.toFixed(2)}`);
     }
 
     // Clip/wedge cost — only when opted in via s.clips flag
@@ -10583,7 +10758,7 @@ const tileUnitPrice = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCos
         const wedgeBags = Math.ceil(s.levelWedges / 200);
         const clipRate  = parseFloat(S.clipPrice)  || 12;
         const wedgeRate = parseFloat(S.wedgePrice) || 8;
-        s.clipCost = (clipBags * clipRate + wedgeBags * wedgeRate) * (1 + S.markup / 100);
+        s.clipCost = (clipBags * clipRate + wedgeBags * wedgeRate) * (1 + markupPctOf(s) / 100);
         s.prepCost += s.clipCost;
         s.prepMatCost += s.clipCost;
         s.prepLines.push(`Levelling Clips: ${s.levelClips} (${clipBags} × 200 bag${clipBags!==1?"s":""}) + Wedges: ${s.levelWedges} (${wedgeBags} × 200 bag${wedgeBags!==1?"s":""}) = ${currencySymbol()}${s.clipCost.toFixed(2)}`);
@@ -10964,6 +11139,12 @@ function updateTrimBadge(key) {
     badge.textContent = lengths > 0 ? `${lengths} × ${regionOf() === "us" ? metersToFtIn(2.4) : "2.4m"}` : "";
 }
 
+// Trim is a material: room.trimCost is what it costs (lengths × price), and the price charged
+// carries the materials markup (none on CIS jobs), like the room's other materials.
+function trimSellOf(room) {
+    return (parseFloat(room && room.trimCost) || 0) * (1 + markupPctOf(room) / 100);
+}
+
 function readTrimCost(key) {
     const lenId   = key === "r" ? "rm-trim-lengths"   : key === "f" ? "rm-f-trim-lengths"   : "rm-w-trim-lengths";
     const priceId = key === "r" ? "rm-trim-price"     : key === "f" ? "rm-f-trim-price"     : "rm-w-trim-price";
@@ -11023,7 +11204,7 @@ function calcSealantCost(roomOrForm) {
     const seal = calcSealantRoom(roomOrForm);
     if (!seal || seal.tubes === 0) return 0;
     const base = seal.tubes * (parseFloat(settings.siliconePrice) || 0);
-    return base * (1 + (parseFloat(settings.markup) || 0) / 100);
+    return base * (1 + markupPctOf(roomOrForm) / 100);
 }
 
 // A saved room's price, split into the materials and labour lines that quotes, the PDF,
@@ -11040,11 +11221,12 @@ function roomPriceParts(room) {
     const surfaces = room.surfaces || [];
     const sum = key => surfaces.reduce((a, s) => a + (parseFloat(s[key]) || 0), 0);
     const nicheCost = getNicheSurfaces(null, room.niches).reduce((a, n) => a + n.labourCost, 0);
-    const total = sum("total") + parseFloat(room.extraWorkCost || 0) + parseFloat(room.trimCost || 0) + calcSealantCost(room) + nicheCost;
+    const trimSell = trimSellOf(room);
+    const total = sum("total") + parseFloat(room.extraWorkCost || 0) + trimSell + calcSealantCost(room) + nicheCost;
     const prep = sum("prepCost");
     const prepMat = sum("prepMatCost");
     const prepLab = prep - prepMat;
-    const materials = sum("materialSell") + prepMat + sum("trayCost") + parseFloat(room.trimCost || 0) + calcSealantCost(room);
+    const materials = sum("materialSell") + prepMat + sum("trayCost") + trimSell + calcSealantCost(room);
     // Labour takes the remainder so the two lines add up to the penny (s.total is rounded per surface)
     return { total, materials, labour: total - materials, prep, prepMat, prepLab };
 }
@@ -11198,11 +11380,7 @@ function rmCalc() {
     const tileTypeVal  = document.getElementById("rm-tile-type")?.value  || "ceramic";
     const adhColourVal = document.getElementById("rm-adh-colour")?.value || "grey";
     const adhTypeVal   = document.getElementById("rm-adh-type")?.value   || "standard";
-    const isRapid = adhTypeVal === "rapid";
-    const isWhite = adhColourVal === "white";
-    settings._adhUnitPrice = isRapid
-        ? (isWhite ? (numOr(settings.rapidAdhPriceWhite, 30)) : (numOr(settings.rapidAdhPrice, 28)))
-        : (isWhite ? (numOr(settings.adhesivePriceWhite, 24)) : (numOr(settings.adhesivePrice, 22)));
+    settings._adhUnitPrice = adhUnitPriceFor(adhTypeVal, adhColourVal);
     // Extra floors/walls carry their own tileType (set from their own Tile Type
     // dropdown) so a feature wall or a second floor area can be a different tile
     // from the rest of the room — only fall back to the shared room-level value
@@ -11213,7 +11391,7 @@ function rmCalc() {
     const extraCost  = extraWorkTotal(extraZone);
     const trimKey    = currentSurfType === "floor" ? "f" : currentSurfType === "wall" ? "w" : "r";
     const trimData   = readTrimCost(trimKey);
-    const trimCost   = trimData.cost;
+    const trimCost   = trimData.cost * (1 + markupPctFor(getJob()) / 100);   // marked up, as on the saved room
     const trimLengthsLive = trimData.lengths;
     const sealForm   = readSealantFromForm();
     const sealCost   = sealForm ? calcSealantCost(sealForm) : 0;
@@ -11324,11 +11502,7 @@ function saveRoom() {
     const tileType    = document.getElementById("rm-tile-type").value   || "ceramic";
     const adhColourSR = document.getElementById("rm-adh-colour")?.value || "grey";
     const adhTypeSR   = document.getElementById("rm-adh-type")?.value   || "standard";
-    const isRapidSR = adhTypeSR === "rapid";
-    const isWhiteSR = adhColourSR === "white";
-    settings._adhUnitPrice = isRapidSR
-        ? (isWhiteSR ? (numOr(settings.rapidAdhPriceWhite, 30)) : (numOr(settings.rapidAdhPrice, 28)))
-        : (isWhiteSR ? (numOr(settings.adhesivePriceWhite, 24)) : (numOr(settings.adhesivePrice, 22)));
+    settings._adhUnitPrice = adhUnitPriceFor(adhTypeSR, adhColourSR);
     // Extra floors/walls and Full Room's floor carry their own independent
     // tileType (set from their own Tile Type dropdown) — only fall back to
     // the shared room-level value for surfaces that never set their own,
@@ -11369,7 +11543,7 @@ function saveRoom() {
     // Compute sealant cost now so it flows into room.total
     const roomSealCost = sealForm ? calcSealantCost(sealForm) : 0;
 
-    const total = surfaces.reduce((a, s) => a + parseFloat(s.total), 0) + extraWorkCost + trimCostSave + roomSealCost;
+    const total = surfaces.reduce((a, s) => a + parseFloat(s.total), 0) + extraWorkCost + trimCostSave * (1 + markupPctFor(getJob()) / 100) + roomSealCost;
 
     const floorCount = surfaces.filter(s => s.type === "floor").length;
     const wallCount  = surfaces.filter(s => s.type === "wall").length;
@@ -11417,6 +11591,7 @@ function saveRoom() {
     const wasNewRoom = currentRoomIdx === null;
     if (currentRoomIdx === null) { j.rooms.push(room); }
     else                         { j.rooms[currentRoomIdx] = room; }
+    finRefreezeQuoteFigures(j);   // accepted job: the materials estimate follows the edited rooms
 
     saveAll();
     if (wasNewRoom) TQA.estimateCompleted(currentSurfType, j);
@@ -11559,65 +11734,8 @@ async function exportAllData() {
 /* ═══════════════════════════════════════════════════════════════
    HELP / AI ASSISTANT
 ═══════════════════════════════════════════════════════════════ */
-const HELP_SYSTEM_PROMPT = `You are TileIQ Pro's in-app assistant. TileIQ Pro is a native Android app for professional UK tiling contractors. You help users understand how to use the app.
-
-CORE FEATURES:
-- Jobs: Create and manage tiling jobs with customer details (name, address, phone, email). Track status from Enquiry to Complete.
-- Rooms: Add rooms to each job. Types: Full Room (walls + floor), Floor Only, Wall Only, Shower enclosure.
-- Full Room: Enter length, width, wall height. Calculates all 4 walls + floor. Supports Additional Floors and Additional Walls for complex rooms.
-- Floor Only: Length x width or direct m² entry. Includes Wetroom Tray option with tanking.
-- Wall Only: Width x height or direct m² entry.
-- Shower: Tiled walls with optional wet room floor, niche tiles and splash-back areas.
-- Wetroom Tray: Available in Full Room, Floor Only and Shower. Tick Wetroom Tray to add tray size (W x D), price and tanking.
-- Extra surfaces: In Floor Only and Wall Only, tap + Add Another Floor/Wall to add multiple surfaces with individual tile sizes.
-- Shape selector: Choose room shape (Rectangle, L-shape, T-shape, U-shape, Cross, Draw & Measure) for irregular rooms.
-
-CALCULATIONS:
-- Tiles: Surface area + wastage %. Default 10% floor, 12% wall. Configurable per surface.
-- Tile types: Ceramic, Porcelain, Natural Stone, Modular, Herringbone, Mosaic — each with labour multiplier.
-- Adhesive: By m² and tile thickness. Grey or white.
-- Grout: By m², tile size and joint width.
-- Prep: Cement board, membrane, levelling compound, tanking, primer, stone sealer, UFH, clips & wedges.
-- Labour: m² rate or day rate, configurable per room.
-- Tile trim: Lengths of trim (2.4m) with custom price.
-- Sealant: By perimeter or corner count.
-- Extra work: Custom line items with cost.
-- Deductions: Bath, WC, vanity or custom m² areas.
-
-QUOTES & INVOICES:
-- PDF quotes: Branded with logo, scope, materials, labour, VAT, terms and guarantee.
-- Send via: Email (PDF attached), WhatsApp, or share sheet.
-- Quote acceptance: Customer link to accept/decline online. Push notification on acceptance.
-- Convert to invoice: Turn accepted quote into invoice with bank details.
-- VAT: Toggle VAT registered in Settings. VAT number appears on PDF footer and Xero exports.
-
-ACCOUNTING INTEGRATIONS:
-- Xero: OAuth PKCE connection. Export quotes/invoices as draft invoices. VAT aware.
-- QuickBooks: OAuth connection. Export invoices to QuickBooks Online.
-- FreeAgent: OAuth connection. Export invoices to FreeAgent.
-- Select in Settings -> Accounting Software.
-
-CALENDAR & SCHEDULING:
-- Schedule jobs with start/end dates. Calendar view with status colour dots.
-- Send .ics calendar invites to customers. Auto-add to device calendar.
-
-BLUETOOTH LASER MEASURE:
-- Connect a Leica Disto D2 or Bosch GLM (50C/100C) laser measure via Bluetooth.
-- Tap Laser button in room screen. Measurements auto-fill length/width/height fields.
-
-SETTINGS:
-- Profile: Company name, address, phone, email, logo, VAT number, payment terms, guarantee.
-- Materials: All material costs and rates.
-- Pricing: Labour rates, day rate, markup %, tile type multipliers, wet room tray rate.
-
-GENERAL:
-- Works offline, syncs when back online.
-- Password reset by 6-digit email code.
-- Address finder with GPS auto-fill.
-- Pro subscription: £9.99/month or £79.99/year via Google Play.
-- Access codes available on paywall screen.
-
-Answer clearly and concisely. Give step-by-step instructions when asked how to do something. Keep answers brief — mobile assistant. Use bullet points. Never mention features that do not exist.`;
+// The Help chat's instructions live in the worker (HELP_SYSTEM_PROMPT in tileiq-worker.js),
+// so they can be kept up to date there and a caller can't swap them.
 
 let helpHistory = [];
 
@@ -11698,15 +11816,14 @@ async function helpSend() {
     try {
         const res = await fetch(AI_PROXY_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: await jobsAuthHeaders(),
             body: JSON.stringify({
                 action:   "help",
-                system:   HELP_SYSTEM_PROMPT,
                 messages: helpHistory
             })
         });
         const data = await res.json();
-        const reply = data.text || data.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
+        const reply = data.text || data.content?.[0]?.text || data.error || "Sorry, I couldn't get a response. Please try again.";
 
         typingEl.remove();
         helpAddMsg(reply, "bot");
@@ -12595,8 +12712,11 @@ function goSettings() {
     if (cisRateWrap) cisRateWrap.style.display = s.cisEnabled ? "" : "none";
     const cisRateEl = document.getElementById("set-cis-rate");
     if (cisRateEl) cisRateEl.value = String(s.cisRatePct ?? 20);
+    const cisUtrEl = document.getElementById("set-cis-utr");
+    if (cisUtrEl) cisUtrEl.value = s.cisUtr || "";
     const finMethodEl = document.getElementById("set-fin-default-method");
     if (finMethodEl) finMethodEl.value = s.finDefaultMethod || "bank_transfer";
+    if (typeof finRenderReceiptEmailSettings === "function") finRenderReceiptEmailSettings();
     const staleEnquiryEl = document.getElementById("set-stale-enquiry-days");
     if (staleEnquiryEl) staleEnquiryEl.value = s.staleEnquiryDays ?? 5;
     document.getElementById("set-bank-name")?.setAttribute("value", s.bankName || "");
@@ -12763,6 +12883,7 @@ function adminAuthHeader() {
 }
 
 async function loadAdminData() {
+    loadAdminSupport();   // first: the sections below can return early (e.g. no devices)
     try {
         const resp = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/stats", {
             headers: adminAuthHeader()
@@ -12803,24 +12924,85 @@ async function loadAdminData() {
         }).join("");
     } catch(e) { console.warn("Admin devices error:", e.message); }
 
-    // Load support messages
+}
+
+// ── Support conversations (admin) ─────────────────────────────────
+// The same conversations as the web dashboard (tile-iq.com/admin): tap one to read the whole
+// thread and reply. This used to list single messages from /api/admin/support and read fields
+// they don't have (message/content, user_email), so each showed "Unknown" with no text and
+// couldn't be opened.
+async function adminApi(path, opts = {}) {
+    const r = await fetch(TILEIQ_WORKER_URL + path, { ...opts, headers: { ...(await jobsAuthHeaders()), ...(opts.headers || {}) } });
+    if (!r.ok) throw new Error(r.status === 401 ? "Not signed in as the admin account" : "Error " + r.status);
+    return r.json();
+}
+const _admAgo = ts => {
+    const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+    return m < 1 ? "just now" : m < 60 ? m + "m ago" : m < 1440 ? Math.round(m / 60) + "h ago" : new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+};
+async function loadAdminSupport() {
+    const el = document.getElementById("adm-support");
+    if (!el) return;
     try {
-        const resp3 = await fetch("https://damp-bread-e0f9.kevin-woodley.workers.dev/api/admin/support", {
-            headers: adminAuthHeader()
-        });
-        const msgs = await resp3.json();
-        const el = document.getElementById("adm-support");
-        if (!el) return;
-        if (!msgs.length) { el.innerHTML = '<div style="color:#64748b;">No support messages</div>'; return; }
-        el.innerHTML = msgs.slice(0, 10).map(m => `
-            <div style="background:#1e293b;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
-                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                    <span style="color:#f59e0b;font-size:12px;font-weight:700;">${m.user_email || m.user_id || "Unknown"}</span>
-                    <span style="color:#64748b;font-size:11px;">${m.created_at ? new Date(m.created_at).toLocaleDateString("en-GB") : ""}</span>
+        const convs = await adminApi("/api/admin/conversations");
+        if (!Array.isArray(convs) || !convs.length) { el.innerHTML = '<div style="color:#64748b;">No support messages</div>'; return; }
+        el.innerHTML = convs.slice(0, 30).map(c => {
+            const name = c.user?.name || c.user?.email || "Tiler";
+            const unread = c.unread_admin || 0;
+            const last = c.last_message;
+            return `<div class="adm-conv" data-conv="${esc(c.id)}" style="background:#1e293b;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;${unread ? "border:1px solid #f59e0b;" : ""}">
+                <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;">
+                    <span style="color:#f59e0b;font-size:12px;font-weight:700;">${esc(name)}${unread ? ` <span style="background:#ef4444;color:#fff;border-radius:8px;padding:0 6px;font-size:10px;">${unread}</span>` : ""}</span>
+                    <span style="color:#64748b;font-size:11px;white-space:nowrap;">${c.last_message_at ? _admAgo(c.last_message_at) : ""}</span>
                 </div>
-                <div style="color:#e2e8f0;font-size:13px;">${m.message || m.content || ""}</div>
-            </div>`).join("");
-    } catch(e) { console.warn("Admin support error:", e.message); }
+                <div style="color:#e2e8f0;font-size:13px;">${last ? (last.sender === "admin" ? "You: " : "") + esc(String(last.body || "").slice(0, 90)) : "No messages"}</div>
+            </div>`;
+        }).join("");
+        el.querySelectorAll(".adm-conv").forEach(d => d.addEventListener("click", () => openAdminThread(d.dataset.conv)));
+    } catch(e) { el.innerHTML = `<div style="color:#ef4444;">Couldn't load support messages (${esc(e.message)})</div>`; }
+}
+async function openAdminThread(convId) {
+    document.getElementById("adm-thread-sheet")?.remove();
+    const sheet = document.createElement("div");
+    sheet.id = "adm-thread-sheet";
+    sheet.style.cssText = "position:fixed;inset:0;z-index:9999;background:#0f172a;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0);";
+    sheet.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #1e293b;">
+            <button id="adm-thread-back" style="background:none;border:none;color:#f59e0b;font-size:15px;font-weight:700;cursor:pointer;">← Back</button>
+            <div style="flex:1;min-width:0;"><div id="adm-thread-name" style="color:#f1f5f9;font-weight:700;">Loading…</div>
+            <div id="adm-thread-email" style="color:#64748b;font-size:12px;overflow:hidden;text-overflow:ellipsis;"></div></div></div>
+        <div id="adm-thread-msgs" style="flex:1;overflow-y:auto;padding:14px;"></div>
+        <div style="display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0));border-top:1px solid #1e293b;">
+            <textarea id="adm-reply" rows="2" placeholder="Type your reply…" style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#f1f5f9;padding:10px;font-size:15px;resize:none;"></textarea>
+            <button id="adm-reply-send" style="background:#f59e0b;color:#000;border:none;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Send</button></div>`;
+    document.body.appendChild(sheet);
+    sheet.querySelector("#adm-thread-back").onclick = () => { sheet.remove(); loadAdminSupport(); };
+    const draw = data => {
+        const u = data.user || {};
+        sheet.querySelector("#adm-thread-name").textContent = u.name || u.email || "Tiler";
+        sheet.querySelector("#adm-thread-email").textContent = u.email || "";
+        const msgs = data.messages || [];
+        const box = sheet.querySelector("#adm-thread-msgs");
+        box.innerHTML = msgs.length ? msgs.map(m => {
+            const mine = m.sender === "admin";
+            return `<div style="display:flex;justify-content:${mine ? "flex-end" : "flex-start"};margin-bottom:8px;">
+                <div class="adm-msg" style="max-width:82%;background:${mine ? "#f59e0b" : "#1e293b"};color:${mine ? "#000" : "#f1f5f9"};border-radius:12px;padding:9px 12px;font-size:14px;line-height:1.45;word-break:break-word;"><span style="white-space:pre-wrap;">${esc(String(m.body || "").trim())}</span><div style="font-size:10.5px;opacity:.65;margin-top:4px;">${m.created_at ? new Date(m.created_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</div></div></div>`;
+        }).join("") : '<div style="color:#64748b;text-align:center;">No messages yet</div>';
+        box.scrollTop = box.scrollHeight;
+    };
+    try { draw(await adminApi("/api/admin/conversation?id=" + encodeURIComponent(convId))); }
+    catch(e) { sheet.querySelector("#adm-thread-msgs").innerHTML = `<div style="color:#ef4444;">Couldn't open this conversation (${esc(e.message)})</div>`; }
+    sheet.querySelector("#adm-reply-send").onclick = async () => {
+        const ta = sheet.querySelector("#adm-reply"), btn = sheet.querySelector("#adm-reply-send");
+        const body = ta.value.trim();
+        if (!body) return;
+        btn.disabled = true; btn.textContent = "…";
+        try {
+            await adminApi("/api/admin/reply", { method: "POST", body: JSON.stringify({ conversation_id: convId, body }) });
+            ta.value = "";
+            draw(await adminApi("/api/admin/conversation?id=" + encodeURIComponent(convId)));
+        } catch(e) { alert("Couldn't send the reply: " + e.message); }
+        btn.disabled = false; btn.textContent = "Send";
+    };
 }
 
 async function sendAdminAnnouncement() {
@@ -13048,6 +13230,7 @@ function saveSettings() {
         paymentTermsDays:  parseInt(document.getElementById("set-payment-terms-days")?.value) || 30,
         cisEnabled:        document.getElementById("set-cis-enabled")?.value === "true",
         cisRatePct:        numOr(document.getElementById("set-cis-rate")?.value, 20),
+        cisUtr:            (document.getElementById("set-cis-utr")?.value || "").replace(/[^0-9 ]/g, "").trim().slice(0, 14),
         finDefaultMethod:  document.getElementById("set-fin-default-method")?.value || "bank_transfer",
         finCustomCategories: finCustomCats(),   // made in the expense sheet, not on this screen: keep them
         staleEnquiryDays:  parseInt(document.getElementById("set-stale-enquiry-days")?.value) || 5,
@@ -13412,7 +13595,7 @@ function renderQuote() {
         quoteLabour    += qParts.labour;
         surfaces.forEach(s => {
             const tup = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
-            const tc = ct ? 0 : tup * s.area * (1 + settings.markup/100);
+            const tc = ct ? 0 : tup * s.area * (1 + markupPctFor(j)/100);
             if (s.type === "wall")  totalWallTilesQ  += tc;
             if (s.type === "floor") totalFloorTilesQ += tc;
         });
@@ -13438,7 +13621,7 @@ function renderQuote() {
         const groutKg    = surfaces.reduce((a, s) => a + (s.groutKg || 0), 0);
         const groutBags  = Math.ceil(groutKg / (parseFloat(settings.groutBagSize) || 2.5));
 
-        const mult = 1 + (parseFloat(settings.markup) || 0) / 100;
+        const mult = 1 + markupPctFor(j) / 100;
 
         // Per-item sell values (kept simple: uses current unit assumptions in settings)
         const isRapidRoom = room.adhType === "rapid";
@@ -13530,7 +13713,7 @@ function renderQuote() {
 
     
     // Whole-job adhesive & grout (kg summed across all rooms; bags rounded ONCE)
-    const multJob = 1 + (parseFloat(settings.markup) || 0) / 100;
+    const multJob = 1 + markupPctFor(j) / 100;
 
     const totalAdhBags        = Math.ceil(totalAdhKg / 20);
     const totalRapidAdhBags   = Math.ceil(totalRapidAdhKg / 20);
@@ -13566,7 +13749,7 @@ function renderQuote() {
     if (totalFloorGroutBags > 0) jobScheduleLines.push(`<div class="qms-row"><span>Floor Grout (whole job)</span><span>${totalFloorGroutBags} × ${(parseFloat(settings.groutBagSize)||2.5)}kg bag${totalFloorGroutBags !== 1 ? "s" : ""} <span style="color:#6b7280">· ${currencySymbol()}${jobFloorGroutSell.toFixed(2)}</span></span></div>`);
     
     const jobSilBase = totalSiliconeTubes * (parseFloat(settings.siliconePrice) || 0);
-    const jobSilSell = jobSilBase * (1 + (parseFloat(settings.markup) || 0) / 100);
+    const jobSilSell = jobSilBase * (1 + markupPctFor(j) / 100);
     if (totalSiliconeTubes > 0) jobScheduleLines.push(`<div class="qms-row"><span>Sealant (whole job)</span><span>${totalSiliconeTubes} tube${totalSiliconeTubes !== 1 ? "s" : ""} <span style="color:#6b7280">· Floor perimeter bead ${totalSiliconeFloor.toFixed(1)}m</span> <span style="color:#6b7280">· ${currencySymbol()}${jobSilSell.toFixed(2)}</span></span></div>`);
     if (totalClips  > 0) jobScheduleLines.push(`<div class="qms-row"><span>Levelling Clips (whole job)</span><span>${totalClips}</span></div>`);
     if (totalWedges > 0) jobScheduleLines.push(`<div class="qms-row"><span>Levelling Wedges (whole job)</span><span>${totalWedges} <span style="color:#6b7280">· 25% of clips</span></span></div>`);
@@ -13615,11 +13798,29 @@ function renderQuote() {
         </table>
         `}
 
-        <div class="quote-totals">
+        ${(() => {
+            const c = isInvoice ? cisInvoiceFor(j, subtotal, applyVat ? vatAmt : 0, quoteMaterials) : null;
+            const P = p => `${currencySymbol()}${(p / 100).toFixed(2)}`;
+            const rc = !!(c && c.reverseCharge);
+            const total = c ? P(c.totalPence) : `${currencySymbol()}${grand.toFixed(2)}`;
+            return `<div class="quote-totals">
             <div class="quote-total-row"><span>Subtotal</span><span>${currencySymbol()}${subtotal.toFixed(2)}</span></div>
-            ${applyVat ? `<div class="quote-total-row"><span>${taxLabel()} (20%)</span><span>${currencySymbol()}${vatAmt.toFixed(2)}</span></div>` : ""}
-            <div class="quote-total-row quote-grand"><span>Total</span><span>${currencySymbol()}${grand.toFixed(2)}</span></div>
+            ${applyVat ? `<div class="quote-total-row"${rc ? ' style="color:var(--muted);"' : ""}><span>${taxLabel()} (20%)${rc ? " reverse charge" : ""}</span><span>${currencySymbol()}${vatAmt.toFixed(2)}</span></div>` : ""}
+            <div class="quote-total-row quote-grand"><span>${c ? "Invoice total" : "Total"}</span><span>${total}</span></div>
         </div>
+        ${rc ? `<div id="quote-reverse-charge" class="quote-terms" style="font-weight:700;color:var(--ink);">${esc(CIS_REVERSE_CHARGE_TEXT)} VAT to account for: ${P(c.vatPence)}.</div>` : ""}
+        ${c ? `<div id="quote-cis" class="quote-terms" style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px;">
+            <div style="font-weight:700;font-size:12px;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.05em;">CONSTRUCTION INDUSTRY SCHEME (CIS)</div>
+            ${c.ratePct > 0 ? `
+            <div class="quote-total-row"><span>Labour (CIS applies)</span><span>${P(c.liablePence)}</span></div>
+            <div class="quote-total-row"><span>Materials at cost (no CIS)</span><span>${P(c.materialsCostPence)}</span></div>
+            ${applyVat && !rc ? `<div class="quote-total-row"><span>${taxLabel()} (no CIS)</span><span>${P(c.vatPence)}</span></div>` : ""}
+            <div class="quote-total-row" style="color:var(--red);"><span>Less CIS deduction (${c.ratePct}% of labour)</span><span>-${P(c.deductionPence)}</span></div>
+            <div class="quote-total-row quote-grand"><span>Amount payable</span><span>${P(c.payablePence)}</span></div>
+            <div style="margin-top:6px;">Please deduct CIS at ${c.ratePct}% from the labour only, pay it to HMRC, and send us a CIS payment and deduction statement.${settings.cisUtr ? ` Our UTR: ${esc(settings.cisUtr)}.` : ""}</div>`
+            : `<div>We have CIS gross payment status: please pay in full with no CIS deduction.${settings.cisUtr ? ` Our UTR: ${esc(settings.cisUtr)}.` : ""}</div>`}
+        </div>` : ""}`;
+        })()}
 
         ${quoteTerms() ? `<div class="quote-terms">${esc(quoteTerms())}</div>` : ""}
         ${(settings.bankAccountNumber || settings.bankSortCode) ? `
@@ -13702,6 +13903,8 @@ function routePushTap(type, token, jobId) {
         else goDashboard();
     } else if (type === "announcement" || type === "support_reply") {
         goInbox();
+    } else if (type === "receipt_inbox") {
+        goMoney();
     } else if (jobId) {
         currentJobId = jobId; goJob(jobId);
     } else {
@@ -14112,7 +14315,7 @@ function buildPDFDoc() {
     doc.text("PAYMENT DUE", W - 60, y + 7);
 
     // Calculate grand total for preview
-    let previewTotal = 0;
+    let previewTotal = 0, previewMaterials = 0;
     (j.rooms || []).forEach(room => {
         const surfaces = room.surfaces || [];
         const ct = room.tileSupply === "customer";
@@ -14121,17 +14324,24 @@ function buildPDFDoc() {
         if (room.labourType === "day") labourOpts = { type:"day", days: room.days||1, dayRate: room.dayRate||settings.dayRate||200, totalArea };
         surfaces.forEach(s => { s.tileType = s.tileType || room.tileType || "ceramic"; calcSurface(s, ct, labourOpts); });
         previewTotal += roomGrandTotal(room);
+        previewMaterials += roomPriceParts(room).materials;
     });
-    const grandPreview = applyVat ? previewTotal * 1.2 : previewTotal;
+    // A CIS invoice's payment due is what the contractor actually pays: after the CIS deduction,
+    // and without VAT under the reverse charge.
+    const headCis = isInvoice ? cisInvoiceFor(j, previewTotal, applyVat ? previewTotal * 0.2 : 0, previewMaterials) : null;
+    const grandPreview = headCis ? headCis.payablePence / 100 : applyVat ? previewTotal * 1.2 : previewTotal;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.setTextColor(...DARK);
     doc.text(`${currencySymbol()}${grandPreview.toFixed(2)}`, W - 12, y + 17, { align:"right" });
-    if (applyVat) {
+    const headNote = headCis
+        ? [headCis.deductionPence > 0 ? "after CIS deduction" : "", headCis.reverseCharge ? `${taxLabel()} reverse charge` : applyVat ? `inc. ${taxLabel()} (20%)` : ""].filter(Boolean).join(" · ")
+        : applyVat ? `inc. ${taxLabel()} (20%)` : "";
+    if (headNote) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
         doc.setTextColor(...SLATE);
-        doc.text(`inc. ${taxLabel()} (20%)`, W - 12, y + 23, { align:"right" });
+        doc.text(headNote, W - 12, y + 23, { align:"right" });
     }
 
     y += 32;
@@ -14259,20 +14469,53 @@ function buildPDFDoc() {
         y += 5;
     }
 
+    // CIS invoice (only invoices, only CIS jobs): the deduction the contractor makes, and the
+    // VAT domestic reverse charge if the tiler said it applies.
+    const pdfCis = isInvoice ? cisInvoiceFor(j, subtotal, applyVat ? subtotal * 0.2 : 0, grandMaterials) : null;
+    const reverseCharge = !!(pdfCis && pdfCis.reverseCharge);
     totRow("Subtotal", `${currencySymbol()}${subtotal.toFixed(2)}`);
-    if (applyVat) totRow(`${taxLabel()} (20%)`, `${currencySymbol()}${(subtotal * 0.2).toFixed(2)}`);
+    if (applyVat && reverseCharge) totRow(`${taxLabel()} (20%) reverse charge`, `${currencySymbol()}${(subtotal * 0.2).toFixed(2)}`, false, SLATE);
+    else if (applyVat) totRow(`${taxLabel()} (20%)`, `${currencySymbol()}${(subtotal * 0.2).toFixed(2)}`);
 
     y += 2;
     // Grand total highlight box
-    const grand = applyVat ? subtotal * 1.2 : subtotal;
+    const grand = applyVat && !reverseCharge ? subtotal * 1.2 : subtotal;
     doc.setFillColor(...DARK2);
     doc.roundedRect(totalsX - 4, y - 4, valX - totalsX + 8, 10, 2, 2, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(...AMBER);
-    doc.text("TOTAL DUE", totalsX, y + 3);
+    doc.text(pdfCis ? "INVOICE TOTAL" : "TOTAL DUE", totalsX, y + 3);
     doc.text(`${currencySymbol()}${grand.toFixed(2)}`, valX, y + 3, { align:"right" });
     y += 14;
+
+    if (pdfCis) {
+        const P = p => `${currencySymbol()}${(p / 100).toFixed(2)}`;
+        if (reverseCharge) {
+            doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(...DARK);
+            const rc = doc.splitTextToSize(CIS_REVERSE_CHARGE_TEXT + ` VAT to account for: ${P(pdfCis.vatPence)}.`, valX - 12);
+            doc.text(rc, 12, y); y += rc.length * 4 + 3;
+        }
+        doc.setDrawColor(...BORDER); doc.setLineWidth(0.3); doc.line(12, y, W - 12, y); y += 5;
+        doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(...SLATE);
+        doc.text("CONSTRUCTION INDUSTRY SCHEME (CIS)", 12, y); y += 5;
+        if (pdfCis.ratePct > 0) {
+            totRow("Labour (CIS applies)", P(pdfCis.liablePence));
+            totRow("Materials at cost (no CIS)", P(pdfCis.materialsCostPence));
+            if (applyVat && !reverseCharge) totRow(`${taxLabel()} (no CIS)`, P(pdfCis.vatPence));
+            totRow(`Less CIS deduction (${pdfCis.ratePct}% of labour)`, "-" + P(pdfCis.deductionPence), false, [220, 38, 38]);
+            y += 1; doc.setDrawColor(...BORDER); doc.line(totalsX, y, valX, y); y += 5;
+            totRow("AMOUNT PAYABLE", P(pdfCis.payablePence), true);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(...SLATE);
+            const note = doc.splitTextToSize(`Please deduct CIS at ${pdfCis.ratePct}% from the labour only, pay it to HMRC, and send us a CIS payment and deduction statement.`
+                + (settings.cisUtr ? ` Our UTR: ${settings.cisUtr}.` : ""), W - 24);
+            doc.text(note, 12, y); y += note.length * 3.5 + 4;
+        } else {
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...DARK);
+            const note = doc.splitTextToSize(`We have CIS gross payment status: please pay in full with no CIS deduction.${settings.cisUtr ? ` Our UTR: ${settings.cisUtr}.` : ""}`, W - 24);
+            doc.text(note, 12, y); y += note.length * 4 + 4;
+        }
+    }
 
     // ── Terms ────────────────────────────────────────────────────
     if (quoteTerms()) {
@@ -14336,7 +14579,8 @@ function buildPDFDoc() {
     const safeName = (j.customerName || "quote").replace(/[^a-z0-9]+/gi,"-").replace(/(^-|-$)/g,"");
     // The figures this PDF printed, so payment tracking can hold the invoice to exactly this amount.
     // Read-only: nothing above changes because of it.
-    const totals = { subtotal, applyVat, grand, materials: grandMaterials, labour: grandLabour };
+    const totals = { subtotal, applyVat, grand, materials: grandMaterials, labour: grandLabour,
+                     ...(pdfCis ? { cis: pdfCis, reverseCharge } : {}) };
     return { doc, safeName, customerName: j.customerName, email: j.email, totals };
 }
 
@@ -15149,6 +15393,14 @@ function showSendInvoiceSheet(j, pdf) {
     document.body.appendChild(sheet);
 }
 
+// Why an email didn't send, in plain words, from the worker's answer.
+async function emailSendError(resp) {
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 401) return "Your sign-in has expired. Sign out and back in, then try again.";
+    if (resp.status === 403) return data.error || "Sending isn't allowed from this account.";
+    return (data.error || `HTTP ${resp.status}`).replace(/^Email failed: /, "").slice(0, 200);
+}
+
 async function sendInvoiceByEmail(jobId) {
     if (isDemoAccount()) { document.getElementById("send-invoice-sheet")?.remove(); demoBlocked("Emailing invoices"); return; }
     const sheet = document.getElementById("send-invoice-sheet");
@@ -15157,11 +15409,14 @@ async function sendInvoiceByEmail(jobId) {
     const j = jobs.find(x => x.id === jobId) || getJob();
     if (!j || !pdf) return;
 
-    if (j.email) {
+    let problem;
+    if (!j.email) problem = "There's no email saved for this customer.";
+    else if (!navigator.onLine) problem = "No signal right now.";
+    else {
         try {
             const fileName = `Invoice-${(j.customerName || "Customer").replace(/[^a-z0-9]/gi, "-")}.pdf`;
             const resp = await fetch(TILEIQ_WORKER_URL, {
-                method: "POST", headers: emailAuthHeaders(),
+                method: "POST", headers: await jobsAuthHeaders(),     // a fresh sign-in, not one that may have expired
                 body: JSON.stringify({
                     action: "send_quote_email",
                     to: j.email, customerName: j.customerName, quoteUrl: "",
@@ -15175,17 +15430,16 @@ async function sendInvoiceByEmail(jobId) {
             });
             if (resp.ok) {
                 markJobInvoiced(jobId, "email", pdf.totals);
-                alert("\u2705 Invoice sent to " + j.email);
+                alert("✅ Invoice sent to " + j.email + " with the PDF attached.");
                 return;
             }
-        } catch(e) { console.error(e); }
+            problem = "It couldn't be emailed: " + await emailSendError(resp);
+        } catch(e) { console.error(e); problem = "It couldn't be emailed — check your signal."; }
     }
-    const go = confirm("Could not send automatically.\n\nThis will open your device email app \u2014 make sure you are signed in with the correct account.\n\nTap OK to open.");
-    if (!go) return;
-    const subject = encodeURIComponent(`Invoice \u2013 ${j.customerName}`);
-    const body = encodeURIComponent(`Hi ${j.customerName},\n\nPlease find your invoice attached.\n\nKind regards,\n${settings.companyName || ""}`);
-    window.open(`mailto:${j.email ? encodeURIComponent(j.email) : ""}?subject=${subject}&body=${body}`, "_system");
-    markJobInvoiced(jobId, "email_app", pdf.totals);
+    // Never fall back to a plain email: it can't carry the PDF. Share the PDF itself instead,
+    // so it goes out attached from the tiler's own email, WhatsApp or whatever they pick.
+    if (!confirm(`${problem}\n\nShare the invoice PDF instead? You can pick your email app and it will be attached.`)) return;
+    await shareInvoicePdf(pdf, jobId);
 }
 
 function markJobInvoiced(jobId, method, totals) {
@@ -15338,6 +15592,20 @@ const FinCore = (() => {
     // The part of an invoice CIS applies to: net of VAT, less materials at cost.
     function cisLiable(netPence, materialsCostPence) {
         return Math.max(0, (netPence || 0) - Math.max(0, materialsCostPence || 0));
+    }
+    // A CIS invoice's figures, in pence. netPence is the invoice before VAT; materials are
+    // charged at materialsSellPence and cost that less the markup. With the VAT domestic reverse
+    // charge the VAT is shown but not charged: the contractor pays it to HMRC instead.
+    // The contractor deducts ratePct% of the labour part (net less materials at cost) and pays
+    // you the rest.
+    function cisInvoice({ netPence, vatPence, materialsSellPence, markupPct, ratePct, reverseCharge }) {
+        const net = Math.max(0, netPence || 0), vat = Math.max(0, vatPence || 0);
+        const materialsCostPence = Math.min(net, costFromSell(materialsSellPence || 0, markupPct));
+        const liablePence = cisLiable(net, materialsCostPence);
+        const totalPence = net + (reverseCharge ? 0 : vat);
+        const deductionPence = cisTotalDeduction({ ratePct: Number(ratePct) || 0, liablePence });
+        return { netPence: net, vatPence: vat, reverseCharge: !!reverseCharge && vat > 0, materialsCostPence, liablePence,
+                 ratePct: Number(ratePct) || 0, totalPence, deductionPence, payablePence: totalPence - deductionPence };
     }
     // Materials at cost from the price the quote charged, by taking the markup back off.
     function costFromSell(sellPence, markupPct) {
@@ -15556,9 +15824,63 @@ const FinCore = (() => {
                  vsDayRate: perDay != null && dayRatePence ? perDay - dayRatePence : null };
     }
 
+    /* ── Exports for the accountant (phase G) ── */
+    // A CSV cell. Text that a spreadsheet would read as a formula (= + - @, tab, return at the
+    // start) gets a leading apostrophe so it stays text; numbers are written as plain numbers.
+    function csvCell(v, isNumber) {
+        if (v == null) return "";
+        if (isNumber) return String(v);
+        let t = String(v).replace(/\r?\n/g, " ");
+        if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+        return /[",]/.test(t) || t !== t.trim() ? `"${t.replace(/"/g, '""')}"` : t;
+    }
+    const pounds = p => (Math.round(p || 0) / 100).toFixed(2);
+    const ukDate = d => d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "";
+    const csv = (head, rows) => "﻿" + [head.map(h => csvCell(h)).join(",")].concat(rows.map(r => r.map(([v, n]) => csvCell(v, n)).join(","))).join("\r\n") + "\r\n";
+    // Money in: every active payment and refund in the period, oldest first. Refunds are negative.
+    // jobName(jobId) -> the job's current customer name, if it still exists.
+    function incomeCsv(payments, from, to, jobName) {
+        const rows = (payments || []).filter(p => isActive(p) && inPeriod(p.received_on, from, to))
+            .sort((a, b) => (a.received_on + (a.created_at || "")).localeCompare(b.received_on + (b.created_at || "")))
+            .map(p => {
+                const refund = p.kind === "refund", sign = refund ? -1 : 1;
+                return [[ukDate(p.received_on)], [refund ? "Refund" : "Payment"], [(p.job_id && jobName && jobName(p.job_id)) || p.customer_name || ""],
+                        [p.job_label || ""], [p.invoice_ref || ""], [pounds(sign * p.amount_pence), true],
+                        [pounds(p.cis_deduction_pence || 0), true], [pounds(sign * p.amount_pence + (p.cis_deduction_pence || 0)), true],
+                        [METHODS[p.method] || p.method || ""], [p.reference || ""], [p.cis_statement_ref || ""], [p.notes || ""]];
+            });
+        return csv(["Date", "Type", "Customer", "Job", "Invoice", "Amount received (GBP)", "CIS deducted (GBP)", "Gross (GBP)",
+                    "Paid by", "Reference", "CIS statement", "Notes"], rows);
+    }
+    // Money out: every active expense in the period, oldest first, with its HMRC heading.
+    function expensesCsv(expenses, from, to, custom, jobName) {
+        const rows = (expenses || []).filter(e => isActive(e) && inPeriod(e.spent_on, from, to))
+            .sort((a, b) => (a.spent_on + (a.created_at || "")).localeCompare(b.spent_on + (b.created_at || "")))
+            .map(e => {
+                const c = categoryOf(e.category, custom), pct = e.business_use_pct || 100;
+                return [[ukDate(e.spent_on)], [e.supplier || ""], [c.label], [TAX_HEADINGS[e.tax_category] || e.tax_category || ""],
+                        [e.description || ""], [pounds(e.amount_pence), true], [pounds(e.vat_pence || 0), true],
+                        [pct, true], [pounds(businessShare(e.amount_pence, pct)), true],
+                        [e.job_id ? ((jobName && jobName(e.job_id)) || e.job_label || "Job") : "Business cost"],
+                        [METHODS[e.payment_method] || e.payment_method || ""], [e.receipt_path || e._receiptPending ? "Yes" : "No"], [e.notes || ""],
+                        [e.receipt_ref || ""]];
+            });
+        return csv(["Date", "Supplier", "Category", "HMRC heading", "Description", "Amount paid (GBP)", "VAT (GBP)",
+                    "Business use %", "Business amount (GBP)", "Job", "Paid by", "Receipt kept", "Notes", "Receipt number"], rows);
+    }
+    // Business share of costs per HMRC heading, in the order of the tax return.
+    function costsByHeading(expenses, from, to) {
+        const sums = {};
+        (expenses || []).filter(e => isActive(e) && inPeriod(e.spent_on, from, to)).forEach(e => {
+            sums[e.tax_category] = (sums[e.tax_category] || 0) + businessShare(e.amount_pence, e.business_use_pct);
+        });
+        return Object.keys(TAX_HEADINGS).filter(k => sums[k]).map(k => ({ key: k, label: TAX_HEADINGS[k], total: sums[k] }));
+    }
+
     return { METHODS, parsePence, toPence, formatPence, localDate, ukTaxYear, totals, invoiceState,
+             csvCell, incomeCsv, expensesCsv, costsByHeading,
              materialsCompare, jobMaterialsSpend, jobSummary, periodRange, incomeTotals, overview, byMonth, costsByCategory,
-             cisTotalDeduction, cisSuggest, paidInFull, cisLiable, costFromSell,
+             cisTotalDeduction, cisSuggest, paidInFull, cisLiable, costFromSell, cisInvoice,
              TAX_HEADINGS, EXPENSE_CATEGORIES, CUSTOM_KINDS, categoryOf, categoriesFor, ukTaxQuarter,
              vatFromGross, businessShare, expenseTotals };
 })();
@@ -15670,6 +15992,7 @@ const FinExpenses = makeFinStore({
     table: "fin_expenses", storageKey: "tileiq-fin-expenses", dateCol: "spent_on",
     cols: ["id","user_id","job_id","job_label","spent_on","supplier","description","category","tax_category","amount_pence",
            "vat_pence","vat_treatment","business_use_pct","payment_method","source","material_lines","receipt_path","receipt_mime",
+           "receipt_ref","line_items",
            "notes","status","void_reason","is_demo","created_at","updated_at"]
 });
 window.addEventListener("online", () => { FinStore.flush(); FinExpenses.flush(); FinReceipts.flush(); });
@@ -15690,12 +16013,14 @@ function captureInvoiceTotals(j, t) {
     if (!j || !t || !(t.grand > 0)) return;
     const next = {
         netPence:   finPenceAsPrinted(t.subtotal),
-        vatPence:   t.applyVat ? finPenceAsPrinted(t.subtotal * 0.2) : 0,
+        vatPence:   t.applyVat && !t.reverseCharge ? finPenceAsPrinted(t.subtotal * 0.2) : 0,   // reverse charge: shown, not charged
         grossPence: finPenceAsPrinted(t.grand),
         vatApplied: !!t.applyVat,
+        ...(t.reverseCharge ? { reverseCharge: true } : {}),
+        ...(t.cis ? { cis: { ratePct: t.cis.ratePct, materialsCostPence: t.cis.materialsCostPence, deductionPence: t.cis.deductionPence } } : {}),
         materialsSellPence: finPenceAsPrinted(t.materials),
         labourPence: finPenceAsPrinted(t.labour),
-        markupPct: Number(settings.markup) || 0,
+        markupPct: markupPctFor(j),
         invoiceRef: j.invoiceRef || null,
         source: "pdf",
         capturedAt: new Date().toISOString()
@@ -15715,6 +16040,15 @@ function finJobInvoice(j) {
     };
 }
 function finJobState(j) { return FinCore.invoiceState(finJobInvoice(j), FinStore.forJob(j.id)); }
+
+// The CIS block for an invoice being drawn now, or null if this isn't a CIS job.
+// subtotal/vat/materials are the pounds the invoice prints.
+function cisInvoiceFor(j, subtotal, vat, materials) {
+    if (!j || !j.cis || !j.cis.applies) return null;
+    return FinCore.cisInvoice({ netPence: finPenceAsPrinted(subtotal), vatPence: finPenceAsPrinted(vat), materialsSellPence: finPenceAsPrinted(materials),
+                                markupPct: markupPctFor(j), ratePct: j.cis.ratePct, reverseCharge: !!j.cis.reverseCharge });
+}
+const CIS_REVERSE_CHARGE_TEXT = "Reverse charge: Customer to pay the VAT to HMRC. VAT Act 1994 Section 55A applies.";
 
 // CIS figures for a job, or null if it isn't a CIS job.
 function finJobCis(j) {
@@ -16243,7 +16577,10 @@ function renderJobCostsCard(j) {
         <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${t.count ? `${t.count} cost${t.count === 1 ? "" : "s"} on this job` : "Materials, skip hire, parking — anything you spend on this job."}</div>
         ${finMaterialsBlockHtml(j, list)}
         ${(j.rooms || []).length ? `<button onclick="openMaterialPurchaseSheet('${j.id}')" class="btn-primary" style="width:100%;padding:12px;margin-top:12px;">+ Record material purchase</button>` : ""}
-        <button onclick="openExpenseSheet({jobId:'${j.id}'})" class="btn-secondary" style="width:100%;padding:12px;margin-top:8px;">+ Add job cost</button>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            <button onclick="openExpenseSheet({jobId:'${j.id}',scan:true})" class="btn-secondary" style="flex:1;padding:12px 6px;">📷 Scan receipt</button>
+            <button onclick="openExpenseSheet({jobId:'${j.id}'})" class="btn-secondary" style="flex:1;padding:12px 6px;">+ Add job cost</button>
+        </div>
         ${list.length ? `<div style="margin-top:10px;">${list.map(e => finExpenseRowHtml(e, false)).join("")}</div>` : ""}`;
     if (!FinExpenses.isFresh()) FinExpenses.load();
 }
@@ -16266,9 +16603,18 @@ function finFreezeQuoteFigures(j) {
     const accepted = j.quoteStatus === "accepted" || ["accepted", "scheduled", "in_progress", "complete"].includes(j.status);
     if (!accepted) return;
     const live = finLiveJobValue(j);
-    j.quoteFigures = { materialsSellPence: finLiveMaterialsSellPence(j), markupPct: Number(settings.markup) || 0,
+    j.quoteFigures = { materialsSellPence: finLiveMaterialsSellPence(j), markupPct: markupPctFor(j),
                        netPence: live.netPence, labourPence: live.labourPence, capturedAt: new Date().toISOString() };
     saveAll();
+}
+// The tiler changed the job's rooms after the quote was accepted (more materials, another room,
+// a room removed): take the estimate again from the rooms as they are now, so the materials
+// card and the job summary follow the work. Price changes in Settings still don't move it,
+// as nothing re-takes it then. Once the invoice is sent, the invoice's figures are used instead.
+function finRefreezeQuoteFigures(j) {
+    if (!j || !j.quoteFigures || j.invoiceTotals) return;
+    delete j.quoteFigures;
+    finFreezeQuoteFigures(j);
 }
 // The job priced from its rooms at today's prices, ex VAT (read-only use of the pricing engine).
 function finLiveJobValue(j) {
@@ -16291,7 +16637,7 @@ function finJobMaterialsEstimate(j) {
     const t = j.invoiceTotals;
     if (t && t.materialsSellPence != null) return { sellPence: t.materialsSellPence, markupPct: t.markupPct, basis: "the invoice" };
     if (j.quoteFigures) return { sellPence: j.quoteFigures.materialsSellPence, markupPct: j.quoteFigures.markupPct, basis: "the accepted quote" };
-    return { sellPence: finLiveMaterialsSellPence(j), markupPct: Number(settings.markup) || 0, basis: "today's prices" };
+    return { sellPence: finLiveMaterialsSellPence(j), markupPct: markupPctFor(j), basis: "today's prices" };
 }
 
 function finMaterialsBlockHtml(j, list) {
@@ -16311,10 +16657,11 @@ function finMaterialsBlockHtml(j, list) {
         <span style="color:${strong ? "var(--ink)" : "var(--muted)"};">${label}</span><span style="color:var(--ink);">${value}</span></div>`;
     return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:12px;">
         <div style="font-size:13px;font-weight:700;color:var(--ink);">Materials</div>
-        ${row("Estimated cost", f(c.estCost))}
+        ${row("Charged to customer", f(c.charged))}
+        ${row(Number(est.markupPct) ? `Should cost you (−${Number(est.markupPct)}%)` : "Should cost you", f(c.estCost))}
         ${row(`Bought so far${bought ? ` (${bought})` : ""}`, f(c.actual), true)}
         ${verdict}
-        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Estimate from ${est.basis}: ${f(c.charged)} charged for materials, less your ${Number(est.markupPct) || 0}% markup.</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">From ${est.basis}. Your receipts are compared with what the materials should cost you${Number(est.markupPct) ? `, not with the ${Number(est.markupPct)}% markup you charge on them` : ""}.</div>
     </div>`;
 }
 
@@ -16374,11 +16721,11 @@ function openMaterialPurchaseSheet(jobId) {
             <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;"></div>
             <div style="font-size:17px;font-weight:700;">Record material purchase</div>
             <div style="font-size:13px;color:var(--muted);margin:2px 0 14px;">${esc(j.customerName || "")}</div>
+            ${field("Receipt", `<div id="fin-receipt-box"></div>`)}
             ${field("What did you buy?", `<div>${lineRows}</div>`, "— tick from your materials list")}
             ${field("Total paid", `<input id="fin-exp-amount" inputmode="decimal" placeholder="0.00" oninput="this.dataset.touched=1;finMatSum()" style="${inputStyle}">`, "— as on the receipt, VAT included")}
             ${field("Supplier", `<input id="fin-exp-supplier" placeholder="e.g. Topps Tiles" list="fin-supplier-list" autocomplete="off" style="${inputStyle}"><datalist id="fin-supplier-list">${suppliers.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`)}
             ${field("Date", `<input id="fin-exp-date" type="date" value="${today}" max="${today}" style="${inputStyle}">`)}
-            ${field("Receipt", `<div id="fin-receipt-box"></div>`)}
             ${field("Paid by", `<div style="display:flex;flex-wrap:wrap;gap:6px;">${methods}</div>`)}
             <div id="fin-exp-error" style="display:none;color:var(--red);font-size:13px;font-weight:600;margin-bottom:10px;"></div>
             <div id="fin-mat-summary" style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:8px;"></div>
@@ -16445,8 +16792,10 @@ async function finSaveMaterialPurchase(jobId) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Pick the date.");
     if (date > FinCore.localDate()) return fail("That date is in the future.");
     const supplier = (document.getElementById("fin-exp-supplier").value || "").trim();
-    const twin = FinExpenses.forJob(jobId).find(e => e.status !== "void" && e.amount_pence === amount && e.spent_on === date);
-    if (twin && !confirm(`You've already recorded ${FinCore.formatPence(amount)} on ${finFmtDate(date)} for this job. Record another?`)) { btn.disabled = false; return; }
+    const twin = (sheet._readRef && finFindDuplicateExpense({ amount, date, supplier, receiptRef: sheet._readRef }))
+        || (FinExpenses.forJob(jobId).find(e => e.status !== "void" && e.amount_pence === amount && e.spent_on === date)
+            ? { message: `You've already recorded ${FinCore.formatPence(amount)} on ${finFmtDate(date)} for this job.` } : null);
+    if (twin && !confirm(twin.message + " Record another?")) { btn.disabled = false; return; }
     const rec = FinExpenses.save({
         id: sheet._id, job_id: jobId, job_label: j.customerName || null,
         spent_on: date, supplier: supplier || null,
@@ -16455,6 +16804,8 @@ async function finSaveMaterialPurchase(jobId) {
         amount_pence: amount, vat_pence: 0, vat_treatment: "unknown", business_use_pct: 100,
         payment_method: document.querySelector("#fin-expense-sheet input[name=fin-exp-method]:checked")?.value || "card",
         source: "material_purchase", material_lines: ticked.length ? ticked : null,
+        receipt_ref: sheet._readRef || null,
+        line_items: sheet._lineItems && sheet._lineItems.length ? sheet._lineItems : null,
         status: "active", is_demo: isDemoAccount()
     });
     if (sheet._receipt) {
@@ -16535,32 +16886,50 @@ function finSaveSettingsQuietly() {
 }
 // What to offer in the sheet: job costs or business costs, most used first, and the
 // expense's own category even if it's an old one no longer offered.
-function finExpenseCategoryOrder(forJob, current) {
+function finExpenseCategoryOrder(forJob, current, everything) {
     const used = {};
     FinExpenses.all().forEach(e => { if (e.status !== "void") used[e.category] = (used[e.category] || 0) + 1; });
-    let list = FinCore.categoriesFor(forJob, finCustomCats());
+    let list = everything ? FinCore.categoriesFor(true, finCustomCats()).concat(FinCore.categoriesFor(false, finCustomCats()))
+                          : FinCore.categoriesFor(forJob, finCustomCats());
     if (forJob) list = list.slice().sort((a, b) => (used[b.key] || 0) - (used[a.key] || 0));
     if (current && !list.some(c => c.key === current)) list = [FinCore.categoryOf(current, finCustomCats())].concat(list);
     return list;
 }
 const FIN_PART_PRIVATE = ["fuel", "van", "phone"];   // ask about business use for these
 
+// An expense already recorded that this one looks like: the same receipt number (from the same
+// supplier, if both name one), or the same amount, day and supplier. Returns { expense, message }.
+function finFindDuplicateExpense({ amount, date, supplier, receiptRef, ignoreId }) {
+    const sup = (supplier || "").trim().toLowerCase(), ref = (receiptRef || "").trim().toLowerCase();
+    const live = FinExpenses.all().filter(e => e.status !== "void" && e.id !== ignoreId);
+    const f = FinCore.formatPence;
+    if (ref) {
+        const e = live.find(x => (x.receipt_ref || "").trim().toLowerCase() === ref && (!sup || !x.supplier || x.supplier.trim().toLowerCase() === sup));
+        if (e) return { expense: e, message: `You've already added receipt ${e.receipt_ref}${e.supplier ? " from " + e.supplier : ""} (${f(e.amount_pence)} on ${finFmtDate(e.spent_on)}).` };
+    }
+    const e = live.find(x => x.amount_pence === amount && x.spent_on === date && (x.supplier || "").trim().toLowerCase() === sup);
+    if (e) return { expense: e, message: `You've already added ${f(amount)}${supplier ? " at " + supplier : ""} on ${finFmtDate(date)}.` };
+    return null;
+}
+
 function openExpenseSheet(opts) {
     opts = opts || {};
     const editing = opts.editId ? FinExpenses.get(opts.editId) : null;
+    const inbox = !editing && opts.inbox ? opts.inbox : null;      // an emailed receipt being checked
     const jobId = editing ? editing.job_id : (opts.jobId || null);
     const job = jobId ? jobs.find(x => x.id === jobId) : null;
     if (job && job.isDemo) { alert("This is a demo job — costs can only be added to your real jobs."); return; }
     closeExpenseSheet();
     const today = FinCore.localDate();
-    const v = editing || { id: finNewId(), category: null, spent_on: today, payment_method: "card", business_use_pct: 100, vat_treatment: "unknown", vat_pence: 0 };
+    const v = editing || { id: finNewId(), category: null, spent_on: today, payment_method: "card", business_use_pct: 100, vat_treatment: "unknown", vat_pence: 0,
+                           ...(inbox ? finInboxPrefill(inbox) : {}) };
     const locked = editing && editing.status === "void";
     const amt = p => p ? (p / 100).toFixed(2) : "";
     const dis = locked ? "disabled" : "";
     const inputStyle = "width:100%;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:16px;";
     const field = (label, html, hint, id) => `<div ${id ? `id="${id}"` : ""} style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">${label}${hint ? ` <span style="font-weight:400;">${hint}</span>` : ""}</div>${html}</div>`;
     const input = (id, val, attrs) => `<input id="${id}" value="${esc(val == null ? "" : val)}" ${attrs || ""} ${dis} style="${inputStyle}">`;
-    const cats = finExpenseCategoryOrder(!!jobId || !!opts.forJob, v.category);
+    const cats = finExpenseCategoryOrder(!!jobId || !!opts.forJob, v.category, !!inbox);
     const chips = cats.map(c => `<label style="display:inline-flex;" class="fin-cat-wrap"><input type="radio" name="fin-cat" value="${c.key}" ${v.category === c.key ? "checked" : ""} ${dis} style="position:absolute;opacity:0;width:0;height:0;" onchange="finExpenseCatChanged()">
         <span class="fin-chip" style="padding:8px 11px;border-radius:999px;border:1px solid var(--border);font-size:13.5px;font-weight:600;cursor:pointer;">${c.icon} ${c.label}</span></label>`).join("");
     const methods = Object.entries(FinCore.METHODS).map(([k, label]) =>
@@ -16571,8 +16940,9 @@ function openExpenseSheet(opts) {
     const jobOptions = (opts.forJob && !jobId ? `<option value="" selected>Choose the job…</option>` : `<option value="">Business cost (not one job)</option>`) +
         realJobs.map(x => `<option value="${x.id}" ${x.id === jobId ? "selected" : ""}>${esc(x.customerName || "Job")}${x.description ? " – " + esc(x.description).slice(0, 40) : ""}</option>`).join("");
     const suppliers = [...new Set(FinExpenses.all().map(e => (e.supplier || "").trim()).filter(Boolean))].slice(0, 30);
-    const hasDetail = editing && (editing.vat_pence || editing.description || editing.notes || (editing.business_use_pct || 100) !== 100);
-    const title = editing ? (locked ? "Expense (void)" : "Expense") : (job || opts.forJob ? "Add a job cost" : "Add a business cost");
+    const hasDetail = editing && (editing.vat_pence || editing.description || editing.notes || editing.receipt_ref ||
+        (Array.isArray(editing.line_items) && editing.line_items.length) || (editing.business_use_pct || 100) !== 100);
+    const title = editing ? (locked ? "Expense (void)" : "Expense") : inbox ? "Check emailed receipt" : (job || opts.forJob ? "Add a job cost" : "Add a business cost");
 
     const sheet = document.createElement("div");
     sheet.id = "fin-expense-sheet";
@@ -16584,38 +16954,75 @@ function openExpenseSheet(opts) {
             <div style="font-size:17px;font-weight:700;margin-bottom:${job ? 2 : 16}px;">${title}</div>
             ${job ? `<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">${esc(job.customerName || "")}</div>` : ""}
             ${locked && editing.void_reason ? `<div style="font-size:13px;background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:12px;">Voided: ${esc(editing.void_reason)}</div>` : ""}
-            ${field("Amount paid", input("fin-exp-amount", amt(v.amount_pence), 'inputmode="decimal" placeholder="0.00"'), "— as on the receipt, VAT included")}
+            ${!editing ? field("Receipt", `<div id="fin-receipt-box"></div>`) : ""}
+            ${field("Amount paid", input("fin-exp-amount", amt(v.amount_pence), 'inputmode="decimal" placeholder="0.00" oninput="finExpenseNet()"'), "— as on the receipt, VAT included")}
             ${field("What for", `<div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}
                 ${locked ? "" : `<button type="button" id="fin-cat-own" onclick="finAddOwnCategory()" style="padding:8px 11px;border-radius:999px;border:1px dashed var(--border);background:none;color:var(--muted);font-size:13.5px;font-weight:600;cursor:pointer;">+ Your own</button>`}</div>
                 <div id="fin-own-cat" style="display:none;margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;"></div>
                 <div id="fin-capital-note" style="display:none;font-size:12px;color:var(--muted);margin-top:6px;">Bigger tools (a wet saw, a mixer) can count as equipment rather than a running cost — your accountant will sort out how they're claimed.</div>`)}
             ${field("Supplier", input("fin-exp-supplier", v.supplier, 'placeholder="e.g. Topps Tiles, Shell" list="fin-supplier-list" autocomplete="off"') + `<datalist id="fin-supplier-list">${suppliers.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`)}
             ${field("Date", input("fin-exp-date", v.spent_on, `type="date" max="${today}"`))}
-            ${field("Receipt", `<div id="fin-receipt-box"></div>`)}
+            ${editing ? field("Receipt", `<div id="fin-receipt-box"></div>`) : ""}
             ${field("Job", `<select id="fin-exp-job" ${dis} style="${inputStyle}">${jobOptions}</select>`)}
             ${field("Business use", `<div style="display:flex;align-items:center;gap:8px;"><input id="fin-exp-business" value="${v.business_use_pct || 100}" inputmode="numeric" ${dis} style="${inputStyle}width:90px;"><span style="font-size:14px;color:var(--muted);">% for the business — lower it if you also use this privately</span></div>`, "", "fin-business-row")}
             <button type="button" id="fin-exp-more-btn" onclick="document.getElementById('fin-exp-more').style.display='block';this.remove();" style="${hasDetail ? "display:none;" : ""}width:100%;background:none;border:1px dashed var(--border);border-radius:10px;color:var(--muted);padding:10px;font-size:14px;font-weight:600;margin-bottom:12px;cursor:pointer;">+ VAT, how you paid, notes</button>
             <div id="fin-exp-more" style="display:${hasDetail ? "block" : "none"};">
-                ${field("Description", input("fin-exp-desc", v.description, 'placeholder="Optional — e.g. 3 bags flexible adhesive"'))}
-                ${field("VAT in that amount", `<div style="display:flex;gap:8px;">${input("fin-exp-vat", amt(v.vat_pence), 'inputmode="decimal" placeholder="0.00" style="flex:1"')}
-                    <button type="button" ${dis} onclick="finExpenseVat20()" class="btn-secondary" style="white-space:nowrap;padding:0 12px;">20% incl.</button></div>`, "— only if the receipt shows VAT")}
+                ${field("Receipt or invoice number", input("fin-exp-ref", v.receipt_ref, 'placeholder="Optional" autocomplete="off"'))}
+                ${field("Description", input("fin-exp-desc", v.description, 'placeholder="Optional — e.g. 3 bags flexible adhesive"') + `<div id="fin-exp-items"></div>`)}
+                ${field("VAT in that amount", `<div style="display:flex;gap:8px;">${input("fin-exp-vat", amt(v.vat_pence), 'inputmode="decimal" placeholder="0.00" style="flex:1" oninput="finExpenseNet()"')}
+                    <button type="button" ${dis} onclick="finExpenseVat20()" class="btn-secondary" style="white-space:nowrap;padding:0 12px;">20% incl.</button></div>
+                    <div id="fin-exp-net" style="font-size:12.5px;color:var(--muted);margin-top:5px;"></div>`, "— only if the receipt shows VAT")}
                 ${field("Paid by", `<div style="display:flex;flex-wrap:wrap;gap:6px;">${methods}</div>`)}
                 ${field("Notes", input("fin-exp-notes", v.notes, 'placeholder="Optional"'))}
             </div>
             <div id="fin-exp-error" style="display:none;color:var(--red);font-size:13px;font-weight:600;margin-bottom:10px;"></div>
             ${locked ? "" : `<button id="fin-exp-save" onclick="finSaveExpenseSheet()" class="btn-primary" style="width:100%;padding:14px;font-size:15px;">${editing ? "Save changes" : "Save"}</button>`}
             ${editing && !locked ? `<button onclick="finVoidExpense('${v.id}')" style="width:100%;background:none;border:none;color:var(--red);padding:14px;font-size:14px;font-weight:600;cursor:pointer;">Void this expense</button>` : ""}
+            ${inbox ? `<button onclick="finDismissInbox('${inbox.id}', true)" style="width:100%;background:none;border:none;color:var(--red);padding:14px;font-size:14px;font-weight:600;cursor:pointer;">Not an expense — remove it</button>` : ""}
             <button onclick="closeExpenseSheet()" style="width:100%;background:none;border:none;color:var(--muted);padding:12px;font-size:15px;font-weight:600;cursor:pointer;">${locked ? "Close" : "Cancel"}</button>
         </div>`;
     sheet._editing = editing;
     sheet._id = v.id;
     sheet._receipt = null;          // a file chosen in this sheet, kept until Save
     sheet._forJob = !!jobId || !!opts.forJob;   // which list of categories it offers (job costs or business costs)
+    sheet._lineItems = editing && Array.isArray(editing.line_items) && editing.line_items.length ? editing.line_items : (inbox ? v.line_items || null : null);
+    sheet._readFromReceipt = false;
+    sheet._inbox = inbox;
+    sheet._inboxFile = inbox && inbox.file_path ? { path: inbox.file_path, mime: inbox.file_mime } : null;
+    if (inbox) sheet._readNote = finInboxNote(inbox);
     sheet._needsJob = !editing && !!opts.forJob && !jobId;
     document.body.appendChild(sheet);
     finChipStyles();
     finExpenseCatChanged(true);
     finRenderReceiptBox();
+    finRenderLineItems();
+    finExpenseNet();
+    if (inbox) finMarkInboxFilled(sheet, v);
+    if (opts.scan && !editing) finChooseReceipt();   // "Scan receipt": straight to the camera
+}
+
+// Net = amount paid less VAT, shown (never stored, so it can't disagree with the two figures).
+function finExpenseNet() {
+    const el = document.getElementById("fin-exp-net");
+    if (!el) return;
+    const gross = FinCore.parsePence(document.getElementById("fin-exp-amount")?.value);
+    const vat = FinCore.parsePence(document.getElementById("fin-exp-vat")?.value, true);
+    el.textContent = gross && vat ? `Net ${FinCore.formatPence(gross - vat)} + VAT ${FinCore.formatPence(vat)} = ${FinCore.formatPence(gross)}` : "";
+}
+// The item lines read from the receipt, folded under the description. Kept with the expense.
+function finRenderLineItems() {
+    const sheet = document.getElementById("fin-expense-sheet");
+    const box = document.getElementById("fin-exp-items");
+    if (!sheet || !box) return;
+    const items = sheet._lineItems;
+    if (!items || !items.length) { box.innerHTML = ""; return; }
+    const locked = sheet._editing && sheet._editing.status === "void";
+    box.innerHTML = `<details style="margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 12px;">
+        <summary style="font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;">${items.length} item${items.length === 1 ? "" : "s"} on the receipt</summary>
+        ${items.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0;border-top:1px solid var(--border);">
+            <span style="color:var(--ink);">${esc(it.description)}</span><span style="color:var(--muted);white-space:nowrap;">${it.amount_pence != null ? FinCore.formatPence(it.amount_pence) : ""}</span></div>`).join("")}
+        ${locked ? "" : `<button type="button" onclick="const s=document.getElementById('fin-expense-sheet');s._lineItems=null;finRenderLineItems();" style="background:none;border:none;color:var(--muted);font-size:12.5px;padding:6px 0 0;cursor:pointer;">Don't keep these items</button>`}
+    </details>`;
 }
 
 function finChipStyles() {
@@ -16702,29 +17109,131 @@ async function finRenderReceiptBox() {
     const rec = sheet._editing ? FinExpenses.get(sheet._editing.id) : null;
     const locked = rec && rec.status === "void";
     const chosen = sheet._receipt;
-    const has = !!chosen || finExpenseHasReceipt(rec);
+    const fromEmail = !chosen && !rec && sheet._inboxFile;
+    const has = !!chosen || finExpenseHasReceipt(rec) || !!fromEmail;
     const label = chosen ? (chosen.type === "application/pdf" ? "PDF ready to save" : "Photo ready to save")
+        : fromEmail ? (fromEmail.mime === "application/pdf" ? "PDF from the email" : "Photo from the email")
         : rec && rec._receiptPending ? "Saved on this phone — uploads when you're online"
         : rec && rec.receipt_path ? (rec.receipt_mime === "application/pdf" ? "PDF attached" : "Photo attached") : "";
     box.innerHTML = has
         ? `<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
              <span style="font-size:18px;">📎</span><div style="flex:1;font-size:14px;font-weight:600;">${label}</div>
              ${rec && finExpenseHasReceipt(rec) && !chosen ? `<button type="button" onclick="finOpenReceipt('${rec.id}')" class="btn-secondary" style="padding:6px 10px;font-size:13px;">View</button>` : ""}
+             ${fromEmail ? `<button type="button" onclick="finOpenInboxFile()" class="btn-secondary" style="padding:6px 10px;font-size:13px;">View</button>` : ""}
              ${locked ? "" : `<button type="button" onclick="finChooseReceipt()" class="btn-secondary" style="padding:6px 10px;font-size:13px;">Replace</button>`}
            </div>`
         : locked ? `<div style="font-size:14px;color:var(--muted);">None</div>`
-        : `<button type="button" onclick="finChooseReceipt()" class="btn-secondary" style="width:100%;padding:12px;">📷 Add receipt</button>`;
+        : `<button type="button" onclick="finChooseReceipt()" class="btn-secondary" style="width:100%;padding:12px;">📷 Add receipt${!sheet._editing ? `<div style="font-size:12px;font-weight:400;color:var(--muted);margin-top:2px;">Snap it first and the details are filled in for you</div>` : ""}</button>`;
+    if (sheet._reading) box.insertAdjacentHTML("beforeend", `<div style="font-size:13px;color:var(--muted);margin-top:8px;">✨ Reading the receipt…</div>`);
+    else if (sheet._readNote) box.insertAdjacentHTML("beforeend", `<div id="fin-read-note" style="font-size:13px;color:${sheet._readNote.ok ? "var(--ink)" : "var(--muted)"};background:${sheet._readNote.ok ? "var(--amber-lt)" : "transparent"};border-radius:8px;padding:${sheet._readNote.ok ? "8px 10px" : "0"};margin-top:8px;">${sheet._readNote.text}</div>`);
 }
 
 async function finChooseReceipt() {
     const sheet = document.getElementById("fin-expense-sheet");
     const file = await finPickReceipt();
     if (!file || !document.getElementById("fin-expense-sheet")) return;
+    let prepared;
     try {
-        await FinReceipts.prepare(file);              // checks type and size now, so the tiler hears about it here
-        sheet._receipt = file;
-        finRenderReceiptBox();
-    } catch(e) { alert(e.message); }
+        prepared = await FinReceipts.prepare(file);   // checks type and size now, so the tiler hears about it here
+    } catch(e) { alert(e.message); return; }
+    sheet._receipt = file;
+    sheet._readNote = null;
+    finRenderReceiptBox();
+    if (!sheet._editing) finReadReceipt(sheet, prepared);
+}
+
+/* ── Reading a receipt (AI) ───────────────────────────────────
+   The worker's read_receipt sends the photo/PDF to Claude and returns what it could read.
+   It only fills in fields the tiler hasn't filled themselves, marks them, and says so:
+   nothing is saved until the tiler has checked them and taps Save. */
+const finBlobToBase64 = blob => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1] || "");
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(blob);
+});
+function finMarkFilled(el) {
+    if (!el) return;
+    el.style.borderColor = "var(--amber)";
+    el.style.background = "var(--amber-lt)";
+    el.dataset.fromReceipt = "1";
+    const clear = () => { el.style.borderColor = ""; el.style.background = ""; delete el.dataset.fromReceipt; };
+    el.addEventListener("input", clear, { once: true });
+    el.addEventListener("change", clear, { once: true });
+}
+async function finReadReceipt(sheet, prepared) {
+    if (isDemoAccount() || !currentUser) return;
+    if (!navigator.onLine) { sheet._readNote = { ok: false, text: "No signal to read it — fill in the details below." }; finRenderReceiptBox(); return; }
+    const receipt = sheet._receipt;
+    sheet._reading = true;
+    finRenderReceiptBox();
+    let result = null, error = null;
+    try {
+        const categories = [...sheet.querySelectorAll("input[name=fin-cat]")].map(i => ({ key: i.value, label: (i.nextElementSibling?.textContent || "").replace(/^\S+\s/, "").trim() }));
+        const resp = await fetch(AI_PROXY_URL, {
+            method: "POST", headers: await jobsAuthHeaders(),
+            body: JSON.stringify({ action: "read_receipt", mime: prepared.mime, data: await finBlobToBase64(prepared.blob), categories })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.receipt) result = data.receipt;
+        else error = resp.status === 429 && data.error ? data.error : "Couldn't read it — fill in the details below.";
+    } catch(e) { error = "Couldn't read it — fill in the details below."; }
+    // The sheet may have been closed, or the receipt swapped, while this was running.
+    if (!document.body.contains(sheet) || sheet._receipt !== receipt) return;
+    sheet._reading = false;
+    if (error || !result) { sheet._readNote = { ok: false, text: error }; finRenderReceiptBox(); return; }
+    if (!result.is_receipt) { sheet._readNote = { ok: false, text: "That doesn't look like a receipt — fill in the details below." }; finRenderReceiptBox(); return; }
+
+    let filled = 0;
+    const $ = id => sheet.querySelector("#" + id);
+    const fill = (id, value) => {
+        const el = $(id);
+        if (!el || value == null || value === "" || String(el.value).trim()) return false;
+        el.value = value; finMarkFilled(el); filled++; return true;
+    };
+    if (result.total != null && fill("fin-exp-amount", result.total.toFixed(2))) {
+        const amt = $("fin-exp-amount");
+        if (sheet.querySelector(".fin-mat-line")) { amt.dataset.touched = "1"; finMatSum(); }
+    }
+    fill("fin-exp-supplier", result.supplier);
+    sheet._readFromReceipt = true;
+    if (result.receipt_ref) {
+        sheet._readRef = result.receipt_ref;
+        if ($("fin-exp-ref") && !$("fin-exp-ref").value) {
+            const more = $("fin-exp-more"); if (more) more.style.display = "block";
+            $("fin-exp-more-btn")?.remove();
+            fill("fin-exp-ref", result.receipt_ref);
+        }
+    }
+    if (Array.isArray(result.line_items) && result.line_items.length && !(sheet._lineItems && sheet._lineItems.length)) {
+        sheet._lineItems = result.line_items.map(it => ({ description: it.description, amount_pence: it.amount != null ? Math.round(it.amount * 100) : null }));
+        if ($("fin-exp-items")) { const more = $("fin-exp-more"); if (more) more.style.display = "block"; $("fin-exp-more-btn")?.remove(); finRenderLineItems(); }
+    }
+    const dateEl = $("fin-exp-date");
+    if (dateEl && result.date && dateEl.value === FinCore.localDate() && result.date <= FinCore.localDate() && result.date !== dateEl.value) {
+        dateEl.value = result.date; finMarkFilled(dateEl); filled++;
+    }
+    if (result.vat != null && $("fin-exp-vat") && !$("fin-exp-vat").value) {
+        const more = $("fin-exp-more"); if (more) more.style.display = "block";
+        $("fin-exp-more-btn")?.remove();
+        fill("fin-exp-vat", result.vat.toFixed(2));
+    }
+    if (result.description && $("fin-exp-desc") && !$("fin-exp-desc").value) {
+        const more = $("fin-exp-more"); if (more) more.style.display = "block";
+        $("fin-exp-more-btn")?.remove();
+        fill("fin-exp-desc", result.description);
+    }
+    if (result.category && !sheet.querySelector("input[name=fin-cat]:checked")) {
+        const radio = sheet.querySelector(`input[name=fin-cat][value="${result.category}"]`);
+        if (radio) { radio.checked = true; finExpenseCatChanged(); filled++; }
+    }
+    finExpenseNet();
+    const nItems = sheet._lineItems && sheet._readFromReceipt ? sheet._lineItems.length : 0;
+    sheet._readNote = filled
+        ? { ok: true, text: `✨ Filled in ${filled} detail${filled === 1 ? "" : "s"}${nItems && $("fin-exp-items") ? ` and ${nItems} item${nItems === 1 ? "" : "s"}` : ""} from the receipt (highlighted) — check them before saving.` }
+        : { ok: false, text: "Couldn't read much from it — fill in the details below." };
+    finRenderReceiptBox();
+    TQA.feature("receipt_read");
 }
 
 async function finSaveExpenseSheet() {
@@ -16757,10 +17266,10 @@ async function finSaveExpenseSheet() {
     const method = document.querySelector("#fin-expense-sheet input[name=fin-exp-method]:checked")?.value || "card";
     const supplier = val("fin-exp-supplier");
 
+    const receiptRef = val("fin-exp-ref");
     if (!editing) {
-        const twin = FinExpenses.all().find(e => e.status !== "void" && e.amount_pence === amount && e.spent_on === date &&
-            (e.supplier || "").toLowerCase() === supplier.toLowerCase());
-        if (twin && !confirm(`You've already added ${FinCore.formatPence(amount)}${supplier ? " at " + supplier : ""} on ${finFmtDate(date)}. Add another one?`)) { btn.disabled = false; return; }
+        const twin = finFindDuplicateExpense({ amount, date, supplier, receiptRef });
+        if (twin && !confirm(twin.message + " Add another one?")) { btn.disabled = false; return; }
     }
     const cat = FinCore.categoryOf(category, finCustomCats());
     const keepTax = editing && editing.category === category ? editing.tax_category : cat.tax;
@@ -16773,7 +17282,11 @@ async function finSaveExpenseSheet() {
         category, tax_category: keepTax,
         amount_pence: amount, vat_pence: vat,
         vat_treatment: vat > 0 ? "standard" : (editing ? editing.vat_treatment : "unknown"),
-        business_use_pct: pct, payment_method: method, source: editing ? editing.source || "manual" : "manual",
+        business_use_pct: pct, payment_method: method,
+        source: editing ? editing.source || "manual" : sheet._inbox ? "email" : (sheet._readFromReceipt ? "scan" : "manual"),
+        ...(sheet._inboxFile && !sheet._receipt ? { receipt_path: sheet._inboxFile.path, receipt_mime: sheet._inboxFile.mime } : {}),
+        receipt_ref: receiptRef || null,
+        line_items: sheet._lineItems && sheet._lineItems.length ? sheet._lineItems : null,
         notes: val("fin-exp-notes") || null,
         status: "active",
         is_demo: isDemoAccount()
@@ -16782,7 +17295,8 @@ async function finSaveExpenseSheet() {
         try { await FinReceipts.attach(rec.id, sheet._receipt); }
         catch(e) { alert("The expense is saved, but the receipt couldn't be kept: " + e.message); }
     }
-    if (!editing) TQA.feature(job ? "job_cost_added" : "expense_added");
+    if (sheet._inbox) { FinInbox.resolve(sheet._inbox.id, "approved", rec.id); TQA.feature("emailed_receipt_saved"); }
+    else if (!editing) TQA.feature(job ? "job_cost_added" : "expense_added");
     closeExpenseSheet();
 }
 
@@ -16809,6 +17323,7 @@ function goMoney() {
     renderMoneyScreen();
     FinExpenses.load();
     FinStore.load();
+    FinInbox.load();
     FinReceipts.flush();
     TQA.feature("money_screen");
 }
@@ -16818,7 +17333,7 @@ function goMoney() {
 function renderMoneyScreen() {
     const el = document.getElementById("money-body");
     if (!el) return;
-    if (finMoneyTab === "overview") { renderMoneyOverview(el); return; }
+    if (finMoneyTab === "overview") { renderMoneyOverview(el); finPrependInbox(el); return; }
     const f = FinCore.formatPence, today = FinCore.localDate();
     const ty = FinCore.ukTaxYear(today), q = FinCore.ukTaxQuarter(today);
     const isJobs = finMoneyTab === "jobs";
@@ -16857,9 +17372,13 @@ function renderMoneyScreen() {
     el.innerHTML = `
         ${finMoneyTabs()}
         <div style="display:flex;gap:10px;margin-top:14px;">${card(`This quarter · Q${q.n}`, quarterTotal)}${card(`Tax year ${ty.label}`, yearTotal)}</div>
-        <button onclick="openExpenseSheet(${isJobs ? "{forJob:true}" : ""})" class="btn-primary" style="width:100%;padding:14px;font-size:15px;margin-top:14px;">${isJobs ? "+ Add job cost" : "+ Add business cost"}</button>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+            <button onclick="openExpenseSheet(${isJobs ? "{forJob:true,scan:true}" : "{scan:true}"})" class="btn-primary" style="flex:1;padding:14px 8px;font-size:15px;">📷 Scan receipt</button>
+            <button onclick="openExpenseSheet(${isJobs ? "{forJob:true}" : ""})" class="btn-secondary" style="flex:1;padding:14px 8px;font-size:15px;">${isJobs ? "+ Add job cost" : "+ Add business cost"}</button>
+        </div>
         ${groups || `<div class="form-card" style="margin-top:12px;"><div style="font-size:14px;color:var(--muted);padding:6px 0;">${empty}</div></div>`}
         ${pending ? `<div style="font-size:12px;color:var(--muted);margin-top:10px;">⏳ ${pending} saved on this phone${navigator.onLine ? " — sending…" : " — will sync when you're back online"}.</div>` : ""}`;
+    finPrependInbox(el);
 }
 
 // Invoices still owed: every real, sent invoice with something left to pay, most overdue first.
@@ -16945,6 +17464,16 @@ function renderMoneyOverview(el) {
             <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Money in when it reached you, costs when you paid them${o.paidOut !== o.out ? " (business share after private use)" : ""}. Before tax and before paying yourself — not a tax bill.</div>
         </div>
         <div class="form-card" style="margin-top:12px;">
+            <div style="font-size:15px;font-weight:700;color:var(--ink);">Export for your accountant</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${esc(r.label)} · open in Excel or send by email</div>
+            <button onclick="finExport('pdf')" class="btn-primary" style="width:100%;padding:12px;margin-top:10px;">📄 Summary (PDF)</button>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <button onclick="finExport('in')" class="btn-secondary" style="flex:1;padding:11px 6px;">⬇ Money in (CSV)</button>
+                <button onclick="finExport('out')" class="btn-secondary" style="flex:1;padding:11px 6px;">⬇ Money out (CSV)</button>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Voided records are left out. Receipt photos stay in TileIQ — the CSV says which costs have one.</div>
+        </div>
+        <div class="form-card" style="margin-top:12px;">
             <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
                 <div style="font-size:15px;font-weight:700;color:var(--ink);">Owed to you</div>
                 <div style="font-size:18px;font-weight:800;color:var(--ink);">${f(owe.owed)}</div></div>
@@ -16961,12 +17490,339 @@ function renderMoneyOverview(el) {
         ${empty ? `<div style="font-size:13px;color:var(--muted);margin-top:12px;">Nothing recorded for ${esc(r.label)} yet. Record payments from a job's Payments card, and costs from Job costs or the Business costs tab.</div>` : ""}`;
 }
 
+/* ════════════════════════════════════════════════════════════════
+   EMAIL RECEIPTS — the To check list (AI receipt capture, step 3)
+   Receipts forwarded to the tiler's address arrive in fin_receipt_inbox (written by
+   the worker's email() handler). They are not expenses and nothing counts them. Checking
+   one opens the normal expense form, filled in; its Save creates the expense and marks
+   the item approved. "Not an expense" dismisses it (removed for good after 90 days).
+════════════════════════════════════════════════════════════════ */
+// The receipt address: on for every signed-in tiler except the demo. Set to false to show it
+// only to the admin account again (e.g. if mail routing has a problem).
+const FIN_EMAIL_RECEIPTS_ON = true;
+const finEmailReceiptsVisible = () => !!currentUser && !isDemoAccount() && (FIN_EMAIL_RECEIPTS_ON || isAppAdmin(currentUser));
+
+async function finRest(method, path, body, prefer) {
+    let tok = "";
+    try { const { data } = await sb.auth.getSession(); tok = data?.session?.access_token || ""; } catch(e) {}
+    if (!tok) throw new Error("Not signed in");
+    const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+        method, headers: { "apikey": SB_KEY, "Authorization": "Bearer " + tok, "Content-Type": "application/json", ...(prefer ? { "Prefer": prefer } : {}) },
+        body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    if (!r.ok) { const e = new Error(`${r.status} ${(await r.text().catch(() => "")).slice(0, 160)}`); e.status = r.status; throw e; }
+    return r.status === 204 ? null : r.json().catch(() => null);
+}
+
+const FinInbox = (() => {
+    let uid = null, items = [], queue = [], loading = null, loadedAt = 0, flushing = false, listeners = [];
+    const k = (name) => `tileiq-fin-inbox-${name}-${uid || "anon"}`;
+    const readJson = (key, dflt) => { try { const v = JSON.parse(localStorage.getItem(key) || "null"); return v == null ? dflt : v; } catch(e) { return dflt; } };
+    const save = () => { try { localStorage.setItem(k("items"), JSON.stringify(items)); localStorage.setItem(k("queue"), JSON.stringify(queue)); } catch(e) {} };
+    function sync() {
+        const id = (typeof currentUser !== "undefined" && currentUser && currentUser.id) || null;
+        if (id !== uid) { uid = id; items = readJson(k("items"), []); queue = readJson(k("queue"), []); loading = null; loadedAt = 0; }
+    }
+    const changed = () => listeners.forEach(fn => { try { fn(); } catch(e) { console.warn(e); } });
+    const open = () => items.filter(it => !queue.some(q => q.id === it.id));
+    async function load() {
+        sync();
+        if (!uid || isDemoAccount() || !navigator.onLine) return;
+        if (loading) return loading;
+        loading = (async () => {
+            try {
+                const rows = await finRest("GET", `fin_receipt_inbox?select=*&user_id=eq.${uid}&status=eq.pending&order=received_at.desc&limit=100`) || [];
+                items = rows; loadedAt = Date.now(); save();
+            } catch(e) { console.warn("To check list didn't load:", e.message); }
+            loading = null;
+            changed();
+            flush();
+        })();
+        return loading;
+    }
+    async function flush() {
+        sync();
+        if (!uid || flushing || !queue.length || !navigator.onLine) return;
+        flushing = true;
+        for (const q of queue.slice()) {
+            try {
+                await finRest("PATCH", `fin_receipt_inbox?id=eq.${q.id}`, q.expense_id ? { status: q.status, expense_id: q.expense_id } : { status: q.status }, "return=minimal");
+                queue = queue.filter(x => x !== q);
+            } catch(e) {
+                if (e.status && e.status >= 400 && e.status < 500) queue = queue.filter(x => x !== q);   // already done elsewhere
+                else break;                                                                            // no signal: try later
+            }
+        }
+        items = items.filter(it => !queue.some(q => q.id === it.id) && it._done !== true);
+        flushing = false;
+        save();
+        changed();
+    }
+    // Approve (with the expense it became) or dismiss. Kept on the phone until it's sent.
+    function resolve(id, status, expenseId) {
+        sync();
+        queue = queue.filter(q => q.id !== id).concat([{ id, status, expense_id: expenseId || null }]);
+        items = items.filter(it => it.id !== id);
+        save();
+        changed();
+        flush();
+    }
+    return {
+        load, flush, resolve,
+        loadIfStale() { sync(); if (Date.now() - loadedAt > 5 * 60 * 1000) load(); },
+        pending() { sync(); return open(); },
+        get(id) { sync(); return items.find(it => it.id === id) || null; },
+        onChange(fn) { listeners.push(fn); }
+    };
+})();
+window.addEventListener("online", () => FinInbox.flush());
+FinInbox.onChange(() => {
+    const money = document.getElementById("screen-money");
+    if (money && !money.classList.contains("hidden")) renderMoneyScreen();
+    finUpdateHomeMoneyRow();
+});
+
+// The form's starting values from what was read off the receipt.
+function finInboxPrefill(it) {
+    const x = it.extracted || {}, today = FinCore.localDate();
+    const own = finCustomCats();
+    const cat = x.category && FinCore.categoryOf(x.category, own).key === x.category ? x.category : null;
+    return {
+        amount_pence: x.total != null ? Math.round(x.total * 100) : null,
+        vat_pence: x.vat != null ? Math.round(x.vat * 100) : 0,
+        vat_treatment: x.vat ? "standard" : "unknown",
+        spent_on: x.date && x.date <= today ? x.date : today,
+        supplier: x.supplier || null,
+        description: x.description || null,
+        receipt_ref: x.receipt_ref || null,
+        category: cat,
+        line_items: Array.isArray(x.line_items) && x.line_items.length
+            ? x.line_items.map(li => ({ description: li.description, amount_pence: li.amount != null ? Math.round(li.amount * 100) : null })) : null
+    };
+}
+function finInboxNote(it) {
+    const x = it.extracted || {};
+    const dup = it.duplicate_of ? FinExpenses.get(it.duplicate_of) : null;
+    const dupText = dup ? `<br>⚠️ Looks like ${FinCore.formatPence(dup.amount_pence)}${dup.supplier ? " at " + esc(dup.supplier) : ""} on ${finFmtDate(dup.spent_on)}, which you've already added.` : it.duplicate_of ? "<br>⚠️ Looks like an expense you've already added." : "";
+    if (it.error || x.total == null) return { ok: false, text: `Couldn't read all of this one${it.from_address ? " from " + esc(it.from_address) : ""} — check the receipt and fill in the rest.${dupText}` };
+    return { ok: true, text: `✨ Read from the email${it.from_address ? " from " + esc(it.from_address) : ""} (highlighted) — check before saving.${dupText}` };
+}
+function finMarkInboxFilled(sheet, v) {
+    const mark = (id, has) => { if (has) finMarkFilled(sheet.querySelector("#" + id)); };
+    mark("fin-exp-amount", v.amount_pence); mark("fin-exp-supplier", v.supplier); mark("fin-exp-ref", v.receipt_ref);
+    mark("fin-exp-desc", v.description); mark("fin-exp-vat", v.vat_pence);
+    if ((v.vat_pence || v.receipt_ref || v.description || (v.line_items && v.line_items.length)) && sheet.querySelector("#fin-exp-more")) {
+        sheet.querySelector("#fin-exp-more").style.display = "block";
+        sheet.querySelector("#fin-exp-more-btn")?.remove();
+    }
+}
+async function finOpenInboxFile() {
+    const f = document.getElementById("fin-expense-sheet")?._inboxFile;
+    if (!f) return;
+    try {
+        const url = await FinReceipts.openUrl({ id: "inbox-file", receipt_path: f.path });
+        const { Browser } = window.Capacitor?.Plugins || {};
+        if (Browser?.open) Browser.open({ url }); else window.open(url, "_blank");
+    } catch(e) { alert(e.message); }
+}
+function finReviewInbox(id) {
+    const it = FinInbox.get(id);
+    if (!it) return;
+    openExpenseSheet({ inbox: it });
+    TQA.feature("emailed_receipt_opened");
+}
+function finDismissInbox(id, fromSheet) {
+    if (!confirm("Remove this from your To check list? It won't be added to your expenses.")) return;
+    FinInbox.resolve(id, "dismissed");
+    if (fromSheet) closeExpenseSheet();
+    TQA.feature("emailed_receipt_dismissed");
+}
+
+// The tiler's receipt address, made by the worker on first ask and kept on the phone.
+async function finReceiptAddress(renew) {
+    const key = `tileiq-receipt-address-${currentUser?.id || "anon"}`;
+    if (!renew) { try { const a = localStorage.getItem(key); if (a) return a; } catch(e) {} }
+    const r = await fetch(AI_PROXY_URL, { method: "POST", headers: await jobsAuthHeaders(), body: JSON.stringify({ action: "receipt_address", renew: !!renew }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.address) throw new Error(data.error || "Couldn't get your receipt address");
+    try { localStorage.setItem(key, data.address); } catch(e) {}
+    return data.address;
+}
+let finAddressShown = null;
+async function finShowReceiptAddress(renew) {
+    if (renew && !confirm("Get a new receipt address? The old one will stop working straight away, so update anywhere you've saved it.")) return;
+    if (!navigator.onLine) { alert("You need signal to get your receipt address."); return; }
+    try { finAddressShown = await finReceiptAddress(renew); }
+    catch(e) { alert(e.message); return; }
+    renderMoneyScreen();
+    if (typeof finRenderReceiptEmailSettings === "function") finRenderReceiptEmailSettings();
+}
+async function finCopyReceiptAddress() {
+    if (!finAddressShown) return;
+    try { await navigator.clipboard.writeText(finAddressShown); alert("Copied: " + finAddressShown); }
+    catch(e) { prompt("Copy your receipt address:", finAddressShown); }
+}
+function finAddressBlockHtml() {
+    if (!finEmailReceiptsVisible()) return "";
+    if (!finAddressShown) { try { finAddressShown = localStorage.getItem(`tileiq-receipt-address-${currentUser.id}`); } catch(e) {} }
+    return finAddressShown
+        ? `<div style="font-size:12.5px;color:var(--muted);margin-top:10px;">Forward supplier receipts to</div>
+           <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+             <div class="fin-receipt-address" style="flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--ink);word-break:break-all;">${esc(finAddressShown)}</div>
+             <button onclick="finCopyReceiptAddress()" class="btn-secondary" style="padding:7px 12px;font-size:13px;">Copy</button></div>`
+        : `<button onclick="finShowReceiptAddress()" class="btn-secondary" style="width:100%;padding:11px;margin-top:10px;">📧 Get my receipt email address</button>`;
+}
+
+function finInboxCardHtml() {
+    if (isDemoAccount()) return "";
+    const list = FinInbox.pending();
+    const showAddress = finEmailReceiptsVisible() && finMoneyTab === "business";
+    if (!list.length && !showAddress) return "";
+    const f = FinCore.formatPence;
+    const rows = list.slice(0, 10).map(it => {
+        const x = it.extracted || {};
+        const what = x.supplier || it.subject || it.from_address || "Emailed receipt";
+        const when = finFmtDate(x.date || FinCore.localDate(new Date(it.received_at)));
+        const tags = [it.duplicate_of ? `<span style="color:var(--red);">looks like one you've added</span>` : "",
+                      it.error || x.total == null ? `<span>needs filling in</span>` : ""].filter(Boolean).join(" · ");
+        return `<div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);padding:10px 0;">
+            <button onclick="finReviewInbox('${it.id}')" style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;background:none;border:none;padding:0;text-align:left;cursor:pointer;color:var(--ink);">
+                <span style="font-size:18px;">${it.file_mime === "application/pdf" ? "📄" : it.file_mime ? "🧾" : "✉️"}</span>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:14px;font-weight:600;">${esc(what)}</div>
+                    <div style="font-size:12px;color:var(--muted);">${when}${tags ? " · " + tags : ""}</div>
+                </div>
+                <div style="font-size:15px;font-weight:700;">${x.total != null ? f(Math.round(x.total * 100)) : "—"}</div>
+            </button>
+            <button onclick="finDismissInbox('${it.id}')" title="Not an expense" aria-label="Not an expense" style="background:none;border:none;color:var(--muted);font-size:18px;padding:4px 6px;cursor:pointer;">✕</button>
+        </div>`;
+    }).join("");
+    return `<div id="fin-inbox-card" class="form-card" style="margin-bottom:12px;${list.length ? "border-color:var(--amber);" : ""}">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <div style="font-size:15px;font-weight:700;color:var(--ink);">📥 To check${list.length ? ` (${list.length})` : ""}</div>
+            ${list.length ? `<div style="font-size:12px;color:var(--muted);">tap to check and save</div>` : ""}
+        </div>
+        ${list.length ? `<div style="margin-top:6px;">${rows}</div>${list.length > 10 ? `<div style="font-size:12px;color:var(--muted);">and ${list.length - 10} more</div>` : ""}`
+                      : `<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">Emailed receipts land here for you to check. Nothing is added to your expenses until you save it.</div>`}
+        ${showAddress || (list.length && finEmailReceiptsVisible()) ? finAddressBlockHtml() : ""}
+    </div>`;
+}
+function finPrependInbox(el) {
+    const html = finInboxCardHtml();
+    if (html) el.insertAdjacentHTML("afterbegin", html);
+}
+function finUpdateHomeMoneyRow() {
+    const sub = document.getElementById("home-money-sub");
+    if (!sub) return;
+    const n = isDemoAccount() ? 0 : FinInbox.pending().length;
+    sub.textContent = n ? `📥 ${n} receipt${n === 1 ? "" : "s"} to check` : "In, out, owed to you, costs by quarter";
+    sub.style.color = n ? "var(--amber)" : "";
+    sub.style.fontWeight = n ? "700" : "";
+}
+function finRenderReceiptEmailSettings() {
+    const box = document.getElementById("set-receipt-email");
+    if (!box) return;
+    box.style.display = finEmailReceiptsVisible() ? "" : "none";
+    if (!finEmailReceiptsVisible()) return;
+    box.innerHTML = `<label>Receipt email <span style="font-weight:400;color:var(--muted);font-size:11px;">(forward supplier receipts here)</span></label>${finAddressBlockHtml()}
+        ${finAddressShown ? `<button onclick="finShowReceiptAddress(true)" style="background:none;border:none;color:var(--muted);font-size:12.5px;padding:8px 0 0;cursor:pointer;">Get a new address</button>` : ""}`;
+}
+
+/* ── Exports (phase G) ──────────────────────────────────────── */
+// Hand a file to the phone's share sheet (email, WhatsApp, Drive...), or download it in a browser.
+async function finShareFile(fileName, mime, { text, base64 }, title) {
+    const { Filesystem, Share } = window.Capacitor?.Plugins || {};
+    if (Filesystem && Share) {
+        const data = base64 || btoa(unescape(encodeURIComponent(text)));
+        await Filesystem.writeFile({ path: fileName, data, directory: "CACHE" });
+        const { uri } = await Filesystem.getUri({ path: fileName, directory: "CACHE" });
+        await Share.share({ title, files: [uri], dialogTitle: title });
+        return;
+    }
+    const blob = base64 ? new Blob([Uint8Array.from(atob(base64), c => c.charCodeAt(0))], { type: mime }) : new Blob([text], { type: mime + ";charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+const finJobNameOf = id => { const j = jobs.find(x => x.id === id); return j ? j.customerName || null : null; };
+
+async function finExport(kind) {
+    const r = FinCore.periodRange(finPeriod.kind, FinCore.localDate(), finPeriod.from, finPeriod.to);
+    const base = `TileIQ-${kind === "in" ? "money-in" : kind === "out" ? "money-out" : "summary"}-${r.from}-to-${r.to}`;
+    try {
+        if (kind === "in") {
+            await finShareFile(base + ".csv", "text/csv", { text: FinCore.incomeCsv(finPayments(), r.from, r.to, finJobNameOf) }, "Money in");
+        } else if (kind === "out") {
+            await finShareFile(base + ".csv", "text/csv", { text: FinCore.expensesCsv(finExpensesAll(), r.from, r.to, finCustomCats(), finJobNameOf) }, "Money out");
+        } else {
+            const doc = finSummaryPdf(r);
+            if (!doc) return;
+            await finShareFile(base + ".pdf", "application/pdf", { base64: doc.output("datauristring").split(",")[1] }, "Money summary");
+        }
+        TQA.feature("finance_export_" + kind);
+    } catch(e) {
+        if (!/cancel/i.test(e?.message || "")) alert("Couldn't export: " + (e?.message || "unknown error"));
+    }
+}
+
+// One-page summary for the accountant: money in, costs by HMRC heading, surplus, what's owed.
+function finSummaryPdf(r) {
+    if (!window.jspdf || !window.jspdf.jsPDF) { alert("PDF maker didn't load. Check your connection and try again."); return null; }
+    const doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+    const pays = finPayments(), exps = finExpensesAll();
+    const o = FinCore.overview(pays, exps, r.from, r.to);
+    const heads = FinCore.costsByHeading(exps, r.from, r.to);
+    const owe = finOutstanding();
+    const money = p => (p < 0 ? "-" : "") + "£" + (Math.abs(p) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ukd = d => d.split("-").reverse().join("/");
+    const L = 18, R = 192;
+    let y = 22;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(17); doc.setTextColor(30, 35, 40);
+    doc.text("Money summary", L, y);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(110, 115, 120);
+    y += 7; doc.text(`${settings.companyName || "Your business"}${settings.vatNumber ? "  ·  VAT " + settings.vatNumber : ""}`, L, y);
+    y += 5; doc.text(`${r.label}  ·  ${ukd(r.from)} to ${ukd(r.to)}  ·  made ${ukd(FinCore.localDate())}`, L, y);
+    const section = title => { y += 11; doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); doc.setTextColor(30, 35, 40); doc.text(title, L, y); y += 2; doc.setDrawColor(220, 220, 215); doc.line(L, y, R, y); y += 1; };
+    const line = (label, value, bold) => {
+        y += 6.5; doc.setFont("helvetica", bold ? "bold" : "normal"); doc.setFontSize(10.5); doc.setTextColor(30, 35, 40);
+        doc.text(label, L, y); doc.text(value, R, y, { align: "right" });
+        if (y > 270) { doc.addPage(); y = 20; }
+    };
+    section("Money in");
+    line("Payments received", money(o.received));
+    if (o.refunded) line("Refunds paid back", money(-o.refunded));
+    if (o.cis) line("CIS deducted by contractors (tax already paid)", money(o.cis));
+    line("Income", money(o.income), true);
+    section("Costs by HMRC heading (business share)");
+    if (!heads.length) line("No costs recorded", money(0));
+    heads.forEach(h => line(h.label, money(h.total)));
+    line("Total costs", money(o.out), true);
+    section("Result");
+    line("Job costs", money(o.jobCosts));
+    line("Business costs", money(o.businessCosts));
+    line("Cash surplus before tax", money(o.surplus), true);
+    section(`Owed to you on ${ukd(FinCore.localDate())}`);
+    line(`${owe.list.length} unpaid invoice${owe.list.length === 1 ? "" : "s"}${owe.overdueCount ? `, ${owe.overdueCount} overdue` : ""}`, money(owe.owed), true);
+    y += 12;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(120, 125, 130);
+    doc.text(doc.splitTextToSize("Cash basis: income on the day it was received, costs on the day they were paid. Costs partly for private use are shown at their business share. "
+        + "CIS deducted is included in income as tax already paid. This is a record of what was entered in TileIQ, not a tax calculation. "
+        + "Full detail is in the Money in and Money out CSV files for the same dates.", R - L), L, y);
+    doc.text("Made with TileIQ Pro · tile-iq.com", L, 287);
+    return doc;
+}
+
 async function sendInvoiceShare() {
     const sheet = document.getElementById("send-invoice-sheet");
     const pdf   = sheet?._pdf;
     sheet?.remove();
     if (!pdf) return;
-
+    await shareInvoicePdf(pdf, currentJobId);
+}
+async function shareInvoicePdf(pdf, jobId) {
     const { Filesystem, Share } = window.Capacitor?.Plugins || {};
     if (Filesystem && Share) {
         try {
@@ -16974,12 +17830,12 @@ async function sendInvoiceShare() {
             await Filesystem.writeFile({ path: fileName, data: pdf.base64, directory: "CACHE" });
             const { uri } = await Filesystem.getUri({ path: fileName, directory: "CACHE" });
             await Share.share({ title: `Invoice – ${pdf.customerName}`, text: "Please find your invoice attached.", files: [uri], dialogTitle: "Share Invoice" });
-            if (currentJobId) markJobInvoiced(currentJobId, "share", pdf.totals);
+            if (jobId) markJobInvoiced(jobId, "share", pdf.totals);
             return;
         } catch(e) { console.error(e); }
     }
     downloadPDF();
-    if (currentJobId) markJobInvoiced(currentJobId, "download", pdf.totals);
+    if (jobId) markJobInvoiced(jobId, "download", pdf.totals);
 }
 
 function previewQuote() {
@@ -17063,7 +17919,7 @@ async function sendQuoteByEmail() {
     const j = getJob();
     if (!j) return;
 
-    const bodyText = `Hi ${j.customerName},\n\nPlease find your tiling quote attached.\n\nYou can view and accept your quote online here:\n${url}\n\nKind regards,\n${settings.companyName || ""}${settings.companyPhone ? "\n" + settings.companyPhone : ""}`;
+    const bodyText = `Hi ${j.customerName},\n\nYou can view and accept your tiling quote online here:\n${url}\n\nKind regards,\n${settings.companyName || ""}${settings.companyPhone ? "\n" + settings.companyPhone : ""}`;
     const subject  = encodeURIComponent(`Tiling Quote – ${j.customerName}`);
 
     if (!j.email) {
@@ -17075,7 +17931,7 @@ async function sendQuoteByEmail() {
 
     try {
         const resp = await fetch(TILEIQ_WORKER_URL, {
-            method: "POST", headers: emailAuthHeaders(),
+            method: "POST", headers: await jobsAuthHeaders(),
             body: JSON.stringify({
                 action: "send_quote_email", to: j.email, customerName: j.customerName, quoteUrl: url,
                 companyName: settings.companyName || "", companyPhone: settings.companyPhone || "",
@@ -17087,9 +17943,7 @@ async function sendQuoteByEmail() {
             })
         });
         if (resp.ok) { _markQuoteSent(j, "email"); alert("✅ Quote sent to " + j.email); return; }
-        const errData = await resp.json().catch(() => ({}));
-        const errMsg = errData.error || ("HTTP " + resp.status);
-        alert("❌ Failed to send: " + errMsg);
+        alert("❌ The quote couldn't be emailed: " + await emailSendError(resp) + "\n\nYou can still send the link by WhatsApp or Share.");
         return;
     } catch(e) {
         alert("❌ Network error: " + e.message);
@@ -17170,7 +18024,7 @@ async function buildQuoteUrl(j) {
         grand       += parts.total;
         surfaces.forEach(s => {
             const tileUP2 = (s.tileCostOverride && s.tileCostOverride > 0) ? s.tileCostOverride : settings.tilePrice;
-            const tileCostS = rCt ? 0 : tileUP2 * s.area * (1 + settings.markup/100);
+            const tileCostS = rCt ? 0 : tileUP2 * s.area * (1 + markupPctFor(j)/100);
             if (s.type === "wall")  totalWallTiles  += tileCostS;
             if (s.type === "floor") totalFloorTiles += tileCostS;
         });
@@ -18002,7 +18856,7 @@ function calcBallpark(job) {
     const labourRate = isWall
         ? (numOr(settings.labourM2Wall, 35))
         : (numOr(settings.labourM2Floor, 28));
-    const markup = 1 + (parseFloat(settings.markup) || 20) / 100;
+    const markup = 1 + (job && job.cis && job.cis.applies ? 0 : (parseFloat(settings.markup) || 20)) / 100;
 
     // Tile cost range: budget £15/m², premium £50/m²
     const tileLow = 15;
@@ -18456,31 +19310,3 @@ function initPullToRefresh() {
     }, { passive: true });
 }
 
-async function provisionTwilioNumber() {
-    TQA.feature("business_number");
-    if (demoBlocked("Getting a business number")) return;
-    if (!currentUser) { alert("Please sign in first."); return; }
-    const btn = document.querySelector("[onclick='provisionTwilioNumber()']");
-    if (btn) { btn.disabled = true; btn.textContent = "Getting..."; }
-    try {
-        const resp = await fetch(TILEIQ_WORKER_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "provision_twilio_number", user_id: currentUser.id, friendly_name: settings.companyName || "TileIQ Pro" })
-        });
-        const data = await resp.json();
-        if (data.phone_number) {
-            const formatted = data.phone_number.replace("+44", "0");
-            document.getElementById("set-twilio-number").value = formatted;
-            settings.twilioNumber = formatted.replace(/\s/g, "");
-            saveSettings();
-            alert("Your business number is: " + formatted + (data.already_exists ? " (already assigned)" : " ✅ Number activated!"));
-        } else {
-            alert("Failed to get number: " + (data.error || "Unknown error"));
-        }
-    } catch(e) {
-        alert("Error: " + e.message);
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = "Get Number"; }
-    }
-}

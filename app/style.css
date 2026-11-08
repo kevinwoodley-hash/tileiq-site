@@ -1282,3 +1282,17 @@ html, body {
 .guest-start-title { font-size: 18px; font-weight: 800; letter-spacing: .2px; }
 .guest-start-sub { font-size: 13px; font-weight: 600; opacity: .85; }
 .guest-start-note { font-size: 12px; color: rgba(255,255,255,0.55); text-align: center; margin: 8px 0 4px; }
+
+/* Narrow phones (Galaxy S9+, iPhone SE/12 Mini, most 360px Androids): the Home and Jobs headers
+   didn't fit, so Settings and Sign out were pushed off the right edge. The logo now shrinks to
+   fit, the icons sit closer together and the offline badge shows just its plane. */
+.header-top .header-brand { min-width: 0; display: flex; align-items: center; }
+.header-top .header-brand img { min-width: 0; max-width: 100%; }
+.header-top .btn-icon { flex-shrink: 0; }
+@media (max-width: 400px) {
+    .header-top { gap: 2px !important; padding-left: 12px !important; padding-right: 8px !important; }
+    .header-top .btn-icon { padding: 4px 5px; font-size: 17px; }
+    .header-top .header-brand img { height: auto !important; max-height: 34px; }
+    #offline-badge, #offline-badge-home { padding: 2px 6px !important; margin-left: 4px !important; flex-shrink: 0; }
+    #offline-badge .badge-word, #offline-badge-home .badge-word { display: none; }
+}
