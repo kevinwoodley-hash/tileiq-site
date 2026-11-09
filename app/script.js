@@ -1426,6 +1426,13 @@ async function restoreSessionAfterDemo() {
         localStorage.removeItem("tileiq-signed-out");
     } catch (e) { console.warn("Demo: couldn't restore the saved session:", e.message); }
 }
+// ── Help / how-to popups: switched off ───────────────────────
+// The tip cards (Home, Jobs, Customers, Calendar, Settings), the sample-job tour cards and the
+// web demo's "Start here" guide. Off since Nov 2026: fewer people used the app after they were
+// added. Set to true to bring them all back; or on one device only, for testing:
+//   localStorage.setItem("tileiq-help-popups", "on")
+const SHOW_HELP_POPUPS = false || (() => { try { return localStorage.getItem("tileiq-help-popups") === "on"; } catch (_) { return false; } })();
+
 // ── "Start here" guide ────────────────────────────────────────
 // A short checklist for web-demo visitors (tile-iq.com/app/demo), picked by
 // the landing page they came from: /app/demo?try=quoting|admin|reviews|social
@@ -1553,7 +1560,7 @@ const StartHere = (() => {
     }
 
     function poll() {
-        const visible = isDemoAccount() && jobs.length > 0 && !st.dismissed && SHOW_ON.includes(screen());
+        const visible = SHOW_HELP_POPUPS && isDemoAccount() && jobs.length > 0 && !st.dismissed && SHOW_ON.includes(screen());
         if (!visible) { if (el) el.hidden = true; makeRoom(); return; }
         if (!el) {
             el = document.createElement("div");
@@ -4349,6 +4356,7 @@ function renderTipCard(zone) {
     const el = document.getElementById(`tip-card-${zone}`);
     const content = TIP_CARD_CONTENT[zone];
     if (!el || !content) return;
+    if (!SHOW_HELP_POPUPS) { el.style.display = "none"; return; }
     const dismissed = _getTipDismissed();
     if (dismissed[zone] || getRealJobs().length >= 3) { el.style.display = "none"; return; }
     el.className = "get-started-pulse";
@@ -5338,10 +5346,12 @@ function renderDashboard() {
             { done: stageIdx >= STAGE_ORDER.indexOf("in_progress"),  label: "In Progress" },
             { done: stageIdx >= STAGE_ORDER.indexOf("complete"),     label: "Complete" }
         ];
-        const progressHtml = `<div style="display:flex;align-items:center;gap:0;width:100%;margin-bottom:10px;">` +
+        // On the narrowest phones (320px) the six labels don't fit on one line: the labels drop to 8px,
+        // steps can shrink and "In Progress" wraps onto two lines, rather than "Complete" running off the card
+        const progressHtml = `<div style="display:flex;align-items:flex-start;gap:0;width:100%;margin-bottom:10px;">` +
             steps.map((s, i) => {
-                const dot = `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;"><div style="width:18px;height:18px;border-radius:50%;background:${s.done ? "#10b981" : "#1e293b"};border:2px solid ${s.done ? "#10b981" : "#334155"};display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;">${s.done ? "✓" : ""}</div><div style="font-size:10px;font-weight:600;color:${s.done ? "#10b981" : "#475569"};white-space:nowrap;">${s.label}</div></div>`;
-                const line = i < steps.length - 1 ? `<div style="flex:1;height:2px;background:${s.done ? "#10b981" : "#1e293b"};margin:0 2px;margin-bottom:14px;"></div>` : "";
+                const dot = `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:0 1 auto;"><div style="width:18px;height:18px;border-radius:50%;background:${s.done ? "#10b981" : "#1e293b"};border:2px solid ${s.done ? "#10b981" : "#334155"};display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;">${s.done ? "✓" : ""}</div><div style="font-size:clamp(8px,2.5vw,10px);font-weight:600;color:${s.done ? "#10b981" : "#475569"};text-align:center;line-height:1.15;">${s.label}</div></div>`;
+                const line = i < steps.length - 1 ? `<div style="flex:1;height:2px;background:${s.done ? "#10b981" : "#1e293b"};margin:9px 0 0;min-width:3px;"></div>` : "";
                 return dot + line;
             }).join("") + `</div>`;
 
@@ -5845,6 +5855,15 @@ function renderDemoJobUI(job) {
             <div style="font-size:13px;font-weight:700;color:#dbeafe;">🎓 DEMO JOB — Have a play. You can't break anything.</div>
             ${canDelete ? `<button onclick="deleteDemoJobs()" style="background:rgba(255,255,255,.15);color:#dbeafe;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🗑 Delete demo jobs</button>` : ""}
         </div>`;
+
+    // The tour cards and the "add the tiling work" prompts are help popups (see SHOW_HELP_POPUPS);
+    // the banner above stays, so it's still clear this is a sample job.
+    if (!SHOW_HELP_POPUPS) {
+        tourTop.style.display   = "none";
+        tourQuote.style.display = "none";
+        checklist.style.display = "none";
+        return;
+    }
 
     if (job.demoKind === "partial") {
         tourTop.style.display   = "none";
