@@ -314,6 +314,7 @@ body {
   background: none; color: var(--text); white-space: nowrap;
 }
 .btn-sm:hover { border-color: var(--amber); color: var(--amber); }
+.btn-sm:disabled { opacity: .4; cursor: not-allowed; border-color: var(--border); color: inherit; }
 
 /* ── Users page ── */
 .users-page { flex: 1; overflow-y: auto; padding: 24px; }
@@ -2769,6 +2770,7 @@ function mktMarkdown(md) {
 
 function renderMarketing() {
   const d = mktData, st = d.status || {}, cur = d.current || {}, prev = d.previous || {};
+  d_approvalsReady = !!d.approvals_ready;
   const m = cur.metrics || {}, pm = prev.metrics || {};
   const f = cur.app_funnel_distinct_tilers || {}, pf = prev.app_funnel_distinct_tilers || {};
   const sc = cur.search_console || {}, psc = prev.search_console || {};
@@ -2790,6 +2792,8 @@ function renderMarketing() {
       <div style="height:10px;border-radius:5px;background:var(--bg);overflow:hidden;margin:8px 0;"><div style="height:100%;width:${pct}%;background:${pct >= 90 ? '#ef4444' : pct >= 75 ? 'var(--amber)' : '#22c55e'};"></div></div>
       <p style="margin:0;font-size:13px;">Hard limit: at ${mktGbp(cap)} the agents stop until the 1st. Warnings by email at 75% and 90%. Hosting: £0 (Cloudflare free plan).</p>
     </div>
+
+    ${mktPhase3Html(d)}
 
     <div class="stats-section-label">Performance, last ${days} days (change on the ${days} days before)</div>
     <div class="stat-grid">
@@ -2914,6 +2918,178 @@ async function mktRun(kind) {
     const r = await mktApi('/run', { method: 'POST', body: JSON.stringify({ kind }) });
     msg.textContent = r.started ? 'Started. Refresh in a minute to see it.' : 'Not started: ' + (r.why || 'already running');
   } catch (e) { msg.textContent = 'Couldn\'t start it: ' + e.message; }
+}
+
+// ── Marketing Phase 3: approval queue, plan, competitors, AI visibility ─────────────────────
+const MKT_KINDS = { facebook_page_post: 'Facebook Page post', facebook_group_post: 'Facebook group post (copy and paste)', instagram_caption: 'Instagram caption',
+  ad_concept: 'Ad concept', video_script: 'Video script', recommendation: 'Recommendation' };
+const MKT_STATUS = { pending: ['Waiting for you', 'var(--amber)'], approved: ['Approved', '#22c55e'], rejected: ['Rejected', '#ef4444'], done: ['Done', 'var(--text-muted)'] };
+const mktSafeUrl = u => /^https:\/\/[^\s"'<>]+$/.test(String(u || '')) ? mktEsc(u) : '';
+let mktQueue = [];
+
+function mktPhase3Html(d) {
+  const p3 = d.phase3;
+  if (!p3) return `<div class="card" style="margin-top:16px;"><h2>Approvals, competitors and AI visibility</h2>
+    <p>Not set up yet. Run <code>sql/2026-11-marketing-phase3.sql</code> in Supabase and deploy the marketing Worker.</p></div>`;
+  mktQueue = p3.queue || [];
+  const plan = p3.plan;
+  return `
+    <div class="card" style="margin-top:16px;" id="mkt-queue">
+      <h2>Approval queue <span style="font-size:14px;color:var(--text-muted);font-weight:500;">${Number(p3.waiting || 0)} waiting</span></h2>
+      <p>Drafts from the agents. Approving only records your decision on that exact wording: <strong>nothing is posted</strong>. Facebook group posts are always copy and paste.</p>
+      ${d.approvals_ready ? '' : '<p style="color:#ef4444;">Approving needs <code>TOTP_SECRET</code> set on the marketing Worker (the same value as the main worker).</p>'}
+      ${mktQueue.map(mktActionHtml).join('') || '<p style="color:var(--text-muted);">Nothing yet. Drafts arrive with the weekly run on Mondays.</p>'}
+    </div>
+    ${plan ? `<div class="card" style="margin-top:16px;"><h2>This week's plan</h2>
+      <p>The Marketing Manager's three priorities for the week from ${mktEsc(plan.period_start)}. Each is in the queue above.</p>
+      ${(plan.items || []).map((x, i) => `<div style="border-top:1px solid var(--border);padding:10px 0;font-size:13px;">
+        <div style="font-weight:700;">${i + 1}. ${mktEsc(x.title)}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${mktEsc(x.impact)} impact · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort${x.cost_gbp ? ' · about ' + mktGbp(x.cost_gbp) : ''}</div>
+        <div style="margin-top:4px;">${mktEsc(x.next_step)}</div>
+        <div style="margin-top:2px;"><strong>Evidence:</strong> ${mktEsc(x.evidence)}</div></div>`).join('')}</div>` : ''}
+    <div class="card" style="margin-top:16px;"><h2>Competitors</h2>
+      <p>Facts quoted word for word from competitors' own pages, with the date and source. Interpretations are the agent's reading, not fact.</p>
+      ${(p3.competitor_findings || []).map(f => `<div style="border-top:1px solid var(--border);padding:10px 0;font-size:13px;" id="mkt-cf-${Number(f.id)}">
+        <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;"><div style="flex:1;min-width:240px;">
+          <div style="font-size:12px;color:var(--text-muted);">${mktEsc(f.competitor)} · ${mktEsc(f.kind)} · seen ${mktEsc(f.observed_on)}${f.status === 'noted' ? ' · noted' : ''}</div>
+          <div style="font-weight:700;margin-top:2px;">${mktEsc(f.fact)}</div>
+          <div style="margin-top:4px;padding:6px 10px;background:var(--bg);border-radius:8px;">“${mktEsc(f.quote)}” ${mktSafeUrl(f.source_url) ? `<a href="${mktSafeUrl(f.source_url)}" target="_blank" rel="noopener noreferrer">source</a>` : ''}</div>
+          ${f.interpretation ? `<div style="margin-top:4px;"><strong>Interpretation:</strong> ${mktEsc(f.interpretation)}</div>` : ''}
+          ${f.tileiq_angle ? `<div style="margin-top:2px;"><strong>TileIQ angle:</strong> ${mktEsc(f.tileiq_angle)}</div>` : ''}
+        </div><div style="display:flex;gap:6px;">
+          ${f.status !== 'noted' ? `<button class="btn-sm" onclick="mktCompFinding(${Number(f.id)}, 'noted')">Noted</button>` : ''}
+          <button class="btn-sm" onclick="mktCompFinding(${Number(f.id)}, 'dismissed')">Dismiss</button></div></div></div>`).join('') || '<p style="color:var(--text-muted);">No competitor changes recorded yet.</p>'}
+      ${(p3.competitor_pages || []).length ? `<h3 style="margin:14px 0 6px;font-size:15px;">Pages watched</h3>${p3.competitor_pages.map(pg => `<div style="font-size:12px;padding:2px 0;">${mktEsc(pg.competitor)}: ${mktEsc(pg.url)} · ${pg.last_error ? `<span style="color:#ef4444;">${mktEsc(pg.last_error)}</span>` : `last changed ${pg.last_changed_at ? new Date(pg.last_changed_at).toLocaleDateString('en-GB') : '—'}`}</div>`).join('')}` : ''}
+    </div>
+    <div class="card" style="margin-top:16px;"><h2>AI search visibility</h2>
+      <p>Whether Claude (with web search) names TileIQ when asked these tiler questions. One assistant through the API on one day, so the consumer apps can differ. AI crawler visits are shown separately and don't count as being recommended.</p>
+      ${(p3.visibility || []).map(v => {
+        const ch = v.previous_mentions_tileiq === null || v.previous_mentions_tileiq === undefined ? '' :
+          v.previous_mentions_tileiq === v.mentions_tileiq ? '' : (v.mentions_tileiq ? ' <span style="color:#22c55e;">new</span>' : ' <span style="color:#ef4444;">dropped</span>');
+        return `<div style="border-top:1px solid var(--border);padding:8px 0;font-size:13px;">
+          <div style="font-weight:600;">${mktEsc(v.question)}</div>
+          <div>${v.mentions_tileiq ? '<strong style="color:#22c55e;">TileIQ named</strong>' : 'TileIQ not named'}${ch}${v.tileiq_cited ? ' · cited tile-iq.com' : ''}${(v.competitors || []).length ? ' · also: ' + v.competitors.map(mktEsc).join(', ') : ''}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${mktEsc(v.provider)} ${mktEsc(v.model)} · ${new Date(v.checked_at).toLocaleDateString('en-GB')}</div>
+          <details style="margin-top:4px;"><summary style="cursor:pointer;font-size:12px;">Answer</summary><div style="white-space:pre-wrap;font-size:12px;margin-top:4px;">${mktEsc(v.answer)}</div></details></div>`; }).join('') || '<p style="color:var(--text-muted);">No checks yet. They run on Mondays.</p>'}
+    </div>`;
+}
+
+function mktActionHtml(a) {
+  const [label, colour] = MKT_STATUS[a.status] || [a.status, 'var(--text-muted)'];
+  const c = a.content || {}, ch = a.checks || {};
+  const id = Number(a.id), v = Number(a.current_version), h = /^[0-9a-f]{64}$/.test(a.content_hash) ? a.content_hash : '';
+  const isRec = a.kind === 'recommendation';
+  return `<div style="border-top:1px solid var(--border);padding:14px 0;" id="mkt-a-${id}">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--text-muted);">
+      <span style="color:${colour};font-weight:700;">${mktEsc(label)}</span><span>· ${mktEsc(MKT_KINDS[a.kind] || a.kind)}</span>
+      ${a.audience ? `<span>· for ${mktEsc(a.audience)}</span>` : ''}<span>· version ${v}</span><span>· ${mktEsc(a.agent)}</span>
+      ${a.est_cost_gbp > 0 ? `<span>· suggested test budget ${mktGbp(a.est_cost_gbp)}</span>` : ''}
+      ${a.budget_approved_gbp ? `<span style="color:#22c55e;">· budget approved ${mktGbp(a.budget_approved_gbp)}</span>` : ''}
+    </div>
+    <div style="font-weight:700;margin-top:4px;">${mktEsc(a.title)}</div>
+    ${ch.blocked ? `<div style="margin-top:6px;padding:8px 10px;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#ef4444;">
+      <strong>Held back by the claims check. Edit it before it can be approved:</strong><ul style="margin:4px 0 0 18px;">${(ch.problems || []).map(p => `<li>${mktEsc(p)}</li>`).join('')}</ul></div>` : ''}
+    <div class="mkt-preview" style="margin-top:8px;max-width:520px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--white);">
+      ${isRec ? '' : '<div style="font-size:12px;font-weight:700;margin-bottom:6px;">TileIQ Pro <span style="font-weight:400;color:var(--text-muted);">· preview</span></div>'}
+      <div style="white-space:pre-wrap;font-size:14px;line-height:1.45;">${mktEsc(c.text)}</div>
+      ${c.call_to_action ? `<div style="margin-top:8px;font-size:13px;font-weight:600;">${mktEsc(c.call_to_action)}</div>` : ''}
+    </div>
+    <div style="font-size:12px;margin-top:8px;max-width:640px;">
+      ${a.evidence ? `<div><strong>Evidence:</strong> ${mktEsc(a.evidence)}</div>` : ''}
+      ${a.expected_outcome ? `<div><strong>Expected outcome:</strong> ${mktEsc(a.expected_outcome)}</div>` : ''}
+      <div><strong>Confidence:</strong> ${mktEsc(a.confidence)}${c.angle ? ` · <strong>Angle:</strong> ${mktEsc(c.angle)}` : ''}</div>
+      ${c.rationale ? `<div><strong>Why:</strong> ${mktEsc(c.rationale)}</div>` : ''}
+      ${a.risks ? `<div><strong>Risks:</strong> ${mktEsc(a.risks)}</div>` : ''}
+      ${a.last_decision?.note ? `<div><strong>Last note:</strong> ${mktEsc(a.last_decision.note)}</div>` : ''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+      ${a.status === 'pending' ? `<button class="btn-sm mkt-approve" ${ch.blocked || !d_approvalsReady ? 'disabled title="Edit it first, or set up approvals"' : ''} onclick="mktDecide(${id}, ${v}, '${h}', 'approve')">Approve</button>` : ''}
+      ${a.status !== 'done' ? `<button class="btn-sm" onclick="mktEditOpen(${id})">Edit</button>` : ''}
+      ${['pending', 'approved'].includes(a.status) ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'reject')">Reject</button>` : ''}
+      ${a.kind === 'ad_concept' && a.status === 'approved' ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'approve_budget')">Approve test budget</button>` : ''}
+      ${a.status === 'approved' ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'done')">Mark done</button>` : ''}
+      ${a.kind === 'facebook_group_post' || a.kind === 'instagram_caption' ? `<button class="btn-sm" onclick="mktCopy(${id})">Copy text</button>` : ''}
+      <button class="btn-sm" onclick="mktHistory(${id})">History</button>
+      <span class="mkt-msg" id="mkt-msg-${id}" style="font-size:12px;align-self:center;"></span>
+    </div>
+    <div id="mkt-edit-${id}"></div><div id="mkt-hist-${id}"></div>
+  </div>`;
+}
+let d_approvalsReady = false;
+
+async function mktDecide(id, version, hash, decision) {
+  const msg = document.getElementById('mkt-msg-' + id);
+  const body = { id, version, hash, decision };
+  if (decision === 'approve' || decision === 'approve_budget') {
+    if (decision === 'approve_budget') {
+      const amount = prompt('Test budget to approve, in pounds (this is the most that may be spent on this ad):');
+      if (amount === null) return;
+      body.budget_gbp = Number(String(amount).replace(/[£,\s]/g, ''));
+    }
+    const code = prompt('Enter the 6-digit code from your authenticator app to approve this exact version:');
+    if (code === null) return;
+    body.code = String(code).trim();
+  }
+  if (decision === 'reject') {
+    const note = prompt('Why reject it? (the Social agent learns from this)');
+    if (note === null) return;
+    body.note = note;
+  }
+  try {
+    const res = await fetch(MKT_URL + '/action/decide', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-secret': ADMIN_SECRET }, body: JSON.stringify(body) });
+    const r = await res.json().catch(() => ({}));
+    if (!r.ok) { if (msg) msg.textContent = 'Not done: ' + (r.reason || r.error || ('HTTP ' + res.status)); return; }
+    await loadMarketing();
+    const m2 = document.getElementById('mkt-msg-' + id);
+    if (m2) m2.textContent = { approve: 'Approved. Nothing has been posted.', reject: 'Rejected.', approve_budget: 'Budget approved.', done: 'Marked done.' }[decision];
+  } catch (e) { if (msg) msg.textContent = 'Not done: ' + e.message; }
+}
+
+function mktEditOpen(id) {
+  const a = mktQueue.find(x => Number(x.id) === id);
+  if (!a) return;
+  document.getElementById('mkt-edit-' + id).innerHTML = `<div style="margin-top:10px;max-width:640px;">
+    <label style="font-size:12px;font-weight:600;">Text<textarea id="mkt-edit-text-${id}" rows="6" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;"></textarea></label>
+    <label style="font-size:12px;font-weight:600;display:block;margin-top:6px;">Call to action<input id="mkt-edit-cta-${id}" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    <div style="display:flex;gap:6px;margin-top:8px;"><button class="btn-sm" onclick="mktEditSave(${id})">Save as new version</button><button class="btn-sm" onclick="document.getElementById('mkt-edit-${id}').innerHTML=''">Cancel</button></div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Saving makes a new version. Any approval of the current wording stops counting.</div></div>`;
+  document.getElementById('mkt-edit-text-' + id).value = a.content?.text || '';
+  document.getElementById('mkt-edit-cta-' + id).value = a.content?.call_to_action || '';
+}
+
+async function mktEditSave(id) {
+  const msg = document.getElementById('mkt-msg-' + id);
+  try {
+    const r = await mktApi('/action/edit', { method: 'POST', body: JSON.stringify({ id, text: document.getElementById('mkt-edit-text-' + id).value,
+      call_to_action: document.getElementById('mkt-edit-cta-' + id).value }) });
+    await loadMarketing();
+    const m2 = document.getElementById('mkt-msg-' + id);
+    if (m2) m2.textContent = r.unchanged ? 'No changes.' : r.checks?.blocked ? 'Saved as version ' + r.version + ', but the claims check still flags it.' : 'Saved as version ' + r.version + '.';
+  } catch (e) { if (msg) msg.textContent = 'Not saved: ' + e.message; }
+}
+
+async function mktHistory(id) {
+  const box = document.getElementById('mkt-hist-' + id);
+  if (box.innerHTML) { box.innerHTML = ''; return; }
+  try {
+    const a = await mktApi('/action?id=' + id);
+    box.innerHTML = `<div style="margin-top:10px;font-size:12px;border-left:3px solid var(--border);padding-left:10px;">
+      ${(a.audit || []).map(e => `<div>${new Date(e.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} · ${mktEsc(e.actor)} · <strong>${mktEsc(e.event)}</strong>
+        ${e.detail?.version ? ' v' + Number(e.detail.version) : ''}${e.detail?.reason ? ' · ' + mktEsc(e.detail.reason) : ''}${e.detail?.note ? ' · ' + mktEsc(e.detail.note) : ''}${e.detail?.verified_by ? ' · ' + mktEsc(e.detail.verified_by) : ''}</div>`).join('')}
+      ${(a.versions || []).length > 1 ? `<details style="margin-top:6px;"><summary style="cursor:pointer;">All versions</summary>${a.versions.map(x => `<div style="margin-top:6px;"><strong>v${Number(x.version)}</strong> · ${mktEsc(x.author)}<div style="white-space:pre-wrap;">${mktEsc(x.content?.text)}</div></div>`).join('')}</details>` : ''}</div>`;
+  } catch (e) { box.textContent = 'Couldn\'t load the history: ' + e.message; }
+}
+
+async function mktCopy(id) {
+  const a = mktQueue.find(x => Number(x.id) === id);
+  const text = [a?.content?.text, a?.content?.call_to_action].filter(Boolean).join('\n\n');
+  try { await navigator.clipboard.writeText(text); document.getElementById('mkt-msg-' + id).textContent = 'Copied.'; }
+  catch (e) { document.getElementById('mkt-msg-' + id).textContent = 'Couldn\'t copy: select the text instead.'; }
+}
+
+async function mktCompFinding(id, status) {
+  try { await mktApi('/competitor-finding', { method: 'POST', body: JSON.stringify({ id, status }) }); loadMarketing(); }
+  catch (e) { alert('Couldn\'t update it: ' + e.message); }
 }
 
 </script>
