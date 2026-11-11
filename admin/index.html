@@ -2771,6 +2771,10 @@ function mktMarkdown(md) {
 function renderMarketing() {
   const d = mktData, st = d.status || {}, cur = d.current || {}, prev = d.previous || {};
   d_approvalsReady = !!d.approvals_ready;
+  d_publishingReady = !!d.publishing_ready;
+  d_publishingOn = !!d.phase4?.config?.enabled;
+  mktPubByAction = {};
+  for (const pb of (d.phase4?.publications || [])) mktPubByAction[Number(pb.action_id)] = pb;
   const m = cur.metrics || {}, pm = prev.metrics || {};
   const f = cur.app_funnel_distinct_tilers || {}, pf = prev.app_funnel_distinct_tilers || {};
   const sc = cur.search_console || {}, psc = prev.search_console || {};
@@ -2794,6 +2798,7 @@ function renderMarketing() {
     </div>
 
     ${mktPhase3Html(d)}
+    ${mktPhase4Html(d)}
 
     <div class="stats-section-label">Performance, last ${days} days (change on the ${days} days before)</div>
     <div class="stat-grid">
@@ -2979,6 +2984,7 @@ function mktActionHtml(a) {
   const c = a.content || {}, ch = a.checks || {};
   const id = Number(a.id), v = Number(a.current_version), h = /^[0-9a-f]{64}$/.test(a.content_hash) ? a.content_hash : '';
   const isRec = a.kind === 'recommendation';
+  const pub = mktPubByAction[id];
   return `<div style="border-top:1px solid var(--border);padding:14px 0;" id="mkt-a-${id}">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--text-muted);">
       <span style="color:${colour};font-weight:700;">${mktEsc(label)}</span><span>· ${mktEsc(MKT_KINDS[a.kind] || a.kind)}</span>
@@ -3001,13 +3007,19 @@ function mktActionHtml(a) {
       ${c.rationale ? `<div><strong>Why:</strong> ${mktEsc(c.rationale)}</div>` : ''}
       ${a.risks ? `<div><strong>Risks:</strong> ${mktEsc(a.risks)}</div>` : ''}
       ${a.last_decision?.note ? `<div><strong>Last note:</strong> ${mktEsc(a.last_decision.note)}</div>` : ''}
+      ${pub ? `<div><strong>Facebook Page:</strong> ${pub.status === 'published' ? 'posted ' + new Date(pub.published_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+        : pub.status === 'publishing' ? (pub.stuck ? 'publishing never reported back: check the Page before allowing a retry' : 'publishing…')
+        : 'not posted: ' + mktEsc(pub.error || 'Facebook refused') + ' (you can try again)'}</div>` : ''}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
       ${a.status === 'pending' ? `<button class="btn-sm mkt-approve" ${ch.blocked || !d_approvalsReady ? 'disabled title="Edit it first, or set up approvals"' : ''} onclick="mktDecide(${id}, ${v}, '${h}', 'approve')">Approve</button>` : ''}
       ${a.status !== 'done' ? `<button class="btn-sm" onclick="mktEditOpen(${id})">Edit</button>` : ''}
       ${['pending', 'approved'].includes(a.status) ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'reject')">Reject</button>` : ''}
       ${a.kind === 'ad_concept' && a.status === 'approved' ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'approve_budget')">Approve test budget</button>` : ''}
-      ${a.status === 'approved' ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'done')">Mark done</button>` : ''}
+      ${a.kind === 'facebook_page_post' && a.status === 'approved' && !(pub && pub.status === 'publishing') ? `<button class="btn-sm mkt-publish" ${d_publishingReady && d_publishingOn ? '' : 'disabled title="Connect the Facebook Page and switch publishing on first"'} onclick="mktPublish(${id}, ${v}, '${h}')">Publish to Page</button>` : ''}
+      ${pub && pub.status === 'publishing' && pub.stuck ? `<button class="btn-sm" onclick="mktPublishReset(${id})">It didn't post: allow a retry</button>` : ''}
+      ${pub && pub.status === 'published' && mktSafeUrl(pub.post_url) ? `<a class="btn-sm" href="${mktSafeUrl(pub.post_url)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">View on Facebook</a>` : ''}
+      ${a.status === 'approved' && !(pub && pub.status === 'publishing') ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'done')">Mark done</button>` : ''}
       ${a.kind === 'facebook_group_post' || a.kind === 'instagram_caption' ? `<button class="btn-sm" onclick="mktCopy(${id})">Copy text</button>` : ''}
       <button class="btn-sm" onclick="mktHistory(${id})">History</button>
       <span class="mkt-msg" id="mkt-msg-${id}" style="font-size:12px;align-self:center;"></span>
@@ -3016,6 +3028,65 @@ function mktActionHtml(a) {
   </div>`;
 }
 let d_approvalsReady = false;
+let d_publishingReady = false, d_publishingOn = false, mktPubByAction = {};
+
+// ── Marketing Phase 4: publishing approved posts to the TileIQ Facebook Page ─────────────────
+function mktPhase4Html(d) {
+  const p4 = d.phase4;
+  if (!p4) return `<div class="card" style="margin-top:16px;"><h2>Facebook Page publishing</h2>
+    <p>Not set up yet. Run <code>sql/2026-11-marketing-phase4.sql</code> in Supabase and deploy the marketing Worker.</p></div>`;
+  const cfg = p4.config || {};
+  d_publishingOn = !!cfg.enabled;
+  const pubs = p4.publications || [];
+  const fig = pb => pb.status !== 'published' ? '' : (pb.figures_on
+    ? ` · ${pb.reach == null ? 'reach not available yet' : 'reach ' + mktFmt(pb.reach)}, ${mktFmt(pb.reactions)} reactions, ${mktFmt(pb.comments)} comments, ${mktFmt(pb.shares)} shares (as of ${mktEsc(pb.figures_on)})`
+    : ' · figures arrive with the next daily run');
+  return `<div class="card" style="margin-top:16px;" id="mkt-publishing">
+    <h2>Facebook Page publishing</h2>
+    <p>An approved Facebook Page post is posted only when you press <strong>Publish to Page</strong> on it and enter your authenticator code.
+      The words go out exactly as approved. Group posts are always copy and paste.</p>
+    ${d.publishing_ready ? '' : '<p style="color:#ef4444;">The Facebook Page isn\'t connected: set <code>META_PAGE_ID</code> and <code>META_PAGE_TOKEN</code> on the marketing Worker (see its README).</p>'}
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;">
+      <span>Publishing is <strong style="color:${cfg.enabled ? '#22c55e' : '#ef4444'};">${cfg.enabled ? 'on' : 'off'}</strong></span>
+      <span>· today ${mktFmt(p4.today)} of ${mktFmt(cfg.max_per_day)}, this week ${mktFmt(p4.this_week)} of ${mktFmt(cfg.max_per_week)}</span>
+      <button class="btn-sm" onclick="mktSetPublishing(${cfg.enabled ? 'false' : 'true'})">${cfg.enabled ? 'Switch publishing off' : 'Switch publishing on'}</button>
+    </div>
+    ${pubs.length ? `<h3 style="margin:14px 0 6px;font-size:15px;">Posts</h3>${pubs.map(pb => `<div style="border-top:1px solid var(--border);padding:8px 0;font-size:13px;">
+      <strong>${mktEsc(pb.title)}</strong> · ${pb.status === 'published' ? 'posted' : pb.status === 'publishing' ? (pb.stuck ? 'never reported back' : 'publishing…') : 'not posted'}
+      ${pb.status === 'published' && mktSafeUrl(pb.post_url) ? ` · <a href="${mktSafeUrl(pb.post_url)}" target="_blank" rel="noopener noreferrer">view</a>` : ''}${fig(pb)}
+      ${pb.status === 'failed' && pb.error ? `<div style="font-size:12px;color:#ef4444;">${mktEsc(pb.error)}</div>` : ''}</div>`).join('')}`
+      : '<p style="color:var(--text-muted);">Nothing posted yet.</p>'}
+  </div>`;
+}
+
+async function mktPublish(id, version, hash) {
+  const a = mktQueue.find(x => Number(x.id) === id);
+  const words = [a?.content?.text, a?.content?.call_to_action].filter(Boolean).join('\n\n');
+  if (!confirm('Post this to the TileIQ Facebook Page now, exactly as written?\n\n' + words)) return;
+  const code = prompt('Enter the 6-digit code from your authenticator app to publish it:');
+  if (code === null) return;
+  const msg = document.getElementById('mkt-msg-' + id);
+  if (msg) msg.textContent = 'Publishing…';
+  try {
+    const res = await fetch(MKT_URL + '/action/publish', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-secret': ADMIN_SECRET },
+      body: JSON.stringify({ id, version, hash, code: String(code).trim() }) });
+    const r = await res.json().catch(() => ({}));
+    await loadMarketing();
+    const m2 = document.getElementById('mkt-msg-' + id);
+    if (m2) m2.textContent = r.ok ? 'Posted to the Page.' : 'Not posted: ' + (r.reason || r.error || ('HTTP ' + res.status));
+  } catch (e) { if (msg) msg.textContent = 'Not posted: ' + e.message; }
+}
+
+async function mktPublishReset(id) {
+  if (!confirm('Only do this if the post is NOT on the TileIQ Facebook Page. Allow it to be published again?')) return;
+  try { await mktApi('/action/publish-reset', { method: 'POST', body: JSON.stringify({ id }) }); loadMarketing(); }
+  catch (e) { alert('Couldn\'t reset it: ' + e.message); }
+}
+
+async function mktSetPublishing(enabled) {
+  try { await mktApi('/publishing', { method: 'POST', body: JSON.stringify({ enabled }) }); loadMarketing(); }
+  catch (e) { alert('Couldn\'t change it: ' + e.message); }
+}
 
 async function mktDecide(id, version, hash, decision) {
   const msg = document.getElementById('mkt-msg-' + id);
