@@ -486,6 +486,9 @@ body {
       <button class="nav-item" onclick="showPage('feedback')" id="nav-feedback">
         <span class="nav-icon">🗣️</span> Feedback
       </button>
+      <button class="nav-item" onclick="showPage('marketing')" id="nav-marketing">
+        <span class="nav-icon">📈</span> Marketing
+      </button>
       <button class="nav-item" onclick="showPage('backups')" id="nav-backups">
         <span class="nav-icon">💾</span> Backups
       </button>
@@ -843,6 +846,23 @@ body {
       </div>
     </div>
 
+    <div class="page" id="page-marketing">
+      <div class="page-header">
+        <h1>Marketing</h1>
+        <p>What the marketing system has collected and found. It only reads and recommends: nothing is published, posted or spent from here.</p>
+      </div>
+      <div class="stats-page">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <label style="font-size:13px;font-weight:600;">Period
+            <select id="mkt-days" onchange="loadMarketing()" style="margin-left:6px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;">
+              <option value="7">Last 7 days</option><option value="28" selected>Last 28 days</option><option value="90">Last 90 days</option>
+            </select></label>
+          <button class="btn-sm" onclick="loadMarketing()">Refresh</button>
+        </div>
+        <div id="mkt-body" style="max-width:900px;"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
     <div class="page" id="page-backups">
       <div class="page-header">
         <h1>Backups</h1>
@@ -995,6 +1015,7 @@ function showPage(name) {
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
   if (name === 'assistant') loadAssistant();
   if (name === 'feedback') loadFeedback();
+  if (name === 'marketing') loadMarketing();
   if (name === 'checklist') loadChecklist();
   if (name === 'autotest') clearTestResults();
 }
@@ -2689,6 +2710,212 @@ function showToast(msg, type = 'success') {
   t.textContent = msg; t.className = `toast ${type} show`;
   setTimeout(() => t.classList.remove('show'), 3000);
 }
+// ── Marketing (Phase 2: read-only). Talks to the separate tileiq-marketing Worker. ──────────
+const MKT_URL = 'https://tileiq-marketing.kevin-woodley.workers.dev/api/marketing';
+let mktData = null;
+const mktEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const mktNum = v => Number(v || 0);
+const mktFmt = v => mktNum(v).toLocaleString('en-GB');
+const mktGbp = v => '£' + mktNum(v).toFixed(2);
+const MKT_AGENTS = { seo: 'SEO Researcher', conversion: 'Conversion Analyst', campaign: 'Campaign Performance Analyst' };
+const MKT_SOURCES = { website: 'Website tracking', app: 'App tracking', search_console: 'Google Search Console', meta_ads: 'Meta Ads' };
+
+async function mktApi(path, options = {}) {
+  const res = await fetch(MKT_URL + path, { ...options,
+    headers: { 'Content-Type': 'application/json', 'x-admin-secret': ADMIN_SECRET, ...(options.headers || {}) } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function loadMarketing() {
+  const box = document.getElementById('mkt-body');
+  box.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    mktData = await mktApi('/dashboard?days=' + document.getElementById('mkt-days').value);
+  } catch (e) {
+    box.innerHTML = '<div class="card"><h2>Not available</h2><p>Couldn\'t reach the marketing system (' + mktEsc(e.message) + '). Check the tileiq-marketing Worker is deployed with the admin password set, and sql/2026-11-marketing.sql has been run in Supabase.</p></div>';
+    return;
+  }
+  renderMarketing();
+}
+
+function mktChange(now, before) {
+  now = mktNum(now); before = mktNum(before);
+  if (!before && !now) return '';
+  if (!before) return 'new';
+  const pct = Math.round((now - before) / before * 100);
+  return (pct > 0 ? '+' : '') + pct + '% on previous';
+}
+
+function mktTile(label, value, before, source, note, nowNumber) {
+  const ch = before === null ? '' : mktChange(nowNumber ?? value, before);
+  return `<div class="stat-card"><div class="stat-label">${mktEsc(label)}</div><div class="stat-value">${value === null ? '—' : mktEsc(typeof value === 'string' ? value : mktFmt(value))}</div>
+    ${ch ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${mktEsc(ch)}</div>` : ''}
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">${mktEsc(source)}${note ? ' · ' + mktEsc(note) : ''}</div></div>`;
+}
+
+// Report text is written from figures and AI findings: escaped first, then a few markdown marks.
+function mktMarkdown(md) {
+  return mktEsc(md).split('\n').map(l => {
+    l = l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    if (l.startsWith('# ')) return `<h2 style="margin:0 0 8px;">${l.slice(2)}</h2>`;
+    if (l.startsWith('## ')) return `<h3 style="margin:16px 0 6px;font-size:15px;">${l.slice(3)}</h3>`;
+    if (/^\s*- /.test(l)) return `<div style="padding-left:${/^\s{2}/.test(l) ? 32 : 14}px;text-indent:-10px;">• ${l.replace(/^\s*- /, '')}</div>`;
+    if (/^\d+\. /.test(l)) return `<div style="padding-left:14px;margin:4px 0;">${l}</div>`;
+    return l ? `<p style="margin:6px 0;">${l}</p>` : '';
+  }).join('');
+}
+
+function renderMarketing() {
+  const d = mktData, st = d.status || {}, cur = d.current || {}, prev = d.previous || {};
+  const m = cur.metrics || {}, pm = prev.metrics || {};
+  const f = cur.app_funnel_distinct_tilers || {}, pf = prev.app_funnel_distinct_tilers || {};
+  const sc = cur.search_console || {}, psc = prev.search_console || {};
+  const ads = cur.meta_ads || {}, pads = prev.meta_ads || {};
+  const installs = (cur.installs_entered || []).reduce((n, i) => n + mktNum(i.installs), 0);
+  const paidClicks = (cur.breakdowns?.campaign_store_clicks || []).reduce((n, b) => n + mktNum(b.value), 0);
+  const used = mktNum(st.month_used_gbp), cap = mktNum(st.monthly_cap_gbp) || 20, pct = Math.min(100, Math.round(used / cap * 100));
+  const days = Number(document.getElementById('mkt-days').value);
+  const health = d.health || [];
+  const box = document.getElementById('mkt-body');
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;"><h2>Marketing system: ${st.enabled ? 'On' : 'Off'}</h2>
+        <p style="margin:0;">Off stops every run: no data collection, no AI, no reports. It never publishes either way.</p></div>
+      <button class="btn-primary" id="mkt-switch" onclick="mktSwitch(${!st.enabled})" style="width:auto;padding:10px 18px;${st.enabled ? 'background:#ef4444;' : ''}">${st.enabled ? 'Switch off' : 'Switch on'}</button>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <h2>AI spending this month: ${mktGbp(used)} of ${mktGbp(cap)}</h2>
+      <div style="height:10px;border-radius:5px;background:var(--bg);overflow:hidden;margin:8px 0;"><div style="height:100%;width:${pct}%;background:${pct >= 90 ? '#ef4444' : pct >= 75 ? 'var(--amber)' : '#22c55e'};"></div></div>
+      <p style="margin:0;font-size:13px;">Hard limit: at ${mktGbp(cap)} the agents stop until the 1st. Warnings by email at 75% and 90%. Hosting: £0 (Cloudflare free plan).</p>
+    </div>
+
+    <div class="stats-section-label">Performance, last ${days} days (change on the ${days} days before)</div>
+    <div class="stat-grid">
+      ${mktTile('Website visits', m.site_visits, pm.site_visits, 'Website tracking')}
+      ${mktTile('Google search clicks', sc.days_with_data ? sc.clicks : null, psc.days_with_data ? psc.clicks : null, 'Search Console', sc.days_with_data ? '' : 'not connected')}
+      ${mktTile('Store link clicks', m.store_clicks, pm.store_clicks, 'Website tracking', 'not installs')}
+      ${mktTile('Confirmed installs', installs || null, null, 'Typed in weekly', installs ? '' : 'not entered')}
+      ${mktTile('New sign-ups', f.sign_up, pf.sign_up, 'App tracking', 'tilers')}
+      ${mktTile('Quotes created', f.quote_generated, pf.quote_generated, 'App tracking', 'tilers')}
+      ${mktTile('Quotes sent', f.quote_sent, pf.quote_sent, 'App tracking', 'tilers')}
+      ${mktTile('Campaign spend', mktGbp(ads.spend_gbp), mktNum(pads.spend_gbp) || null, 'Meta Ads', '', mktNum(ads.spend_gbp))}
+      ${mktTile('Cost per paid store click', paidClicks && mktNum(ads.spend_gbp) ? mktGbp(mktNum(ads.spend_gbp) / paidClicks) : null, null, 'Meta Ads ÷ tagged clicks', paidClicks ? '' : 'no tagged clicks')}
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);max-width:900px;">Your own accounts and the demo account are left out. App figures count tilers, not taps. A store click is a tap on a store link, not an install; installs come only from the weekly figures you type in.</p>
+
+    <div class="card" style="margin-top:16px;"><h2>Opportunities</h2>
+      <p>Findings from the agents. They recommend; you decide. Mark each as noted or dismiss it.</p>
+      ${(d.findings || []).map(x => `
+        <div style="border-top:1px solid var(--border);padding:12px 0;${x.status === 'noted' ? 'opacity:.7;' : ''}" id="mkt-f-${Number(x.id)}">
+          <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+            <div style="flex:1;min-width:240px;">
+              <div style="font-size:12px;color:var(--text-muted);">${mktEsc(MKT_AGENTS[x.agent] || x.agent)} · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort · ${new Date(x.created_at).toLocaleDateString('en-GB')}${x.status === 'noted' ? ' · noted' : ''}</div>
+              <div style="font-weight:700;margin-top:2px;">${mktEsc(x.title)}</div>
+              <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${mktEsc(x.detail)}</div>
+              <div style="font-size:12px;margin-top:6px;"><strong>Evidence:</strong> ${mktEsc(x.evidence)}</div>
+              ${x.expected_benefit ? `<div style="font-size:12px;margin-top:2px;"><strong>Expected benefit:</strong> ${mktEsc(x.expected_benefit)}</div>` : ''}
+              ${x.risk ? `<div style="font-size:12px;margin-top:2px;"><strong>Risk:</strong> ${mktEsc(x.risk)}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;">
+              ${x.status !== 'noted' ? `<button class="btn-sm" onclick="mktFinding(${Number(x.id)}, 'noted')">Noted</button>` : ''}
+              <button class="btn-sm" onclick="mktFinding(${Number(x.id)}, 'dismissed')">Dismiss</button>
+            </div>
+          </div>
+        </div>`).join('') || '<p style="color:var(--text-muted);">No findings yet. The agents run every Monday.</p>'}
+    </div>
+
+    <div class="card" style="margin-top:16px;"><h2>Reports</h2>
+      ${(d.reports || []).map(r => `
+        <div style="border-top:1px solid var(--border);padding:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <div style="flex:1;">${r.kind === 'monthly' ? 'Monthly review' : 'Weekly report'}: ${mktEsc(r.period_start)} to ${mktEsc(r.period_end)}
+            <span style="font-size:12px;color:var(--text-muted);margin-left:6px;">${r.emailed_at ? 'emailed' : 'not emailed'}</span></div>
+          <button class="btn-sm" onclick="mktReport(${Number(r.id)})">Read</button>
+        </div>`).join('') || '<p style="color:var(--text-muted);">No reports yet. The first weekly report arrives on the first Monday after setup.</p>'}
+      <div id="mkt-report" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;"><h2>Installs</h2>
+      <p>The stores don't send install figures automatically yet. Each Monday, type last week's from Play Console and App Store Connect.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <label style="font-size:13px;font-weight:600;">Week starting (Monday)<input id="mkt-week" type="date" value="${mktLastMonday()}" style="display:block;margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;"></label>
+        <label style="font-size:13px;font-weight:600;">Store<select id="mkt-store" style="display:block;margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;"><option value="google_play">Google Play</option><option value="app_store">App Store</option></select></label>
+        <label style="font-size:13px;font-weight:600;">Installs<input id="mkt-installs" type="number" min="0" max="100000" step="1" style="display:block;margin-top:6px;width:110px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;"></label>
+        <button class="btn-primary" onclick="mktSaveInstalls()" style="width:auto;padding:9px 18px;">Save</button>
+      </div>
+      <div id="mkt-installs-msg" style="font-size:13px;margin-top:8px;"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;"><h2>Agent activity</h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn-sm" onclick="mktRun('daily')">Collect now</button>
+        <button class="btn-sm" onclick="mktRun('weekly')">Run last week's agents + report</button>
+        <button class="btn-sm" onclick="mktRun('monthly')">Run last month's review</button>
+        <span id="mkt-run-msg" style="font-size:13px;align-self:center;"></span>
+      </div>
+      ${(d.runs || []).map(r => `
+        <div style="border-top:1px solid var(--border);padding:8px 0;font-size:13px;display:flex;gap:10px;flex-wrap:wrap;">
+          <span style="width:70px;font-weight:600;">${mktEsc(r.kind)}</span>
+          <span style="width:190px;">${mktEsc(r.period_start)}${r.period_end !== r.period_start ? ' to ' + mktEsc(r.period_end) : ''}</span>
+          <span style="width:80px;color:${r.status === 'failed' ? '#ef4444' : r.status === 'complete' ? '#22c55e' : 'var(--text-muted)'};">${mktEsc(r.status)}</span>
+          <span style="color:var(--text-muted);">${new Date(r.started_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+          ${r.error ? `<div style="flex-basis:100%;color:#ef4444;">${mktEsc(r.error)}</div>` : ''}
+        </div>`).join('') || '<p style="color:var(--text-muted);">No runs yet.</p>'}
+      <h3 style="margin:16px 0 6px;font-size:15px;">Data freshness</h3>
+      ${health.map(h => `<div style="font-size:13px;padding:4px 0;">${mktEsc(MKT_SOURCES[h.source] || h.source)}: ${h.last_data_day ? 'data up to ' + mktEsc(h.last_data_day) : 'no data yet'}${h.last_error ? ` <span style="color:#ef4444;">· last error: ${mktEsc(h.last_error)}</span>` : ''}</div>`).join('') || '<p style="color:var(--text-muted);font-size:13px;">Nothing collected yet.</p>'}
+      <h3 style="margin:16px 0 6px;font-size:15px;">AI cost by month</h3>
+      ${(d.ai_spend || []).map(a => `<div style="font-size:13px;padding:2px 0;">${mktEsc(String(a.month).slice(0, 7))}: ${mktGbp(a.gbp)} (${mktFmt(a.calls)} calls)</div>`).join('') || '<p style="color:var(--text-muted);font-size:13px;">No AI used yet.</p>'}
+    </div>`;
+}
+
+function mktLastMonday() {
+  const d = new Date(); const back = (d.getDay() + 6) % 7 + 7;
+  d.setDate(d.getDate() - back);
+  return d.toISOString().slice(0, 10);
+}
+
+async function mktSwitch(enabled) {
+  if (!enabled && !confirm('Switch the marketing system off? Data collection, agents and reports all stop until you switch it back on.')) return;
+  try { await mktApi('/switch', { method: 'POST', body: JSON.stringify({ enabled }) }); loadMarketing(); }
+  catch (e) { alert('Couldn\'t change it: ' + e.message); }
+}
+
+async function mktFinding(id, status) {
+  try { await mktApi('/finding', { method: 'POST', body: JSON.stringify({ id, status }) }); loadMarketing(); }
+  catch (e) { alert('Couldn\'t update it: ' + e.message); }
+}
+
+async function mktReport(id) {
+  const box = document.getElementById('mkt-report');
+  box.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const r = await mktApi('/report?id=' + id);
+    box.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;line-height:1.5;">${mktMarkdown(r.body_md)}</div>`;
+  } catch (e) { box.innerHTML = '<p>Couldn\'t load that report: ' + mktEsc(e.message) + '</p>'; }
+}
+
+async function mktSaveInstalls() {
+  const msg = document.getElementById('mkt-installs-msg');
+  const n = Number(document.getElementById('mkt-installs').value);
+  try {
+    await mktApi('/installs', { method: 'POST', body: JSON.stringify({ week_start: document.getElementById('mkt-week').value,
+      store: document.getElementById('mkt-store').value, installs: Number.isInteger(n) ? n : -1 }) });
+    await loadMarketing();                                   // redraws the page, so the note goes on afterwards
+    const note = document.getElementById('mkt-installs-msg');
+    if (note) note.textContent = 'Saved.';
+  } catch (e) { msg.textContent = 'Not saved: ' + e.message; }
+}
+
+async function mktRun(kind) {
+  const msg = document.getElementById('mkt-run-msg');
+  msg.textContent = 'Starting…';
+  try {
+    const r = await mktApi('/run', { method: 'POST', body: JSON.stringify({ kind }) });
+    msg.textContent = r.started ? 'Started. Refresh in a minute to see it.' : 'Not started: ' + (r.why || 'already running');
+  } catch (e) { msg.textContent = 'Couldn\'t start it: ' + e.message; }
+}
+
 </script>
 </body>
 </html>
