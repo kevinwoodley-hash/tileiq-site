@@ -2819,10 +2819,11 @@ function renderMarketing() {
       ${mktTile('New sign-ups', f.sign_up, pf.sign_up, 'App tracking', 'app, with consent')}
       ${mktTile('Quotes created', f.quote_generated, pf.quote_generated, 'App tracking', 'tilers')}
       ${mktTile('Quotes sent', f.quote_sent, pf.quote_sent, 'App tracking', 'tilers')}
+      ${mktTile('First quotes sent', m.first_quote_sent_all, pm.first_quote_sent_all, 'Saved jobs', 'all devices')}
       ${mktTile('Campaign spend', mktGbp(ads.spend_gbp), mktNum(pads.spend_gbp) || null, 'Meta Ads', '', mktNum(ads.spend_gbp))}
       ${mktTile('Cost per paid store click', paidClicks && mktNum(ads.spend_gbp) ? mktGbp(mktNum(ads.spend_gbp) / paidClicks) : null, null, 'Meta Ads ÷ tagged clicks', paidClicks ? '' : 'no tagged clicks')}
     </div>
-    <p style="font-size:12px;color:var(--text-muted);max-width:900px;">Your own accounts and the demo account are left out. App figures count tilers, not taps, and only native-app tilers who accepted analytics; New accounts counts every new account (guests left out). A store click is a tap on a store link, not an install; installs come only from the weekly figures you type in. Nothing links a store click to a sign-up. The weekly report covers Monday to Sunday, so its figures can differ from these.</p>
+    <p style="font-size:12px;color:var(--text-muted);max-width:900px;">Your own accounts and the demo account are left out. App figures count tilers, not taps, and only native-app tilers who accepted analytics; New accounts and First quotes sent count everyone on any device, from saved accounts and jobs (guests and sample jobs left out). A store click is a tap on a store link, not an install; installs come only from the weekly figures you type in. Nothing links a store click to a sign-up. The weekly report covers Monday to Sunday, so its figures can differ from these.</p>
 
     ${mktFindingsHtml(d)}
 

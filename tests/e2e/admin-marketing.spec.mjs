@@ -169,7 +169,7 @@ test("there is nothing on the page that publishes, posts or spends", async ({ pa
 test("labels each period with its dates, counts all new accounts, and blocks a second run while one is going", async ({ page }) => {
   const calls = [];
   const data = { ...DATA,
-    current: summary(131, { period: { start: "2026-11-05", end: "2026-11-11", days: 7 }, metrics: { site_visits: 131, store_clicks: 10, accounts_created: 4 } }),
+    current: summary(131, { period: { start: "2026-11-05", end: "2026-11-11", days: 7 }, metrics: { site_visits: 131, store_clicks: 10, accounts_created: 4, first_quote_sent_all: 3 } }),
     previous: summary(120, { period: { start: "2026-10-29", end: "2026-11-04", days: 7 }, metrics: { site_visits: 120, accounts_created: 2 } }),
     runs: [{ id: "weekly-2026-11-02-manual-1", kind: "weekly", period_start: "2026-11-02", period_end: "2026-11-08", status: "running",
              started_at: "2026-11-12T18:00:00Z", error: null }, ...DATA.runs],
@@ -181,6 +181,8 @@ test("labels each period with its dates, counts all new accounts, and blocks a s
   await expect(body).toContainText("New accounts");
   await expect(body).toContainText("all devices");
   await expect(body).toContainText("app, with consent");
+  await expect(body.locator(".stat-card", { hasText: "First quotes sent" }).first()).toContainText("3");
+  await expect(body).toContainText("from saved accounts and jobs");
   await expect(body).toContainText("Nothing links a store click to a sign-up");
   await expect(page.locator("#mkt-f-7")).toContainText(/about 2 Nov.* to 8 Nov/);
   await expect(body).toContainText("App tracking: data up to 2026-11-07");
