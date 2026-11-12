@@ -3050,6 +3050,8 @@ function mktPhase4Html(d) {
       <span>Publishing is <strong style="color:${cfg.enabled ? '#22c55e' : '#ef4444'};">${cfg.enabled ? 'on' : 'off'}</strong></span>
       <span>· today ${mktFmt(p4.today)} of ${mktFmt(cfg.max_per_day)}, this week ${mktFmt(p4.this_week)} of ${mktFmt(cfg.max_per_week)}</span>
       <button class="btn-sm" onclick="mktSetPublishing(${cfg.enabled ? 'false' : 'true'})">${cfg.enabled ? 'Switch publishing off' : 'Switch publishing on'}</button>
+      <button class="btn-sm" onclick="mktFbCheck()">Check Facebook connection</button>
+      <span id="mkt-fb-check" style="font-size:12px;"></span>
     </div>
     ${pubs.length ? `<h3 style="margin:14px 0 6px;font-size:15px;">Posts</h3>${pubs.map(pb => `<div style="border-top:1px solid var(--border);padding:8px 0;font-size:13px;">
       <strong>${mktEsc(pb.title)}</strong> · ${pb.status === 'published' ? 'posted' : pb.status === 'publishing' ? (pb.stuck ? 'never reported back' : 'publishing…') : 'not posted'}
@@ -3081,6 +3083,18 @@ async function mktPublishReset(id) {
   if (!confirm('Only do this if the post is NOT on the TileIQ Facebook Page. Allow it to be published again?')) return;
   try { await mktApi('/action/publish-reset', { method: 'POST', body: JSON.stringify({ id }) }); loadMarketing(); }
   catch (e) { alert('Couldn\'t reset it: ' + e.message); }
+}
+
+// Read-only: asks Facebook who the Page token belongs to. Posts nothing.
+async function mktFbCheck() {
+  const out = document.getElementById('mkt-fb-check');
+  out.style.color = 'var(--text-muted)';
+  out.textContent = 'Checking…';
+  try {
+    const r = await mktApi('/facebook/check');
+    out.style.color = r.ok ? '#22c55e' : '#ef4444';
+    out.textContent = r.ok ? `Connected to the "${r.page.name}" Page (${r.page.id}). Nothing was posted.` : 'Not working: ' + (r.reason || 'no answer');
+  } catch (e) { out.style.color = '#ef4444'; out.textContent = 'Couldn\'t check: ' + e.message; }
 }
 
 async function mktSetPublishing(enabled) {
