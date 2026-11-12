@@ -150,7 +150,8 @@ test("editing saves a new version; history lists the audit trail and versions", 
   await page.locator("#mkt-edit-cta-1").fill("See the demo");
   await page.getByRole("button", { name: "Save as new version" }).click();
   await expect(page.locator("#mkt-msg-1")).toContainText("Saved as version 3.");
-  expect(calls.find(c => c.path.endsWith("/action/edit")).body).toEqual({ id: 1, text: "Price the job on site.", call_to_action: "See the demo" });
+  // A Facebook Page post's edit also sends its image list (none here)
+  expect(calls.find(c => c.path.endsWith("/action/edit")).body).toEqual({ id: 1, text: "Price the job on site.", call_to_action: "See the demo", images: [] });
   await page.locator("#mkt-a-1").getByRole("button", { name: "History" }).click();
   const hist = page.locator("#mkt-hist-1");
   await expect(hist).toContainText("proposed");
