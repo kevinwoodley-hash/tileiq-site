@@ -12,7 +12,8 @@
  *   GA4 data filter can exclude them and they show in DebugView. No IP addresses involved.
  * - Traffic sources: an anonymous, cookieless beacon to the worker (/api/site-visit) for every
  *   visitor counts where they came from and which source leads to store taps (admin Traffic page),
- *   and Google Play links get that source as an install referrer.
+ *   and Google Play links get that source as an install referrer. App Store links get it as an
+ *   App Store Connect campaign token (pt + ct): Apple reports installs per campaign as totals only.
  * - Store links: one listener sends app_download_clicked for any Google Play / App Store
  *   link (plus the demo's existing demo_google_play_click / demo_app_store_click names).
  */
@@ -24,6 +25,9 @@
   var PH_CONVERSIONS = ['book_demo_submit', 'contact_form_submit', 'sign_up', 'training_centre_register'];
   var CONSENT_KEY = 'tileiq-analytics-consent';          // 'granted' | 'denied' (unset = not asked yet)
   var INTERNAL_KEY = 'tileiq-internal';                  // '1' = this browser is internal testing
+  // App Store Connect provider token (public: it's in every campaign link Apple generates).
+  // Empty = App Store links are left as they are.
+  var APP_STORE_PT = '129112372';
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -307,6 +311,13 @@
     beacon({ k: 'visit' });
   }
 
+  // "<source>_<page>", letters, digits, - . _ only, at most 40 characters (Apple's limit).
+  function appStoreCampaign() {
+    var src = source && source.s !== '(direct)' ? source.s : 'direct';
+    var page = landingPath.replace(/^\/+|\/+$/g, '').replace(/\.html$/, '').replace(/\//g, '-') || 'home';
+    return (src + '_' + page).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').slice(0, 40);
+  }
+
   document.addEventListener('click', function (e) {
     var a = e.target && e.target.closest && e.target.closest('a[href]');
     if (!a) return;
@@ -322,6 +333,13 @@
       var ref = 'utm_source=' + encodeURIComponent(src.s) + '&utm_medium=' + encodeURIComponent(src.m) +
         '&utm_campaign=' + encodeURIComponent(src.c || 'website') + '&utm_content=' + encodeURIComponent(landingPath);
       a.href = href + (href.indexOf('?') >= 0 ? '&' : '?') + 'referrer=' + encodeURIComponent(ref);
+    }
+    // App Store: the same source as a campaign token, e.g. ct=google_guides-tile-adhesive-coverage.
+    // Apple keeps it to 40 characters and reports App Store Connect → Acquisition → Campaigns as
+    // totals (page views, installs) for people who share data with developers; nothing per person.
+    if (store === 'app_store' && APP_STORE_PT && !/[?&]ct=/.test(href)) {
+      a.href = href + (href.indexOf('?') >= 0 ? '&' : '?') + 'pt=' + encodeURIComponent(APP_STORE_PT) +
+        '&ct=' + encodeURIComponent(appStoreCampaign()) + '&mt=8';
     }
   }, true);
 
