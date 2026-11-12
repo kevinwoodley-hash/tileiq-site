@@ -2824,26 +2824,7 @@ function renderMarketing() {
     </div>
     <p style="font-size:12px;color:var(--text-muted);max-width:900px;">Your own accounts and the demo account are left out. App figures count tilers, not taps, and only native-app tilers who accepted analytics; New accounts counts every new account (guests left out). A store click is a tap on a store link, not an install; installs come only from the weekly figures you type in. Nothing links a store click to a sign-up. The weekly report covers Monday to Sunday, so its figures can differ from these.</p>
 
-    <div class="card" style="margin-top:16px;"><h2>Opportunities</h2>
-      <p>Findings from the agents. They recommend; you decide. Mark each as noted or dismiss it.</p>
-      ${(d.findings || []).map(x => `
-        <div style="border-top:1px solid var(--border);padding:12px 0;${x.status === 'noted' ? 'opacity:.7;' : ''}" id="mkt-f-${Number(x.id)}">
-          <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
-            <div style="flex:1;min-width:240px;">
-              <div style="font-size:12px;color:var(--text-muted);">${mktEsc(MKT_AGENTS[x.agent] || x.agent)}${x.period_start ? ` · about ${mktEsc(mktRange({ start: x.period_start, end: x.period_end }))}` : ''} · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort · ${new Date(x.created_at).toLocaleDateString('en-GB')}${x.status === 'noted' ? ' · noted' : ''}</div>
-              <div style="font-weight:700;margin-top:2px;">${mktEsc(x.title)}</div>
-              <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${mktEsc(x.detail)}</div>
-              <div style="font-size:12px;margin-top:6px;"><strong>Evidence:</strong> ${mktEsc(x.evidence)}</div>
-              ${x.expected_benefit ? `<div style="font-size:12px;margin-top:2px;"><strong>Expected benefit:</strong> ${mktEsc(x.expected_benefit)}</div>` : ''}
-              ${x.risk ? `<div style="font-size:12px;margin-top:2px;"><strong>Risk:</strong> ${mktEsc(x.risk)}</div>` : ''}
-            </div>
-            <div style="display:flex;gap:6px;">
-              ${x.status !== 'noted' ? `<button class="btn-sm" onclick="mktFinding(${Number(x.id)}, 'noted')">Noted</button>` : ''}
-              <button class="btn-sm" onclick="mktFinding(${Number(x.id)}, 'dismissed')">Dismiss</button>
-            </div>
-          </div>
-        </div>`).join('') || '<p style="color:var(--text-muted);">No findings yet. The agents run every Monday.</p>'}
-    </div>
+    ${mktFindingsHtml(d)}
 
     <div class="card" style="margin-top:16px;"><h2>Reports</h2>
       ${(d.reports || []).map(r => `
@@ -2889,6 +2870,40 @@ function renderMarketing() {
       ${(d.ai_spend || []).map(a => `<div style="font-size:13px;padding:2px 0;">${mktEsc(String(a.month).slice(0, 7))}: ${mktGbp(a.gbp)} (${mktFmt(a.calls)} calls)</div>`).join('') || '<p style="color:var(--text-muted);font-size:13px;">No AI used yet.</p>'}
     </div>`;
   mktLoadImages();
+}
+
+// Agent findings, folded away once the Manager has turned them into recommendations. Each says
+// what happened to it: merged into a recommendation, set aside (with the reason) or not reviewed.
+function mktFindingsHtml(d) {
+  const all = d.findings || [];
+  const plan = d.phase3?.plan, rank = {};
+  (plan?.items || []).forEach((x, i) => { if (x.action_id) rank[Number(x.action_id)] = [i + 1, x.title]; });
+  const merged = all.filter(x => x.merged_into).length, aside = all.filter(x => !x.merged_into && x.manager_note).length;
+  const fate = x => x.merged_into ? `Merged into ${rank[Number(x.merged_into)] ? `recommendation ${rank[Number(x.merged_into)][0]}: ${mktEsc(rank[Number(x.merged_into)][1])}` : 'an earlier recommendation'}`
+    : x.manager_note ? `Set aside by the Manager: ${mktEsc(x.manager_note)}` : 'Not reviewed by the Manager';
+  const rows = all.map(x => `
+        <div style="border-top:1px solid var(--border);padding:12px 0;${x.status === 'noted' ? 'opacity:.7;' : ''}" id="mkt-f-${Number(x.id)}">
+          <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+            <div style="flex:1;min-width:240px;">
+              <div style="font-size:12px;color:var(--text-muted);">${mktEsc(MKT_AGENTS[x.agent] || x.agent)}${x.period_start ? ` · about ${mktEsc(mktRange({ start: x.period_start, end: x.period_end }))}` : ''} · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort · ${new Date(x.created_at).toLocaleDateString('en-GB')}${x.status === 'noted' ? ' · noted' : ''}</div>
+              <div style="font-weight:700;margin-top:2px;">${mktEsc(x.title)}</div>
+              <div class="mkt-fate" style="font-size:12px;margin-top:2px;color:${x.merged_into ? '#22c55e' : 'var(--text-muted)'};">${fate(x)}</div>
+              <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${mktEsc(x.detail)}</div>
+              <div style="font-size:12px;margin-top:6px;"><strong>Evidence:</strong> ${mktEsc(x.evidence)}</div>
+              ${x.expected_benefit ? `<div style="font-size:12px;margin-top:2px;"><strong>Expected benefit:</strong> ${mktEsc(x.expected_benefit)}</div>` : ''}
+              ${x.risk ? `<div style="font-size:12px;margin-top:2px;"><strong>Risk:</strong> ${mktEsc(x.risk)}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;">
+              ${x.status !== 'noted' ? `<button class="btn-sm" onclick="mktFinding(${Number(x.id)}, 'noted')">Noted</button>` : ''}
+              <button class="btn-sm" onclick="mktFinding(${Number(x.id)}, 'dismissed')">Dismiss</button>
+            </div>
+          </div>
+        </div>`).join('');
+  return `<div class="card" style="margin-top:16px;" id="mkt-findings"><h2>Agent findings</h2>
+      ${all.length ? `<details ${plan ? '' : 'open'}><summary style="cursor:pointer;font-size:14px;">${all.length} finding${all.length > 1 ? 's' : ''} from the agents: ${merged} merged into recommendations, ${aside} set aside${all.length - merged - aside ? `, ${all.length - merged - aside} not reviewed` : ''}</summary>
+        <p style="font-size:13px;">What each agent found, before the Manager combined them. They recommend; you decide.</p>${rows}</details>`
+      : '<p style="color:var(--text-muted);">No findings yet. The agents run every Monday.</p>'}
+    </div>`;
 }
 
 function mktLastMonday() {
@@ -2967,19 +2982,13 @@ function mktPhase3Html(d) {
   mktQueue = p3.queue || [];
   const plan = p3.plan;
   return `
+    ${plan ? mktPlanHtml(plan) : ''}
     <div class="card" style="margin-top:16px;" id="mkt-queue">
       <h2>Approval queue <span style="font-size:14px;color:var(--text-muted);font-weight:500;">${Number(p3.waiting || 0)} waiting</span></h2>
       <p>Drafts from the agents. Approving only records your decision on that exact wording: <strong>nothing is posted by approving</strong>. Facebook posts go to the Page only when you press <strong>Publish to Page</strong>; Facebook group and Instagram posts are always copy and paste, by you.</p>
       ${d.approvals_ready ? '' : '<p style="color:#ef4444;">Approving needs <code>TOTP_SECRET</code> set on the marketing Worker (the same value as the main worker).</p>'}
       ${mktQueue.map(mktActionHtml).join('') || '<p style="color:var(--text-muted);">Nothing yet. Drafts arrive with the weekly run on Mondays.</p>'}
     </div>
-    ${plan ? `<div class="card" style="margin-top:16px;"><h2>This week's plan</h2>
-      <p>The Marketing Manager's three priorities for the week from ${mktEsc(plan.period_start)}. Each is in the queue above.</p>
-      ${(plan.items || []).map((x, i) => `<div style="border-top:1px solid var(--border);padding:10px 0;font-size:13px;">
-        <div style="font-weight:700;">${i + 1}. ${mktEsc(x.title)}</div>
-        <div style="font-size:12px;color:var(--text-muted);">${mktEsc(x.impact)} impact · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort${x.cost_gbp ? ' · about ' + mktGbp(x.cost_gbp) : ''}</div>
-        <div style="margin-top:4px;">${mktEsc(x.next_step)}</div>
-        <div style="margin-top:2px;"><strong>Evidence:</strong> ${mktEsc(x.evidence)}</div></div>`).join('')}</div>` : ''}
     <div class="card" style="margin-top:16px;"><h2>Competitors</h2>
       <p>Facts quoted word for word from competitors' own pages, with the date and source. Interpretations are the agent's reading, not fact.</p>
       ${(p3.competitor_findings || []).map(f => `<div style="border-top:1px solid var(--border);padding:10px 0;font-size:13px;" id="mkt-cf-${Number(f.id)}">
@@ -3007,6 +3016,27 @@ function mktPhase3Html(d) {
     </div>`;
 }
 
+// The Marketing Manager's consolidated list for the latest week: ranked, each linked to its card in the
+// queue (where it's approved or edited). Older plans (before 13 Nov 2026) had next_step instead of next_action.
+const MKT_ACTION_TYPES = { dev_task: 'Development task', marketing_draft: 'Marketing draft', seo_change: 'SEO improvement',
+  tracking: 'Tracking', investigate: 'Look into it', approve_draft: 'Approve a draft' };
+function mktPlanHtml(plan) {
+  const items = plan.items || [];
+  const end = plan.period_start ? new Date(new Date(plan.period_start + 'T12:00:00Z').getTime() + 6 * 864e5).toISOString().slice(0, 10) : '';
+  return `<div class="card" style="margin-top:16px;" id="mkt-plan"><h2>This week's recommendations</h2>
+    <p>The Marketing Manager's one list for ${mktEsc(mktRange({ start: plan.period_start, end }))}, most valuable first. Agent findings about the same problem with the same fix are merged into one; each finding is listed under Agent findings below with where it went.</p>
+    ${items.map((x, i) => {
+      const id = Number(x.action_id);
+      return `<div style="border-top:1px solid var(--border);padding:10px 0;font-size:13px;">
+        <div style="font-weight:700;">${i + 1}. ${mktEsc(x.title)}${x.repeat ? ` <span style="font-size:11px;font-weight:600;color:var(--amber);">still open since ${mktEsc(mktDay(x.open_since) || 'an earlier week')}</span>` : ''}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${x.action_type ? mktEsc(MKT_ACTION_TYPES[x.action_type] || x.action_type) + ' · ' : ''}${mktEsc(x.impact)} impact · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort${x.cost_gbp ? ' · about ' + mktGbp(x.cost_gbp) : ''}${(x.finding_ids || []).length ? ` · from ${x.finding_ids.length} agent finding${x.finding_ids.length > 1 ? 's' : ''}` : ''}</div>
+        ${x.problem ? `<div style="margin-top:4px;"><strong>Problem:</strong> ${mktEsc(x.problem)}</div>` : ''}
+        ${x.evidence ? `<div style="margin-top:2px;"><strong>Evidence:</strong> ${mktEsc(x.evidence)}</div>` : ''}
+        <div style="margin-top:2px;"><strong>Next action:</strong> ${mktEsc(x.next_action || x.next_step)}</div>
+        ${id ? `<a href="#mkt-a-${id}" onclick="document.getElementById('mkt-a-${id}')?.scrollIntoView({ behavior: 'smooth' }); return false;" style="font-size:12px;">Full details and approval</a>` : ''}
+      </div>`; }).join('') || '<p style="color:var(--text-muted);">No recommendations this week.</p>'}</div>`;
+}
+
 function mktActionHtml(a) {
   const [label, colour] = MKT_STATUS[a.status] || [a.status, 'var(--text-muted)'];
   const c = a.content || {}, ch = a.checks || {};
@@ -3026,15 +3056,24 @@ function mktActionHtml(a) {
       <strong>Held back by the claims check. Edit it before it can be approved:</strong><ul style="margin:4px 0 0 18px;">${(ch.problems || []).map(p => `<li>${mktEsc(p)}</li>`).join('')}</ul></div>` : ''}
     <div class="mkt-preview" style="margin-top:8px;max-width:520px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--white);">
       ${isRec ? '' : '<div style="font-size:12px;font-weight:700;margin-bottom:6px;">TileIQ Pro <span style="font-weight:400;color:var(--text-muted);">· preview</span></div>'}
+      ${isRec && c.problem ? `<div class="mkt-rec" style="font-size:13px;line-height:1.45;display:grid;gap:4px;">
+        ${c.action_type ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);">${mktEsc(MKT_ACTION_TYPES[c.action_type] || c.action_type)}</div>` : ''}
+        <div><strong>Problem:</strong> ${mktEsc(c.problem)}</div>
+        ${a.evidence ? `<div><strong>Evidence:</strong> ${mktEsc(a.evidence)}</div>` : ''}
+        <div><strong>Why it matters to TileIQ:</strong> ${mktEsc(c.why_it_matters)}</div>
+        <div><strong>Proposed solution:</strong> ${mktEsc(c.solution)}</div>
+        <div><strong>Expected benefit:</strong> ${mktEsc(c.expected_benefit)}</div>
+        <div><strong>Confidence:</strong> ${mktEsc(a.confidence)}${c.confidence_reason ? ` (${mktEsc(c.confidence_reason)})` : ''}</div>
+        <div style="margin-top:4px;"><strong>Next action:</strong></div></div>` : ''}
       <div style="white-space:pre-wrap;font-size:14px;line-height:1.45;">${mktEsc(c.text)}</div>
       ${c.call_to_action ? `<div style="margin-top:8px;font-size:13px;font-weight:600;">${mktEsc(c.call_to_action)}</div>` : ''}
       ${mktImgKeys(c).length ? `<div class="mkt-images" style="display:grid;grid-template-columns:repeat(${Math.min(mktImgKeys(c).length, 2)},1fr);gap:4px;margin-top:8px;">
         ${mktImgKeys(c).map(k => `<img data-mkt-img="${mktEsc(k)}" alt="Post image" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;background:var(--bg);">`).join('')}</div>` : ''}
     </div>
     <div style="font-size:12px;margin-top:8px;max-width:640px;">
-      ${a.evidence ? `<div><strong>Evidence:</strong> ${mktEsc(a.evidence)}</div>` : ''}
+      ${isRec && c.problem ? '' : `${a.evidence ? `<div><strong>Evidence:</strong> ${mktEsc(a.evidence)}</div>` : ''}
       ${a.expected_outcome ? `<div><strong>Expected outcome:</strong> ${mktEsc(a.expected_outcome)}</div>` : ''}
-      <div><strong>Confidence:</strong> ${mktEsc(a.confidence)}${c.angle ? ` · <strong>Angle:</strong> ${mktEsc(c.angle)}` : ''}</div>
+      <div><strong>Confidence:</strong> ${mktEsc(a.confidence)}${c.angle ? ` · <strong>Angle:</strong> ${mktEsc(c.angle)}` : ''}</div>`}
       ${c.rationale ? `<div><strong>Why:</strong> ${mktEsc(c.rationale)}</div>` : ''}
       ${a.risks ? `<div><strong>Risks:</strong> ${mktEsc(a.risks)}</div>` : ''}
       ${a.last_decision?.note ? `<div><strong>Last note:</strong> ${mktEsc(a.last_decision.note)}</div>` : ''}
