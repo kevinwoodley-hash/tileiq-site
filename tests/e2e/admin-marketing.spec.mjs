@@ -165,3 +165,27 @@ test("there is nothing on the page that publishes, posts or spends", async ({ pa
   const buttons = await page.locator("#page-marketing button").allInnerTexts();
   for (const b of buttons) expect(b).not.toMatch(/publish|post|approve|boost|spend|budget/i);
 });
+
+test("labels each period with its dates, counts all new accounts, and blocks a second run while one is going", async ({ page }) => {
+  const calls = [];
+  const data = { ...DATA,
+    current: summary(131, { period: { start: "2026-11-05", end: "2026-11-11", days: 7 }, metrics: { site_visits: 131, store_clicks: 10, accounts_created: 4 } }),
+    previous: summary(120, { period: { start: "2026-10-29", end: "2026-11-04", days: 7 }, metrics: { site_visits: 120, accounts_created: 2 } }),
+    runs: [{ id: "weekly-2026-11-02-manual-1", kind: "weekly", period_start: "2026-11-02", period_end: "2026-11-08", status: "running",
+             started_at: "2026-11-12T18:00:00Z", error: null }, ...DATA.runs],
+    findings: [{ ...DATA.findings[0], period_start: "2026-11-02", period_end: "2026-11-08" }],
+    health: [{ source: "app", last_data_day: "2026-11-07", last_error: null }] };
+  await openMarketing(page, calls, data);
+  const body = page.locator("#mkt-body");
+  await expect(body).toContainText(/Performance, 5 Nov.* to 11 Nov.*\(last 28 days up to yesterday; change on 29 Oct.* to 4 Nov/);
+  await expect(body).toContainText("New accounts");
+  await expect(body).toContainText("all devices");
+  await expect(body).toContainText("app, with consent");
+  await expect(body).toContainText("Nothing links a store click to a sign-up");
+  await expect(page.locator("#mkt-f-7")).toContainText(/about 2 Nov.* to 8 Nov/);
+  await expect(body).toContainText("App tracking: data up to 2026-11-07");
+  await expect(body).toContainText("A day with no tilers isn't a fault");
+  const weekly = page.getByRole("button", { name: "Run last week's agents + report (running)" });
+  await expect(weekly).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Collect now" })).toBeEnabled();
+});

@@ -2719,7 +2719,16 @@ const mktNum = v => Number(v || 0);
 const mktFmt = v => mktNum(v).toLocaleString('en-GB');
 const mktGbp = v => '£' + mktNum(v).toFixed(2);
 const MKT_AGENTS = { seo: 'SEO Researcher', conversion: 'Conversion Analyst', campaign: 'Campaign Performance Analyst' };
-const MKT_SOURCES = { website: 'Website tracking', app: 'App tracking', search_console: 'Google Search Console', meta_ads: 'Meta Ads' };
+const MKT_SOURCES = { website: 'Website tracking', app: 'App tracking', search_console: 'Google Search Console', meta_ads: 'Meta Ads', facebook_page: 'Facebook Page' };
+// "2026-11-05" -> "5 Nov"; the year only when it isn't this year.
+function mktDay(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '';
+  const d = new Date(iso + 'T12:00:00Z');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(d.getUTCFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}), timeZone: 'UTC' });
+}
+const mktRange = p => p?.start ? `${mktDay(p.start)} to ${mktDay(p.end)}` : '';
+// A run of this kind still going (the Worker marks one with no word for 2 hours as failed).
+const mktRunning = (runs, kind) => (runs || []).find(r => r.kind === kind && r.status === 'running');
 
 async function mktApi(path, options = {}) {
   const res = await fetch(MKT_URL + path, { ...options,
@@ -2794,25 +2803,26 @@ function renderMarketing() {
     <div class="card" style="margin-bottom:16px;">
       <h2>AI spending this month: ${mktGbp(used)} of ${mktGbp(cap)}</h2>
       <div style="height:10px;border-radius:5px;background:var(--bg);overflow:hidden;margin:8px 0;"><div style="height:100%;width:${pct}%;background:${pct >= 90 ? '#ef4444' : pct >= 75 ? 'var(--amber)' : '#22c55e'};"></div></div>
-      <p style="margin:0;font-size:13px;">Hard limit: at ${mktGbp(cap)} the agents stop until the 1st. Warnings by email at 75% and 90%. Hosting: £0 (Cloudflare free plan).</p>
+      <p style="margin:0;font-size:13px;">Hard limit: at ${mktGbp(cap)} the agents stop until the 1st. Warnings by email at 75% and 90%. Hosting: Cloudflare Workers Paid plan ($5 a month for the whole account).</p>
     </div>
 
     ${mktPhase3Html(d)}
     ${mktPhase4Html(d)}
 
-    <div class="stats-section-label">Performance, last ${days} days (change on the ${days} days before)</div>
+    <div class="stats-section-label">Performance, ${mktRange(cur.period) || `last ${days} days`} (last ${days} days up to yesterday; change on ${mktRange(prev.period) || `the ${days} days before`})</div>
     <div class="stat-grid">
       ${mktTile('Website visits', m.site_visits, pm.site_visits, 'Website tracking')}
       ${mktTile('Google search clicks', sc.days_with_data ? sc.clicks : null, psc.days_with_data ? psc.clicks : null, 'Search Console', sc.days_with_data ? '' : 'not connected')}
       ${mktTile('Store link clicks', m.store_clicks, pm.store_clicks, 'Website tracking', 'not installs')}
       ${mktTile('Confirmed installs', installs || null, null, 'Typed in weekly', installs ? '' : 'not entered')}
-      ${mktTile('New sign-ups', f.sign_up, pf.sign_up, 'App tracking', 'tilers')}
+      ${mktTile('New accounts', m.accounts_created, pm.accounts_created, 'Accounts', 'all devices')}
+      ${mktTile('New sign-ups', f.sign_up, pf.sign_up, 'App tracking', 'app, with consent')}
       ${mktTile('Quotes created', f.quote_generated, pf.quote_generated, 'App tracking', 'tilers')}
       ${mktTile('Quotes sent', f.quote_sent, pf.quote_sent, 'App tracking', 'tilers')}
       ${mktTile('Campaign spend', mktGbp(ads.spend_gbp), mktNum(pads.spend_gbp) || null, 'Meta Ads', '', mktNum(ads.spend_gbp))}
       ${mktTile('Cost per paid store click', paidClicks && mktNum(ads.spend_gbp) ? mktGbp(mktNum(ads.spend_gbp) / paidClicks) : null, null, 'Meta Ads ÷ tagged clicks', paidClicks ? '' : 'no tagged clicks')}
     </div>
-    <p style="font-size:12px;color:var(--text-muted);max-width:900px;">Your own accounts and the demo account are left out. App figures count tilers, not taps. A store click is a tap on a store link, not an install; installs come only from the weekly figures you type in.</p>
+    <p style="font-size:12px;color:var(--text-muted);max-width:900px;">Your own accounts and the demo account are left out. App figures count tilers, not taps, and only native-app tilers who accepted analytics; New accounts counts every new account (guests left out). A store click is a tap on a store link, not an install; installs come only from the weekly figures you type in. Nothing links a store click to a sign-up. The weekly report covers Monday to Sunday, so its figures can differ from these.</p>
 
     <div class="card" style="margin-top:16px;"><h2>Opportunities</h2>
       <p>Findings from the agents. They recommend; you decide. Mark each as noted or dismiss it.</p>
@@ -2820,7 +2830,7 @@ function renderMarketing() {
         <div style="border-top:1px solid var(--border);padding:12px 0;${x.status === 'noted' ? 'opacity:.7;' : ''}" id="mkt-f-${Number(x.id)}">
           <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
             <div style="flex:1;min-width:240px;">
-              <div style="font-size:12px;color:var(--text-muted);">${mktEsc(MKT_AGENTS[x.agent] || x.agent)} · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort · ${new Date(x.created_at).toLocaleDateString('en-GB')}${x.status === 'noted' ? ' · noted' : ''}</div>
+              <div style="font-size:12px;color:var(--text-muted);">${mktEsc(MKT_AGENTS[x.agent] || x.agent)}${x.period_start ? ` · about ${mktEsc(mktRange({ start: x.period_start, end: x.period_end }))}` : ''} · ${mktEsc(x.confidence)} confidence · ${mktEsc(x.effort)} effort · ${new Date(x.created_at).toLocaleDateString('en-GB')}${x.status === 'noted' ? ' · noted' : ''}</div>
               <div style="font-weight:700;margin-top:2px;">${mktEsc(x.title)}</div>
               <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${mktEsc(x.detail)}</div>
               <div style="font-size:12px;margin-top:6px;"><strong>Evidence:</strong> ${mktEsc(x.evidence)}</div>
@@ -2858,9 +2868,10 @@ function renderMarketing() {
 
     <div class="card" style="margin-top:16px;"><h2>Agent activity</h2>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-        <button class="btn-sm" onclick="mktRun('daily')">Collect now</button>
-        <button class="btn-sm" onclick="mktRun('weekly')">Run last week's agents + report</button>
-        <button class="btn-sm" onclick="mktRun('monthly')">Run last month's review</button>
+        ${[['daily', 'Collect now'], ['weekly', "Run last week's agents + report"], ['monthly', "Run last month's review"]].map(([k, label]) => {
+          const busy = mktRunning(d.runs, k);
+          return `<button class="btn-sm" onclick="mktRun('${k}')"${busy ? ` disabled title="Already running since ${mktEsc(new Date(busy.started_at).toLocaleTimeString('en-GB', { timeStyle: 'short' }))}"` : ''}>${label}${busy ? ' (running)' : ''}</button>`;
+        }).join('\n        ')}
         <span id="mkt-run-msg" style="font-size:13px;align-self:center;"></span>
       </div>
       ${(d.runs || []).map(r => `
@@ -2873,6 +2884,7 @@ function renderMarketing() {
         </div>`).join('') || '<p style="color:var(--text-muted);">No runs yet.</p>'}
       <h3 style="margin:16px 0 6px;font-size:15px;">Data freshness</h3>
       ${health.map(h => `<div style="font-size:13px;padding:4px 0;">${mktEsc(MKT_SOURCES[h.source] || h.source)}: ${h.last_data_day ? 'data up to ' + mktEsc(h.last_data_day) : 'no data yet'}${h.last_error ? ` <span style="color:#ef4444;">· last error: ${mktEsc(h.last_error)}</span>` : ''}</div>`).join('') || '<p style="color:var(--text-muted);font-size:13px;">Nothing collected yet.</p>'}
+      <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Website and app: the day the latest event arrived. A day with no tilers isn't a fault; you're emailed if nothing arrives for 2 days (website) or 7 days (app).</p>
       <h3 style="margin:16px 0 6px;font-size:15px;">AI cost by month</h3>
       ${(d.ai_spend || []).map(a => `<div style="font-size:13px;padding:2px 0;">${mktEsc(String(a.month).slice(0, 7))}: ${mktGbp(a.gbp)} (${mktFmt(a.calls)} calls)</div>`).join('') || '<p style="color:var(--text-muted);font-size:13px;">No AI used yet.</p>'}
     </div>`;
