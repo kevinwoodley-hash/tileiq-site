@@ -2955,7 +2955,7 @@ async function mktRun(kind) {
 
 // ── Marketing Phase 3: approval queue, plan, competitors, AI visibility ─────────────────────
 const MKT_KINDS = { facebook_page_post: 'Facebook Page post', facebook_group_post: 'Facebook group post (copy and paste)', instagram_caption: 'Instagram caption',
-  ad_concept: 'Ad concept', video_script: 'Video script', recommendation: 'Recommendation' };
+  ad_concept: 'Ad concept', video_script: 'Video script', recommendation: 'Recommendation', dev_task: 'Development task', seo_change: 'SEO improvement' };
 // The big label at the top of each card: what it is, and who posts it.
 const MKT_BADGES = {
   facebook_page_post:  ['Facebook post', 'TileIQ posts it to the Page when you press Publish', '#1877f2'],
@@ -2964,6 +2964,8 @@ const MKT_BADGES = {
   video_script:        ['Video script', 'You film it', '#7c3aed'],
   ad_concept:          ['Ad idea', 'Nothing is spent without a separate budget approval', '#b45309'],
   recommendation:      ['Recommendation', 'A suggestion for you, not a post', '#475569'],
+  dev_task:            ['Development task', 'Approving means go ahead: you build it, nothing changes until you do', '#0f766e'],
+  seo_change:          ['SEO improvement', 'Approving means go ahead: you make the change, nothing changes until you do', '#4d7c0f'],
 };
 function mktBadge(kind) {
   const [name, who, colour] = MKT_BADGES[kind] || [MKT_KINDS[kind] || kind, '', '#475569'];
@@ -3043,6 +3045,10 @@ function mktActionHtml(a) {
   const id = Number(a.id), v = Number(a.current_version), h = /^[0-9a-f]{64}$/.test(a.content_hash) ? a.content_hash : '';
   const isRec = a.kind === 'recommendation';
   const pub = mktPubByAction[id];
+  // Phase C: what a recommendation can be prepared as, and anything already prepared from it
+  const prepAs = isRec ? MKT_PREPARE[c.action_type] : null;
+  const prepared = isRec ? mktQueue.filter(x => Number(x.content?.from_recommendation) === id && x.status !== 'rejected') : [];
+  const fromRec = c.from_recommendation ? mktQueue.find(x => Number(x.id) === Number(c.from_recommendation)) : null;
   return `<div style="border-top:1px solid var(--border);padding:14px 0;" id="mkt-a-${id}">
     ${mktBadge(a.kind)}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--text-muted);">
@@ -3052,6 +3058,8 @@ function mktActionHtml(a) {
       ${a.budget_approved_gbp ? `<span style="color:#22c55e;">· budget approved ${mktGbp(a.budget_approved_gbp)}</span>` : ''}
     </div>
     <div style="font-weight:700;margin-top:4px;">${mktEsc(a.title)}</div>
+    ${c.from_recommendation ? `<div style="font-size:12px;margin-top:2px;">Prepared from <a href="#mkt-a-${Number(c.from_recommendation)}" onclick="document.getElementById('mkt-a-${Number(c.from_recommendation)}')?.scrollIntoView({ behavior: 'smooth' }); return false;">${fromRec ? 'recommendation: ' + mktEsc(fromRec.title) : 'recommendation #' + Number(c.from_recommendation)}</a></div>` : ''}
+    ${prepared.length ? `<div style="font-size:12px;margin-top:2px;">Prepared: ${prepared.map(x => `<a href="#mkt-a-${Number(x.id)}" onclick="document.getElementById('mkt-a-${Number(x.id)}')?.scrollIntoView({ behavior: 'smooth' }); return false;">${mktEsc(MKT_KINDS[x.kind] || x.kind)}: ${mktEsc(x.title)}</a>`).join(' · ')}</div>` : ''}
     ${ch.blocked ? `<div style="margin-top:6px;padding:8px 10px;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#ef4444;">
       <strong>Held back by the claims check. Edit it before it can be approved:</strong><ul style="margin:4px 0 0 18px;">${(ch.problems || []).map(p => `<li>${mktEsc(p)}</li>`).join('')}</ul></div>` : ''}
     <div class="mkt-preview" style="margin-top:8px;max-width:520px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--white);">
@@ -3090,12 +3098,34 @@ function mktActionHtml(a) {
       ${pub && pub.status === 'publishing' && pub.stuck ? `<button class="btn-sm" onclick="mktPublishReset(${id})">It didn't post: allow a retry</button>` : ''}
       ${pub && pub.status === 'published' && mktSafeUrl(pub.post_url) ? `<a class="btn-sm" href="${mktSafeUrl(pub.post_url)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">View on Facebook</a>` : ''}
       ${a.status === 'approved' && !(pub && pub.status === 'publishing') ? `<button class="btn-sm" onclick="mktDecide(${id}, ${v}, '${h}', 'done')">Mark done</button>` : ''}
-      ${a.kind === 'facebook_group_post' || a.kind === 'instagram_caption' ? `<button class="btn-sm" onclick="mktCopy(${id})">Copy text</button>` : ''}
+      ${prepAs && ['pending', 'approved'].includes(a.status) && !prepared.length ? `<button class="btn-sm mkt-prepare" onclick="mktPrepare(${id})" title="${mktEsc(prepAs[1])}">${mktEsc(prepAs[0])}</button>` : ''}
+      ${['facebook_group_post', 'instagram_caption', 'dev_task', 'seo_change'].includes(a.kind) ? `<button class="btn-sm" onclick="mktCopy(${id})">Copy text</button>` : ''}
       <button class="btn-sm" onclick="mktHistory(${id})">History</button>
       <span class="mkt-msg" id="mkt-msg-${id}" style="font-size:12px;align-self:center;"></span>
     </div>
     <div id="mkt-edit-${id}"></div><div id="mkt-hist-${id}"></div>
   </div>`;
+}
+// What each recommendation type can be prepared as (the Worker's PREPARES); investigate and approve_draft have none.
+const MKT_PREPARE = {
+  dev_task: ['Prepare development task', 'Writes a task spec into the queue for you to approve. Nothing is built or changed.'],
+  tracking: ['Prepare development task', 'Writes a task spec into the queue for you to approve. Nothing is built or changed.'],
+  marketing_draft: ['Prepare marketing draft', 'Writes 1 or 2 drafts into the queue, claims-checked. Nothing is posted.'],
+  seo_change: ['Prepare SEO improvement', 'Reads the page and writes one proposed change into the queue. The site isn\'t changed.'],
+};
+async function mktPrepare(id) {
+  const msg = document.getElementById('mkt-msg-' + id);
+  const btn = document.querySelector(`#mkt-a-${id} .mkt-prepare`);
+  if (btn) btn.disabled = true;
+  msg.textContent = 'Preparing… this can take up to a minute.';
+  try {
+    const r = await mktApi('/action/prepare', { method: 'POST', body: JSON.stringify({ id }) });
+    if (!r.ok) { msg.textContent = 'Not prepared: ' + (r.error || 'unknown reason'); if (btn) btn.disabled = false; return; }
+    await loadMarketing();
+    const first = r.created?.[0]?.id;
+    const el = first && document.getElementById('mkt-a-' + Number(first));
+    if (el) { el.scrollIntoView({ behavior: 'smooth' }); const m = document.getElementById('mkt-msg-' + Number(first)); if (m) m.textContent = 'Prepared. Check it, then approve, edit or reject.'; }
+  } catch (e) { msg.textContent = 'Not prepared: ' + e.message; if (btn) btn.disabled = false; }
 }
 let d_approvalsReady = false;
 let d_publishingReady = false, d_publishingOn = false, mktPubByAction = {};
