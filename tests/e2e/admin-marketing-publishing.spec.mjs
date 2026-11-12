@@ -37,12 +37,14 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+let fbCheck = { ok: true, page: { id: "1062405076950547", name: "Tileiq <b>" } };
 async function open(page, { data = READY, calls = [], publish } = {}) {
   await page.route(url => url.href.startsWith(MAIN), route => route.fulfill({ json: [] }));
   await page.route(url => url.href.startsWith(MKT), async route => {
     const req = route.request(), url = new URL(req.url());
     calls.push({ method: req.method(), path: url.pathname, secret: req.headers()["x-admin-secret"], body: req.method() === "POST" ? req.postDataJSON() : null });
     if (url.pathname === "/api/marketing/dashboard") return route.fulfill({ json: data });
+    if (url.pathname === "/api/marketing/facebook/check") return route.fulfill({ json: fbCheck });
     if (url.pathname === "/api/marketing/action/publish") return publish ? publish(route) : route.fulfill({ json: { ok: true, post_url: "https://www.facebook.com/1_2" } });
     return route.fulfill({ json: { ok: true } });
   });
@@ -110,4 +112,20 @@ test("a published post links to Facebook; a stuck one offers a retry only after 
   await stuck.getByRole("button", { name: "It didn't post: allow a retry" }).click();
   await expect.poll(() => calls.find(c => c.path === "/api/marketing/action/publish-reset")?.body).toEqual({ id: 4 });
   expect(dialogs[0]).toMatch(/NOT on the TileIQ Facebook Page/);
+});
+
+test("Check Facebook connection: shows the Page, or why it isn't working; posts nothing", async ({ page }) => {
+  const calls = [];
+  await open(page, { calls });
+  const panel = page.locator("#mkt-publishing");
+  await panel.getByRole("button", { name: "Check Facebook connection" }).click();
+  await expect(page.locator("#mkt-fb-check")).toHaveText('Connected to the "Tileiq <b>" Page (1062405076950547). Nothing was posted.');
+  const check = calls.find(c => c.path === "/api/marketing/facebook/check");
+  expect(check.method).toBe("GET");
+  expect(check.secret).toBe("test-pw");
+  expect(calls.some(c => c.path === "/api/marketing/action/publish")).toBe(false);
+  fbCheck = { ok: false, reason: "the token works but isn't the Page token for page 1062405076950547" };
+  await panel.getByRole("button", { name: "Check Facebook connection" }).click();
+  await expect(page.locator("#mkt-fb-check")).toContainText("Not working: the token works but isn't the Page token");
+  fbCheck = { ok: true, page: { id: "1062405076950547", name: "Tileiq <b>" } };
 });
