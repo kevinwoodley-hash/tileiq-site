@@ -3005,17 +3005,7 @@ function mktPhase3Html(d) {
           <button class="btn-sm" onclick="mktCompFinding(${Number(f.id)}, 'dismissed')">Dismiss</button></div></div></div>`).join('') || '<p style="color:var(--text-muted);">No competitor changes recorded yet.</p>'}
       ${(p3.competitor_pages || []).length ? `<h3 style="margin:14px 0 6px;font-size:15px;">Pages watched</h3>${p3.competitor_pages.map(pg => `<div style="font-size:12px;padding:2px 0;">${mktEsc(pg.competitor)}: ${mktEsc(pg.url)} · ${pg.last_error ? `<span style="color:#ef4444;">${mktEsc(pg.last_error)}</span>` : `last changed ${pg.last_changed_at ? new Date(pg.last_changed_at).toLocaleDateString('en-GB') : '—'}`}</div>`).join('')}` : ''}
     </div>
-    <div class="card" style="margin-top:16px;"><h2>AI search visibility</h2>
-      <p>Whether Claude (with web search) names TileIQ when asked these tiler questions. One assistant through the API on one day, so the consumer apps can differ. AI crawler visits are shown separately and don't count as being recommended.</p>
-      ${(p3.visibility || []).map(v => {
-        const ch = v.previous_mentions_tileiq === null || v.previous_mentions_tileiq === undefined ? '' :
-          v.previous_mentions_tileiq === v.mentions_tileiq ? '' : (v.mentions_tileiq ? ' <span style="color:#22c55e;">new</span>' : ' <span style="color:#ef4444;">dropped</span>');
-        return `<div style="border-top:1px solid var(--border);padding:8px 0;font-size:13px;">
-          <div style="font-weight:600;">${mktEsc(v.question)}</div>
-          <div>${v.mentions_tileiq ? '<strong style="color:#22c55e;">TileIQ named</strong>' : 'TileIQ not named'}${ch}${v.tileiq_cited ? ' · cited tile-iq.com' : ''}${(v.competitors || []).length ? ' · also: ' + v.competitors.map(mktEsc).join(', ') : ''}</div>
-          <div style="font-size:12px;color:var(--text-muted);">${mktEsc(v.provider)} ${mktEsc(v.model)} · ${new Date(v.checked_at).toLocaleDateString('en-GB')}</div>
-          <details style="margin-top:4px;"><summary style="cursor:pointer;font-size:12px;">Answer</summary><div style="white-space:pre-wrap;font-size:12px;margin-top:4px;">${mktEsc(v.answer)}</div></details></div>`; }).join('') || '<p style="color:var(--text-muted);">No checks yet. They run on Mondays.</p>'}
-    </div>`;
+    ${mktVisibilityHtml(p3)}`;
 }
 
 // The Marketing Manager's consolidated list for the latest week: ranked, each linked to its card in the
@@ -3037,6 +3027,41 @@ function mktPlanHtml(plan) {
         <div style="margin-top:2px;"><strong>Next action:</strong> ${mktEsc(x.next_action || x.next_step)}</div>
         ${id ? `<a href="#mkt-a-${id}" onclick="document.getElementById('mkt-a-${id}')?.scrollIntoView({ behavior: 'smooth' }); return false;" style="font-size:12px;">Full details and approval</a>` : ''}
       </div>`; }).join('') || '<p style="color:var(--text-muted);">No recommendations this week.</p>'}</div>`;
+}
+
+// AI search visibility: each fixed question in each setup (model, with or without web search), as a grid,
+// then every answer in full with its date, searches and sources. Rows saved before 13 Nov 2026 have no mode: web.
+const MKT_MODELS = { 'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5' };
+function mktVisibilityHtml(p3) {
+  const vis = (p3.visibility || []).map(v => ({ ...v, mode: v.mode || 'web' }));
+  const setupKey = v => `${v.model}|${v.mode}`;
+  const setups = [...new Set(vis.map(setupKey))].sort((a, b) => a.localeCompare(b));
+  const label = k => { const [m, mode] = k.split('|'); return `${mktEsc(MKT_MODELS[m] || m)}<br><span style="font-weight:400;font-size:11px;">${mode === 'plain' ? 'no web search' : 'web search'}</span>`; };
+  const questions = [...new Map(vis.map(v => [v.question_id, v.question])).entries()];
+  const cell = v => {
+    if (!v) return '<td style="padding:6px;color:var(--text-muted);">–</td>';
+    const ch = v.previous_mentions_tileiq === null || v.previous_mentions_tileiq === undefined || v.previous_mentions_tileiq === v.mentions_tileiq ? ''
+      : (v.mentions_tileiq ? ' <span style="color:#22c55e;">new</span>' : ' <span style="color:#ef4444;">dropped</span>');
+    return `<td style="padding:6px;">${v.mentions_tileiq ? '<strong style="color:#22c55e;">TileIQ named</strong>' : '<span style="color:var(--text-muted);">not named</span>'}${ch}${v.tileiq_cited ? '<br><span style="font-size:11px;">cited tile-iq.com</span>' : ''}</td>`;
+  };
+  const b = p3.visibility_budget;
+  const named = k => vis.filter(v => setupKey(v) === k && v.mentions_tileiq).length, total = k => vis.filter(v => setupKey(v) === k).length;
+  return `<div class="card" style="margin-top:16px;" id="mkt-visibility"><h2>AI search visibility</h2>
+      <p>The same tiler questions, put to Claude each Monday in each setup. <strong>With web search</strong>, the answer rests on what it found that day. <strong>Without</strong>, it comes from the model's own knowledge, which changes slowly. One answer per question through the API, so the ChatGPT or Claude apps can differ. AI crawler visits are shown separately and don't count as being recommended.</p>
+      ${b && b.cap_gbp != null ? `<p style="font-size:13px;">These checks this month: ${mktGbp(b.used_gbp)} of their own ${mktGbp(b.cap_gbp)} (inside the £20).</p>` : ''}
+      ${vis.length ? `<div style="overflow-x:auto;"><table class="mkt-vis" style="border-collapse:collapse;font-size:13px;min-width:100%;">
+        <thead><tr><th style="text-align:left;padding:6px;">Question</th>${setups.map(k => `<th style="text-align:left;padding:6px;">${label(k)}</th>`).join('')}</tr></thead>
+        <tbody>${questions.map(([qid, q]) => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;font-weight:600;">${mktEsc(q)}</td>${setups.map(k => cell(vis.find(v => v.question_id === qid && setupKey(v) === k))).join('')}</tr>`).join('')}
+        <tr style="border-top:1px solid var(--border);"><td style="padding:6px;font-weight:600;">Named in</td>${setups.map(k => `<td style="padding:6px;font-weight:600;">${named(k)} of ${total(k)}</td>`).join('')}</tr></tbody></table></div>
+      <details style="margin-top:10px;"><summary style="cursor:pointer;font-size:13px;">Every answer in full</summary>
+        ${vis.map(v => `<div style="border-top:1px solid var(--border);padding:8px 0;font-size:12px;">
+          <div style="font-weight:600;font-size:13px;">${mktEsc(v.question)}</div>
+          <div style="color:var(--text-muted);">${mktEsc(MKT_MODELS[v.model] || v.model)} · ${v.mode === 'plain' ? 'without web search' : 'with web search'} · ${new Date(v.checked_at).toLocaleDateString('en-GB')}${v.question_set ? ' · question set ' + mktEsc(v.question_set) : ''}${(v.competitors || []).length ? ' · also named: ' + v.competitors.map(mktEsc).join(', ') : ''}</div>
+          ${(v.search_queries || []).length ? `<div>Searched for: ${v.search_queries.map(q => '“' + mktEsc(q) + '”').join(', ')}</div>` : ''}
+          <div style="white-space:pre-wrap;margin-top:4px;">${mktEsc(v.answer)}</div>
+          ${(v.citations || []).length ? `<div style="margin-top:4px;">Sources: ${v.citations.map(c => mktSafeUrl(c.url) ? `<a href="${mktSafeUrl(c.url)}" target="_blank" rel="noopener noreferrer">${mktEsc(c.title || c.url)}</a>` : mktEsc(c.title || '')).join(' · ')}</div>` : ''}
+        </div>`).join('')}</details>` : '<p style="color:var(--text-muted);">No checks yet. They run on Mondays.</p>'}
+    </div>`;
 }
 
 function mktActionHtml(a) {
