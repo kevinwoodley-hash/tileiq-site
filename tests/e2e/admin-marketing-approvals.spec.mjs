@@ -171,7 +171,7 @@ test("shows the plan, quoted competitor facts with safe links, and AI visibility
   const calls = [];
   await open(page, { calls });
   const body = page.locator("#mkt-body");
-  await expect(body).toContainText("This week's plan");
+  await expect(body).toContainText("This week's recommendations");
   await expect(body).toContainText("1. Fix the adhesive guide title");
   await expect(body).toContainText("2,400 impressions at position 9.4");
   const f = page.locator("#mkt-cf-11");
