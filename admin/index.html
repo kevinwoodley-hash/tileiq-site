@@ -2876,6 +2876,7 @@ function renderMarketing() {
       <h3 style="margin:16px 0 6px;font-size:15px;">AI cost by month</h3>
       ${(d.ai_spend || []).map(a => `<div style="font-size:13px;padding:2px 0;">${mktEsc(String(a.month).slice(0, 7))}: ${mktGbp(a.gbp)} (${mktFmt(a.calls)} calls)</div>`).join('') || '<p style="color:var(--text-muted);font-size:13px;">No AI used yet.</p>'}
     </div>`;
+  mktLoadImages();
 }
 
 function mktLastMonday() {
@@ -2999,6 +3000,8 @@ function mktActionHtml(a) {
       ${isRec ? '' : '<div style="font-size:12px;font-weight:700;margin-bottom:6px;">TileIQ Pro <span style="font-weight:400;color:var(--text-muted);">· preview</span></div>'}
       <div style="white-space:pre-wrap;font-size:14px;line-height:1.45;">${mktEsc(c.text)}</div>
       ${c.call_to_action ? `<div style="margin-top:8px;font-size:13px;font-weight:600;">${mktEsc(c.call_to_action)}</div>` : ''}
+      ${mktImgKeys(c).length ? `<div class="mkt-images" style="display:grid;grid-template-columns:repeat(${Math.min(mktImgKeys(c).length, 2)},1fr);gap:4px;margin-top:8px;">
+        ${mktImgKeys(c).map(k => `<img data-mkt-img="${mktEsc(k)}" alt="Post image" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;background:var(--bg);">`).join('')}</div>` : ''}
     </div>
     <div style="font-size:12px;margin-top:8px;max-width:640px;">
       ${a.evidence ? `<div><strong>Evidence:</strong> ${mktEsc(a.evidence)}</div>` : ''}
@@ -3136,17 +3139,81 @@ function mktEditOpen(id) {
   document.getElementById('mkt-edit-' + id).innerHTML = `<div style="margin-top:10px;max-width:640px;">
     <label style="font-size:12px;font-weight:600;">Text<textarea id="mkt-edit-text-${id}" rows="6" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;"></textarea></label>
     <label style="font-size:12px;font-weight:600;display:block;margin-top:6px;">Call to action<input id="mkt-edit-cta-${id}" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    ${a.kind === 'facebook_page_post' ? `<div style="margin-top:8px;font-size:12px;font-weight:600;">Images <span style="font-weight:400;color:var(--text-muted);">(up to ${MKT_MAX_IMAGES}: JPEG, PNG or WebP, under 8 MB each)</span></div>
+      <div id="mkt-edit-imgs-${id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div>
+      <label class="btn-sm" style="display:inline-block;margin-top:6px;cursor:pointer;">Add images<input type="file" id="mkt-edit-file-${id}" accept="image/jpeg,image/png,image/webp" multiple style="display:none;" onchange="mktAddImages(${id}, this)"></label>
+      <span id="mkt-edit-imgmsg-${id}" style="font-size:12px;margin-left:6px;"></span>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">With images, the tile-iq.com link in the words becomes the tracked link (photo posts have no link preview).</div>` : ''}
     <div style="display:flex;gap:6px;margin-top:8px;"><button class="btn-sm" onclick="mktEditSave(${id})">Save as new version</button><button class="btn-sm" onclick="document.getElementById('mkt-edit-${id}').innerHTML=''">Cancel</button></div>
     <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Saving makes a new version. Any approval of the current wording stops counting.</div></div>`;
   document.getElementById('mkt-edit-text-' + id).value = a.content?.text || '';
   document.getElementById('mkt-edit-cta-' + id).value = a.content?.call_to_action || '';
+  mktEditImages[id] = mktImgKeys(a.content);
+  if (a.kind === 'facebook_page_post') mktRenderEditImages(id);
+}
+
+// ── Images on Facebook Page posts (stored by the marketing Worker; previews fetched with the admin password) ──
+const MKT_MAX_IMAGES = 4;
+const MKT_IMG_KEY = /^img\/[0-9a-f]{64}\.(jpg|png|webp)$/;
+const mktEditImages = {};
+const mktImgUrls = {};
+function mktImgKeys(content) { return (Array.isArray(content?.images) ? content.images : []).map(i => i?.key).filter(k => MKT_IMG_KEY.test(k || '')); }
+
+async function mktImgUrl(key) {
+  if (!MKT_IMG_KEY.test(key)) return '';
+  if (!mktImgUrls[key]) {
+    mktImgUrls[key] = fetch(MKT_URL + '/media?key=' + encodeURIComponent(key), { headers: { 'x-admin-secret': ADMIN_SECRET } })
+      .then(r => r.ok ? r.blob() : null).then(b => b ? URL.createObjectURL(b) : '').catch(() => '');
+  }
+  return mktImgUrls[key];
+}
+// Fills every <img data-mkt-img> on the page (previews and the edit panel).
+function mktLoadImages() {
+  document.querySelectorAll('img[data-mkt-img]:not([src])').forEach(async img => {
+    const u = await mktImgUrl(img.getAttribute('data-mkt-img'));
+    if (u) img.src = u;
+  });
+}
+
+function mktRenderEditImages(id) {
+  const box = document.getElementById('mkt-edit-imgs-' + id);
+  if (!box) return;
+  box.innerHTML = (mktEditImages[id] || []).map((k, i) => `<div style="position:relative;width:72px;height:72px;">
+    <img data-mkt-img="${mktEsc(k)}" alt="Image ${i + 1}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;background:var(--bg);">
+    <button type="button" class="btn-sm" title="Remove" onclick="mktRemoveImage(${id}, ${i})" style="position:absolute;top:2px;right:2px;padding:0 6px;">✕</button></div>`).join('')
+    || '<span style="font-size:12px;color:var(--text-muted);">No images</span>';
+  mktLoadImages();
+}
+
+function mktRemoveImage(id, i) { (mktEditImages[id] || []).splice(i, 1); mktRenderEditImages(id); }
+
+async function mktAddImages(id, input) {
+  const msg = document.getElementById('mkt-edit-imgmsg-' + id);
+  const files = [...(input.files || [])];
+  input.value = '';
+  const list = mktEditImages[id] = mktEditImages[id] || [];
+  for (const f of files) {
+    if (list.length >= MKT_MAX_IMAGES) { msg.textContent = `Up to ${MKT_MAX_IMAGES} images.`; break; }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) { msg.textContent = `${f.name}: only JPEG, PNG or WebP.`; continue; }
+    if (f.size > 8 * 1024 * 1024) { msg.textContent = `${f.name}: over 8 MB.`; continue; }
+    msg.textContent = 'Uploading…';
+    try {
+      const res = await fetch(MKT_URL + '/media', { method: 'POST', headers: { 'Content-Type': f.type, 'x-admin-secret': ADMIN_SECRET }, body: f });
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok || !MKT_IMG_KEY.test(r.key || '')) throw new Error(r.error || 'HTTP ' + res.status);
+      if (!list.includes(r.key)) list.push(r.key);
+      msg.textContent = '';
+    } catch (e) { msg.textContent = `${f.name}: not uploaded (${e.message}).`; }
+    mktRenderEditImages(id);
+  }
 }
 
 async function mktEditSave(id) {
   const msg = document.getElementById('mkt-msg-' + id);
   try {
-    const r = await mktApi('/action/edit', { method: 'POST', body: JSON.stringify({ id, text: document.getElementById('mkt-edit-text-' + id).value,
-      call_to_action: document.getElementById('mkt-edit-cta-' + id).value }) });
+    const edit = { id, text: document.getElementById('mkt-edit-text-' + id).value, call_to_action: document.getElementById('mkt-edit-cta-' + id).value };
+    if (document.getElementById('mkt-edit-imgs-' + id)) edit.images = mktEditImages[id] || [];
+    const r = await mktApi('/action/edit', { method: 'POST', body: JSON.stringify(edit) });
     await loadMarketing();
     const m2 = document.getElementById('mkt-msg-' + id);
     if (m2) m2.textContent = r.unchanged ? 'No changes.' : r.checks?.blocked ? 'Saved as version ' + r.version + ', but the claims check still flags it.' : 'Saved as version ' + r.version + '.';
