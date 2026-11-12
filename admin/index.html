@@ -2929,6 +2929,21 @@ async function mktRun(kind) {
 // ── Marketing Phase 3: approval queue, plan, competitors, AI visibility ─────────────────────
 const MKT_KINDS = { facebook_page_post: 'Facebook Page post', facebook_group_post: 'Facebook group post (copy and paste)', instagram_caption: 'Instagram caption',
   ad_concept: 'Ad concept', video_script: 'Video script', recommendation: 'Recommendation' };
+// The big label at the top of each card: what it is, and who posts it.
+const MKT_BADGES = {
+  facebook_page_post:  ['Facebook post', 'TileIQ posts it to the Page when you press Publish', '#1877f2'],
+  facebook_group_post: ['Facebook group', 'You copy and paste it into a group', '#0e7490'],
+  instagram_caption:   ['Instagram', 'You copy and paste it into Instagram', '#c13584'],
+  video_script:        ['Video script', 'You film it', '#7c3aed'],
+  ad_concept:          ['Ad idea', 'Nothing is spent without a separate budget approval', '#b45309'],
+  recommendation:      ['Recommendation', 'A suggestion for you, not a post', '#475569'],
+};
+function mktBadge(kind) {
+  const [name, who, colour] = MKT_BADGES[kind] || [MKT_KINDS[kind] || kind, '', '#475569'];
+  return `<div class="mkt-badge" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+    <span style="background:${colour};color:#fff;font-size:13px;font-weight:800;padding:3px 10px;border-radius:999px;">${mktEsc(name)}</span>
+    ${who ? `<span style="font-size:12px;color:var(--text-muted);">${mktEsc(who)}</span>` : ''}</div>`;
+}
 const MKT_STATUS = { pending: ['Waiting for you', 'var(--amber)'], approved: ['Approved', '#22c55e'], rejected: ['Rejected', '#ef4444'], done: ['Done', 'var(--text-muted)'] };
 const mktSafeUrl = u => /^https:\/\/[^\s"'<>]+$/.test(String(u || '')) ? mktEsc(u) : '';
 let mktQueue = [];
@@ -2942,7 +2957,7 @@ function mktPhase3Html(d) {
   return `
     <div class="card" style="margin-top:16px;" id="mkt-queue">
       <h2>Approval queue <span style="font-size:14px;color:var(--text-muted);font-weight:500;">${Number(p3.waiting || 0)} waiting</span></h2>
-      <p>Drafts from the agents. Approving only records your decision on that exact wording: <strong>nothing is posted</strong>. Facebook group posts are always copy and paste.</p>
+      <p>Drafts from the agents. Approving only records your decision on that exact wording: <strong>nothing is posted by approving</strong>. Facebook posts go to the Page only when you press <strong>Publish to Page</strong>; Facebook group and Instagram posts are always copy and paste, by you.</p>
       ${d.approvals_ready ? '' : '<p style="color:#ef4444;">Approving needs <code>TOTP_SECRET</code> set on the marketing Worker (the same value as the main worker).</p>'}
       ${mktQueue.map(mktActionHtml).join('') || '<p style="color:var(--text-muted);">Nothing yet. Drafts arrive with the weekly run on Mondays.</p>'}
     </div>
@@ -2987,8 +3002,9 @@ function mktActionHtml(a) {
   const isRec = a.kind === 'recommendation';
   const pub = mktPubByAction[id];
   return `<div style="border-top:1px solid var(--border);padding:14px 0;" id="mkt-a-${id}">
+    ${mktBadge(a.kind)}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--text-muted);">
-      <span style="color:${colour};font-weight:700;">${mktEsc(label)}</span><span>· ${mktEsc(MKT_KINDS[a.kind] || a.kind)}</span>
+      <span style="color:${colour};font-weight:700;">${mktEsc(label)}</span>
       ${a.audience ? `<span>· for ${mktEsc(a.audience)}</span>` : ''}<span>· version ${v}</span><span>· ${mktEsc(a.agent)}</span>
       ${a.est_cost_gbp > 0 ? `<span>· suggested test budget ${mktGbp(a.est_cost_gbp)}</span>` : ''}
       ${a.budget_approved_gbp ? `<span style="color:#22c55e;">· budget approved ${mktGbp(a.budget_approved_gbp)}</span>` : ''}

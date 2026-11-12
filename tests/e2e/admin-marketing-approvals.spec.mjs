@@ -85,7 +85,7 @@ test("shows the queue as previews, holds back blocked drafts and escapes AI text
   await open(page);
   const q = page.locator("#mkt-queue");
   await expect(q).toContainText("2 waiting");
-  await expect(q).toContainText("nothing is posted");
+  await expect(q).toContainText("nothing is posted by approving");
   await expect(page.locator("#mkt-a-1 .mkt-preview")).toContainText("send the quote before you leave");
   await expect(page.locator("#mkt-a-1")).toContainText("version 2");
   await expect(page.locator("#mkt-a-1 .mkt-approve")).toBeEnabled();
@@ -184,4 +184,13 @@ test("shows the plan, quoted competitor facts with safe links, and AI visibility
   await expect(body).toContainText("dropped");
   await f.getByRole("button", { name: "Noted" }).click();
   await expect.poll(() => calls.find(c => c.path.endsWith("/competitor-finding"))?.body).toEqual({ id: 11, status: "noted" });
+});
+
+test("each card says clearly what it is and who posts it", async ({ page }) => {
+  await open(page);
+  await expect(page.locator("#mkt-a-1 .mkt-badge")).toContainText("Facebook post");
+  await expect(page.locator("#mkt-a-1 .mkt-badge")).toContainText("TileIQ posts it to the Page when you press Publish");
+  await expect(page.locator("#mkt-a-2 .mkt-badge")).toContainText("Facebook group");
+  await expect(page.locator("#mkt-a-2 .mkt-badge")).toContainText("You copy and paste it into a group");
+  await expect(page.locator("#mkt-a-3 .mkt-badge")).toContainText("Ad idea");
 });
