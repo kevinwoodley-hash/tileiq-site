@@ -850,7 +850,7 @@ body {
     <div class="page" id="page-marketing">
       <div class="page-header">
         <h1>Marketing</h1>
-        <p>What the marketing system has collected and found. It only reads and recommends: nothing is published, posted or spent from here.</p>
+        <p>Review marketing performance, drafts and Facebook Page publishing.</p>
       </div>
       <div class="stats-page">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
@@ -859,7 +859,19 @@ body {
               <option value="7">Last 7 days</option><option value="28" selected>Last 28 days</option><option value="90">Last 90 days</option>
             </select></label>
           <button class="btn-sm" onclick="loadMarketing()">Refresh</button>
+          <button class="btn-sm" id="mkt-settings-toggle" aria-controls="mkt-settings" aria-expanded="false" onclick="mktToggleSettings()">Settings</button>
         </div>
+        <section class="card" id="mkt-settings" aria-labelledby="mkt-settings-title" style="max-width:900px;margin-bottom:16px;" hidden>
+          <h2 id="mkt-settings-title">Marketing settings</h2>
+          <h3 style="font-size:15px;margin:12px 0 6px;">Facebook Page connection</h3>
+          <p id="mkt-fb-feed-status" role="status"></p>
+          <button class="btn-sm" onclick="mktFbCheck('mkt-settings-fb-check')">Check Facebook connection</button>
+          <p id="mkt-settings-fb-check" role="status" style="margin-top:8px;"></p>
+          <details>
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;">How to reconnect Facebook</summary>
+            <p>Get a new Page access token for the TileIQ Facebook Page. In Cloudflare, open the <code>tileiq-marketing</code> Worker and replace its <code>META_PAGE_TOKEN</code> secret. Run the connection check here, then use <strong>Collect now</strong> under Agent activity to refresh the reporting feed.</p>
+          </details>
+        </section>
         <div id="mkt-body" style="max-width:900px;"><div class="loading">Loading…</div></div>
       </div>
     </div>
@@ -2738,12 +2750,21 @@ async function mktApi(path, options = {}) {
   return data;
 }
 
+function mktToggleSettings() {
+  const panel = document.getElementById('mkt-settings');
+  panel.hidden = !panel.hidden;
+  document.getElementById('mkt-settings-toggle').setAttribute('aria-expanded', String(!panel.hidden));
+}
+
 async function loadMarketing() {
+  const feedStatus = document.getElementById('mkt-fb-feed-status');
+  feedStatus.textContent = 'Loading reporting feed status…';
   const box = document.getElementById('mkt-body');
   box.innerHTML = '<div class="loading">Loading…</div>';
   try {
     mktData = await mktApi('/dashboard?days=' + document.getElementById('mkt-days').value);
   } catch (e) {
+    feedStatus.textContent = 'Reporting feed status is unavailable.';
     box.innerHTML = '<div class="card"><h2>Not available</h2><p>Couldn\'t reach the marketing system (' + mktEsc(e.message) + '). Check the tileiq-marketing Worker is deployed with the admin password set, and sql/2026-11-marketing.sql has been run in Supabase.</p></div>';
     return;
   }
@@ -2793,6 +2814,11 @@ function renderMarketing() {
   const used = mktNum(st.month_used_gbp), cap = mktNum(st.monthly_cap_gbp) || 20, pct = Math.min(100, Math.round(used / cap * 100));
   const days = Number(document.getElementById('mkt-days').value);
   const health = d.health || [];
+  const fbFeed = health.find(entry => entry.source === 'facebook_page');
+  const fbDataDay = mktDay(fbFeed?.last_data_day);
+  const feedStatus = document.getElementById('mkt-fb-feed-status');
+  feedStatus.textContent = fbDataDay ? 'Facebook reporting data up to ' + fbDataDay + '.' : 'No Facebook reporting data yet.';
+  if (fbFeed?.last_error) feedStatus.textContent += ' Last error: ' + fbFeed.last_error;
   const box = document.getElementById('mkt-body');
   box.innerHTML = `
     <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
@@ -3212,8 +3238,8 @@ async function mktPublishReset(id) {
 }
 
 // Read-only: asks Facebook who the Page token belongs to. Posts nothing.
-async function mktFbCheck() {
-  const out = document.getElementById('mkt-fb-check');
+async function mktFbCheck(outputId = 'mkt-fb-check') {
+  const out = document.getElementById(outputId);
   out.style.color = 'var(--text-muted)';
   out.textContent = 'Checking…';
   try {
