@@ -64,6 +64,7 @@
           if(typeof w.show==='function'){
             w.show('screen-signup');
             if(typeof w.generateCaptcha==='function') w.generateCaptcha();
+            if(typeof w.setSignupRegion==='function') w.setSignupRegion('uk');   // UK by default; USA can still be tapped
             const btn=d.getElementById('su-submit');
             if(btn && !btn.dataset.tileiqDownloadHook){
               btn.dataset.tileiqDownloadHook='1';
