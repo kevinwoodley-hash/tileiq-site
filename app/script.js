@@ -207,7 +207,7 @@ function show(id) {
     // Native apps ask for the analytics choice the first time Home is shown, however it was reached:
     // signing in and restoring a saved session call show("screen-home") directly, not goHome().
     if (id === "screen-signin") syncSignInScreen();
-    if (id === "screen-signup") { try { PartnerCode.prefillSignup(); } catch (_) {} }
+    if (id === "screen-signup") { try { PartnerCode.prefillSignup(); initSignupRegion(); } catch (_) {} }
     if (id === "screen-home") {
         if (currentUser && !currentUser.is_anonymous) rememberRealAccount();
         try { TQA.maybeAsk(); } catch (_) {}
@@ -2518,7 +2518,9 @@ function setSignupRegion(r) {
     if (uk) uk.classList.toggle("auth-region-active", _signupRegion === "uk");
     if (us) us.classList.toggle("auth-region-active", _signupRegion === "us");
 }
-function initSignupRegion() { setSignupRegion(detectRegion()); }
+// UK is always the default (Kevin, 21 Nov 2026): guessing from the phone wasn't reliable (lots of UK
+// iPhones are set to US English). A US tiler taps USA.
+function initSignupRegion() { setSignupRegion("uk"); }
 
 let _captchaAnswer = 0;
 
