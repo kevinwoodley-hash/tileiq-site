@@ -859,6 +859,8 @@ body {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
           <button class="btn-sm" onclick="loadPartners()">Refresh</button>
           <label style="font-size:13px;"><input type="checkbox" id="pt-hide-tests" onchange="renderPartners()"> Hide test signups</label>
+          <label style="font-size:13px;" title="Exports give each tiler an anonymous reference. Tick to add their email too: for your own records only, never to send to the partner (the privacy policy says partners only see anonymous figures).">
+            <input type="checkbox" id="pt-export-emails"> Include emails in exports (your records only)</label>
         </div>
         <div id="pt-body" style="max-width:1000px;"><div class="loading">Loading…</div></div>
       </div>
@@ -1561,7 +1563,10 @@ function renderPartners() {
             ${p.contact_email ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Contact: ${ptEsc(p.contact_email)}</div>` : ''}
             ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${ptEsc(p.notes)}</div>` : ''}
           </div>
-          <button class="btn-sm" onclick="partnersToggle('${ptEsc(p.id)}', ${!p.active})">${p.active ? 'Pause' : 'Resume'}</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn-sm" onclick="partnersExport('${ptEsc(p.id)}')">Export signups</button>
+            <button class="btn-sm" onclick="partnersToggle('${ptEsc(p.id)}', ${!p.active})">${p.active ? 'Pause' : 'Resume'}</button>
+          </div>
         </div>
         <div class="stat-grid" style="margin-top:14px;">
           <div class="stat-card"><div class="stat-label">Tilers signed up</div><div class="stat-value">${Number(p.tilers || 0)}</div></div>
@@ -1592,6 +1597,40 @@ function renderPartners() {
       </div>
       <button class="btn-primary" style="margin-top:16px;" onclick="partnersAdd()">Add partner</button>
     </div>`;
+}
+// Anonymous reference for a tiler: T- + the first 6 characters of SHA-256(user id), so the same tiler
+// always has the same reference (statements in Phase 3 use it too) without naming them.
+async function ptRef(userId) {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(userId)));
+  return 'T-' + [...new Uint8Array(h)].slice(0, 3).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+const ptCsvCell = v => {
+  let t = v == null ? '' : String(v);
+  if (/^[=+\-@]/.test(t)) t = "'" + t;                     // never read as a formula in Excel
+  return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+};
+const ptDay = d => d ? new Date(d).toISOString().slice(0, 10) : '';
+// One partner's signups as a CSV download: real signups, plus tests unless "Hide test signups" is ticked.
+async function partnersExport(id) {
+  const p = (partnersData?.partners || []).find(x => x.id === id);
+  if (!p) return;
+  if (partnersData.signups === undefined) return alert('Deploy the latest worker first: the list of signups comes from it.');
+  const hideTests = document.getElementById('pt-hide-tests')?.checked;
+  const withEmails = document.getElementById('pt-export-emails')?.checked;
+  const rows = partnersData.signups.filter(r => r.partner_id === id && (!hideTests || !r.is_test));
+  const head = ['Reference', 'Signed up', 'Account created', 'Code', 'Type', 'How', 'Device'].concat(withEmails ? ['Email'] : []);
+  const lines = [head];
+  for (const r of rows) {
+    lines.push([await ptRef(r.user_id), ptDay(r.claimed_at), ptDay(r.account_created), r.code, r.is_test ? 'Test' : 'Real',
+      PT_HOW[r.source] || r.source, PT_DEVICE[r.platform] || ''].concat(withEmails ? [ptWho(r.user_id)] : []));
+  }
+  const csv = lines.map(l => l.map(ptCsvCell).join(',')).join('\r\n') + '\r\n';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `partner-${String(p.code).toLowerCase()}-signups-${new Date().toISOString().slice(0, 10)}${withEmails ? '-with-emails' : ''}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  showToast(`Exported ${rows.length} signup${rows.length === 1 ? '' : 's'}`);
 }
 async function partnersPost(body) {
   const res = await fetch(`${WORKER_URL}/api/admin/partners`, { method: 'POST',
