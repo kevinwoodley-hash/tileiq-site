@@ -123,6 +123,21 @@ test.describe("Partner links", () => {
     await expect.poll(() => page.locator("#tileiq-app").getAttribute("src")).toBe("/app?partner=SFT");
   });
 
+  test("signup never opens the demo: a demo session left from tile-iq.com/app/demo is dropped first", async ({ page }) => {
+    await page.route(/supabase|jsdelivr|workers\.dev/, r => r.fulfill({ status: 200, body: "" }));
+    const K = "sb-lzwmqabxpxuuznhbpewm-auth-token";
+    await page.goto("/privacy.html");
+    await page.evaluate(k => localStorage.setItem(k, JSON.stringify({ access_token: "x", user: { email: "demo@tile-iq.com" } })), K);
+    await page.goto(LANDING);
+    await expect.poll(() => page.locator("#tileiq-app").getAttribute("src")).toBe("/app?partner=SFT");
+    expect(await page.evaluate(k => localStorage.getItem(k), K)).toBeNull();
+    // a real account's session is left alone
+    await page.evaluate(k => localStorage.setItem(k, JSON.stringify({ access_token: "y", user: { email: "tiler@example.com" } })), K);
+    await page.goto("/signup.html");
+    await expect.poll(() => page.locator("#tileiq-app").getAttribute("src")).toBe("/app");
+    expect(await page.evaluate(k => JSON.parse(localStorage.getItem(k)).user.email, K)).toBe("tiler@example.com");
+  });
+
   test("without a partner: no note and no partner on the Play link", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("#partner-note")).toHaveCount(0);
