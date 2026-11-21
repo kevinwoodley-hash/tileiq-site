@@ -487,6 +487,9 @@ body {
       <button class="nav-item" onclick="showPage('feedback')" id="nav-feedback">
         <span class="nav-icon">🗣️</span> Feedback
       </button>
+      <button class="nav-item" onclick="showPage('partners')" id="nav-partners">
+        <span class="nav-icon">🤝</span> Partners
+      </button>
       <button class="nav-item" onclick="showPage('marketing')" id="nav-marketing">
         <span class="nav-icon">📈</span> Marketing
       </button>
@@ -847,6 +850,20 @@ body {
       </div>
     </div>
 
+    <div class="page" id="page-partners">
+      <div class="page-header">
+        <h1>Partners</h1>
+        <p>Companies that send tilers to TileIQ for commission, and every tiler who signed up through one. Commission figures come in Phase 3.</p>
+      </div>
+      <div class="stats-page">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <button class="btn-sm" onclick="loadPartners()">Refresh</button>
+          <label style="font-size:13px;"><input type="checkbox" id="pt-hide-tests" onchange="renderPartners()"> Hide test signups</label>
+        </div>
+        <div id="pt-body" style="max-width:1000px;"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+
     <div class="page" id="page-marketing">
       <div class="page-header">
         <h1>Marketing</h1>
@@ -1028,6 +1045,7 @@ function showPage(name) {
   if (name === 'backups') { if (!users.length) loadUsers().then(loadBackups); else loadBackups(); }
   if (name === 'assistant') loadAssistant();
   if (name === 'feedback') loadFeedback();
+  if (name === 'partners') loadPartners();
   if (name === 'marketing') loadMarketing();
   if (name === 'checklist') loadChecklist();
   if (name === 'autotest') clearTestResults();
@@ -1495,6 +1513,107 @@ function renderJourneys() {
       <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:4px;">${timeline}</div>
     </details>`;
   }).join('') : '<div class="card" style="font-size:13px;color:var(--text-muted);">No journeys recorded in this period yet. They start once people on the new app version agree to usage statistics.</div>';
+}
+
+// ── Partners (companies that send tilers, paid commission) ──────
+// GET/POST /api/admin/partners (worker, partners/handler.js); tables in sql/2026-11-partners.sql (app repo).
+let partnersData = null;
+const ptEsc = s => escHtml(s == null ? '' : String(s));
+const PT_HOW = { link: 'Their link', play_referrer: 'Google Play (their link)', typed: 'Typed the code', admin: 'Added by admin' };
+const PT_DEVICE = { android: 'Android', ios: 'iPhone', web: 'Web' };
+const ptDate = d => d ? new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '–';
+function ptWho(id) {
+  const u = users.find(x => x.id === id);
+  return u ? (u.email || u.name) : 'Account ' + String(id).slice(0, 8);
+}
+function ptTerms(p) {
+  const months = p.commission_months ? `for the first ${Number(p.commission_months)} months` : 'for as long as they stay subscribed';
+  return `${Number(p.commission_pct)}% of the price ex VAT, ${months}`;
+}
+async function loadPartners() {
+  const box = document.getElementById('pt-body');
+  box.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    if (!users.length) await loadUsers();
+    partnersData = await api('/api/admin/partners');
+  } catch (e) {
+    box.innerHTML = '<div class="card"><h2>Not available</h2><p>Couldn\'t load partners (' + ptEsc(e.message) + '). Check the worker is deployed and sql/2026-11-partners.sql has been run in Supabase.</p></div>';
+    return;
+  }
+  renderPartners();
+}
+function renderPartners() {
+  if (!partnersData) return;
+  const partners = partnersData.partners || [];
+  const hideTests = document.getElementById('pt-hide-tests')?.checked;
+  const signups = (partnersData.signups || []).filter(r => !hideTests || !r.is_test);
+  const box = document.getElementById('pt-body');
+  const linkRow = (label, code) => code ? `<div style="font-size:13px;margin-top:4px;">${label}: <code>tile-iq.com/go/${ptEsc(String(code).toLowerCase())}</code>
+      <button class="btn-sm" style="margin-left:6px;" onclick="navigator.clipboard.writeText('https://tile-iq.com/go/${ptEsc(String(code).toLowerCase())}').then(() => showToast('Link copied'))">Copy</button></div>` : '';
+  box.innerHTML = `
+    ${partners.map(p => `
+      <div class="card" style="margin-bottom:16px;${p.active ? '' : 'opacity:.6;'}">
+        <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+          <div style="flex:1;min-width:240px;">
+            <h2>${ptEsc(p.name)} ${p.active ? '' : '<span style="font-size:12px;color:#ef4444;">(paused)</span>'}</h2>
+            <div style="font-size:13px;">${ptEsc(ptTerms(p))}. Code must be added within ${Number(p.attribution_days)} days of signing up.</div>
+            ${linkRow('Their link', p.code)}${linkRow('Test link', p.test_code)}
+            ${p.contact_email ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Contact: ${ptEsc(p.contact_email)}</div>` : ''}
+            ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${ptEsc(p.notes)}</div>` : ''}
+          </div>
+          <button class="btn-sm" onclick="partnersToggle('${ptEsc(p.id)}', ${!p.active})">${p.active ? 'Pause' : 'Resume'}</button>
+        </div>
+        <div class="stat-grid" style="margin-top:14px;">
+          <div class="stat-card"><div class="stat-label">Tilers signed up</div><div class="stat-value">${Number(p.tilers || 0)}</div></div>
+          <div class="stat-card"><div class="stat-label">Last 30 days</div><div class="stat-value">${Number(p.tilers_30d || 0)}</div></div>
+          <div class="stat-card"><div class="stat-label">Test signups</div><div class="stat-value">${Number(p.test_signups || 0)}</div><div style="font-size:12px;color:var(--text-muted);margin-top:6px;">never earn commission</div></div>
+        </div>
+      </div>`).join('') || '<div class="card"><h2>No partners yet</h2><p>Add one below.</p></div>'}
+    <div class="card" style="margin-bottom:16px;"><h2>Signups</h2>
+      ${partnersData.signups === undefined ? '<p>Deploy the latest worker to see the list of signups.</p>' : signups.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="text-align:left;color:var(--text-muted);"><th style="padding:6px 8px;">When</th><th style="padding:6px 8px;">Account</th><th style="padding:6px 8px;">Partner</th><th style="padding:6px 8px;">Code</th><th style="padding:6px 8px;">How</th><th style="padding:6px 8px;">Device</th></tr></thead>
+        <tbody>${signups.map(r => `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:6px 8px;white-space:nowrap;">${ptDate(r.claimed_at)}</td>
+          <td style="padding:6px 8px;">${ptEsc(ptWho(r.user_id))}<div style="font-size:11px;color:var(--text-muted);">account made ${ptDate(r.account_created)}</div></td>
+          <td style="padding:6px 8px;">${ptEsc(r.partner)}</td>
+          <td style="padding:6px 8px;"><code>${ptEsc(r.code)}</code>${r.is_test ? ' <span style="font-size:11px;font-weight:700;color:#E07A2F;">TEST</span>' : ''}</td>
+          <td style="padding:6px 8px;">${ptEsc(PT_HOW[r.source] || r.source)}</td>
+          <td style="padding:6px 8px;">${ptEsc(PT_DEVICE[r.platform] || '–')}</td>
+        </tr>`).join('')}</tbody></table></div>` : '<p>No signups yet.</p>'}
+    </div>
+    <div class="card"><h2>Add a partner</h2>
+      <p>The link works straight away: tile-iq.com/go/&lt;code&gt;. Codes can't be changed once tilers have signed up with them.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+        ${[['pt-name', 'Company name', 'text', ''], ['pt-code', 'Code (e.g. ABC)', 'text', ''], ['pt-test', 'Test code (e.g. ABC-TEST)', 'text', ''],
+           ['pt-pct', 'Commission %', 'number', '15'], ['pt-months', 'Months (blank = as long as subscribed)', 'number', ''],
+           ['pt-days', 'Days to add the code after signup', 'number', '30'], ['pt-email', 'Contact email', 'email', ''], ['pt-notes', 'Notes', 'text', '']]
+          .map(([id, label, type, val]) => `<label style="display:block;font-size:13px;font-weight:600;">${label}
+            <input id="${id}" type="${type}" value="${val}" style="display:block;width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;${id === 'pt-code' || id === 'pt-test' ? 'text-transform:uppercase;' : ''}"></label>`).join('')}
+      </div>
+      <button class="btn-primary" style="margin-top:16px;" onclick="partnersAdd()">Add partner</button>
+    </div>`;
+}
+async function partnersPost(body) {
+  const res = await fetch(`${WORKER_URL}/api/admin/partners`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-secret': ADMIN_SECRET }, body: JSON.stringify(body) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || res.status);
+  return j;
+}
+async function partnersAdd() {
+  const v = id => document.getElementById(id).value.trim();
+  const body = { name: v('pt-name'), code: v('pt-code').toUpperCase(), commission_pct: Number(v('pt-pct')),
+    attribution_days: Number(v('pt-days') || 30), notes: v('pt-notes') };
+  if (v('pt-test')) body.test_code = v('pt-test').toUpperCase();
+  if (v('pt-email')) body.contact_email = v('pt-email');
+  body.commission_months = v('pt-months') ? Number(v('pt-months')) : null;
+  try { await partnersPost(body); showToast('Partner added'); loadPartners(); }
+  catch (e) { alert(e.message); }
+}
+async function partnersToggle(id, active) {
+  if (!active && !confirm('Pause this partner? Their link and code stop working for new tilers; existing signups stay.')) return;
+  try { await partnersPost({ id, active }); showToast(active ? 'Resumed' : 'Paused'); loadPartners(); }
+  catch (e) { alert(e.message); }
 }
 
 // ── API helper ─────────────────────────────────────────────────
