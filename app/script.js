@@ -207,10 +207,12 @@ function show(id) {
     // Native apps ask for the analytics choice the first time Home is shown, however it was reached:
     // signing in and restoring a saved session call show("screen-home") directly, not goHome().
     if (id === "screen-signin") syncSignInScreen();
+    if (id === "screen-signup") { try { PartnerCode.prefillSignup(); } catch (_) {} }
     if (id === "screen-home") {
         if (currentUser && !currentUser.is_anonymous) rememberRealAccount();
         try { TQA.maybeAsk(); } catch (_) {}
         try { TesterFeedback.onHome(); } catch (_) {}
+        try { PartnerCode.onHome(); } catch (_) {}
         // Portfolio counts for the Home link: fetched once, then kept up to date by the portfolio screens
         setTimeout(() => { try { if (!PortfolioUI.loaded) PortfolioUI.load().then(() => PortfolioUI.homeSubtitle()).catch(() => {}); } catch (_) {} }, 1500);
     }
@@ -541,7 +543,8 @@ const TQA = (() => {
     const CONSENT_VERSION = "2";
     const ALLOWED = new Set(["app_mode", "platform_type", "currency", "estimate_type", "feature_name", "feature",
                              "method", "store", "plan", "traffic_type", "is_internal_test", "debug_mode", "link_location",
-                             "status", "trigger", "tour", "step_number", "days_since_signup"]);
+                             "status", "trigger", "tour", "step_number", "days_since_signup",
+                             "install_source", "install_medium", "install_campaign", "install_page"]);
     const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
     const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) {} };
 
@@ -555,6 +558,29 @@ const TQA = (() => {
     const internal = () => lsGet(INTERNAL_KEY) === "1" || isTestAccount();
     const appMode  = () => (isDemoAccount() || new URLSearchParams(location.search).get("demo") === "1") ? "demo" : "live";
     const currency = () => regionOf() === "us" ? "USD" : "GBP";
+
+    // Android: where this install came from, read once from Google Play's install referrer (the
+    // website puts utm_source / utm_medium / utm_campaign and the page it was tapped on onto its Play
+    // links; a Play Store search gives google-play / organic). Only those four, cleaned and kept on
+    // this device. They leave it only on the sign_up event, through track(), so only with consent.
+    const INSTALL_KEY = "tqa-install-src";
+    async function readInstallSource() {
+        const plugin = window.Capacitor?.Plugins?.InstallReferrer;
+        if (platform() !== "android" || !plugin?.get || lsGet(INSTALL_KEY)) return;
+        try {
+            const q = new URLSearchParams(String((await plugin.get())?.referrer || ""));
+            const clean = v => String(v || "").toLowerCase().replace(/[^a-z0-9._\/-]+/g, "-").slice(0, 60);
+            lsSet(INSTALL_KEY, JSON.stringify({ install_source: clean(q.get("utm_source")) || "(not set)",
+                install_medium: clean(q.get("utm_medium")), install_campaign: clean(q.get("utm_campaign")),
+                install_page: clean(q.get("utm_content")) }));
+            // A partner's link (tile-iq.com/go/<code>) adds partner=<code>: kept for PartnerCode, which sends
+            // it once the tiler has an account (that's for the partner's commission, not analytics).
+            const partner = String(q.get("partner") || "").trim().toUpperCase();
+            if (/^[A-Z0-9][A-Z0-9-]{1,23}$/.test(partner) && !lsGet("tileiq-partner-pending"))
+                lsSet("tileiq-partner-pending", JSON.stringify({ code: partner, source: "play_referrer", at: Date.now() }));
+        } catch (_) { /* Play not reachable right now: tried again next launch */ }
+    }
+    const installSource = () => { try { return JSON.parse(lsGet(INSTALL_KEY) || "null") || {}; } catch (_) { return {}; } };
 
     // Events from before the person has answered the analytics question (a new account's sign_up
     // happens just before the question appears) wait here, in memory only. They're sent if the
@@ -574,7 +600,8 @@ const TQA = (() => {
     }
     function send(name, params) {
         try {
-            const all = { app_mode: appMode(), platform_type: platform(), currency: currency(), ...(params || {}) };
+            const all = { app_mode: appMode(), platform_type: platform(), currency: currency(),
+                          ...(name === "sign_up" ? installSource() : {}), ...(params || {}) };
             // Internal testing: traffic_type is the field GA4's internal-traffic filter reads;
             // is_internal_test is the same flag as an ordinary parameter, usable as a report dimension.
             if (internal()) { all.traffic_type = "internal"; all.is_internal_test = "true"; if (!isNativeApp()) all.debug_mode = true; }
@@ -1000,11 +1027,12 @@ const TQA = (() => {
     return { track, consent, internal, platform, setConsent, setInternal, applyNative, linkBilling, maybeAsk, titleTap, renderSettings,
              estimateStarted, estimateCompleted, quoteGenerated, feature, screen, jobCreated, quoteSent, onboarding, consentChanged, jobStatus, jobScheduled,
              invoiceCreated, invoiceSent, invoicePaid, quoteResponse, quoteViews, tourStep, tourDone, tourDismissed, demoBlockedAction,
-             flushJourney: jFlush, signedOut,
+             flushJourney: jFlush, signedOut, readInstallSource,
              suppressLogin: false, loginMethod: "password" };
 })();
 document.addEventListener("DOMContentLoaded", () => {
     TQA.applyNative();
+    TQA.readInstallSource();
     TQA.renderSettings();
     // Web: the choice can also be made in the site's cookie banner — keep the Settings box in step
     if (window.tileiqConsent) window.tileiqConsent.onChange(() => { TQA.consentChanged(); TQA.renderSettings(); });
@@ -1377,6 +1405,143 @@ document.addEventListener("DOMContentLoaded", () => {
     TesterFeedback.renderSettings();
     TesterFeedback.fromUrl();               // web app opened from the website's tester page: /app/?tester=join
 });
+
+/* ── PARTNER CODES ───────────────────────────────────────────────
+   Partner companies send tilers to TileIQ and are paid commission (the rules are on the server:
+   partners/handler.js, sql/2026-11-partners.sql). A tiler's partner comes from, in order:
+     - a partner's link: the Play install referrer (Android), or /app/?partner=CODE (web app);
+     - the code typed at signup or in Settings → Partner code (any platform, the only way on iPhone).
+   The code waits on this device until there's a real account (not a guest or the demo), then is
+   sent once. One partner per account, for good. Nothing here unlocks anything: Pro still comes
+   from the stores, so this is allowed on iOS too. */
+const PartnerCode = (() => {
+    const PENDING_KEY = "tileiq-partner-pending";            // { code, source, at }
+    const CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,23}$/;
+    const clean = c => String(c || "").trim().toUpperCase().replace(/\s+/g, "");
+    const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (_) { return null; } };
+    const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+    const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const user = () => (typeof currentUser !== "undefined" && currentUser) || null;
+    const canSend = () => !!user()?.id && !user().is_anonymous && !(typeof isDemoAccount === "function" && isDemoAccount());
+    const statusKey = () => `tileiq-partner-status-${user()?.id || "anon"}`;
+    const platform = () => { const p = window.Capacitor?.isNativePlatform?.() ? window.Capacitor.getPlatform() : "web"; return ["android", "ios"].includes(p) ? p : "web"; };
+    let sending = null;
+
+    const pending = () => { const p = lsGet(PENDING_KEY); return p && CODE_RE.test(p.code || "") ? p : null; };
+    // A typed code replaces a link's; a link never replaces a code the tiler typed.
+    function remember(code, source = "typed") {
+        const c = clean(code);
+        if (!c) { if (pending()?.source === "typed") lsSet(PENDING_KEY, null); return false; }
+        if (!CODE_RE.test(c)) return false;
+        const p = pending();
+        if (p && p.source === "typed" && source !== "typed") return false;
+        lsSet(PENDING_KEY, { code: c, source, at: Date.now() });
+        return true;
+    }
+
+    // Send the waiting code. Returns { ok, partner?, error?, retry? }. Kept for later only when the
+    // answer might change (no connection, server trouble, not signed in yet, too many tries today).
+    async function send() {
+        const p = pending();
+        if (!p || !canSend()) return null;
+        if (sending) return sending;
+        sending = (async () => {
+            try {
+                const r = await fetch(TILEIQ_WORKER_URL + "/api/partner-code", {
+                    method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + portfolioToken() },
+                    body: JSON.stringify({ code: p.code, source: p.source, platform: platform() })
+                });
+                const j = await r.json().catch(() => ({}));
+                if (r.ok) {
+                    lsSet(PENDING_KEY, null);
+                    lsSet(statusKey(), { linked: true, partner: j.partner, test: !!j.test });
+                    try { TQA.track("partner_linked", { method: p.source }); } catch (_) {}
+                    renderSettings();
+                    return { ok: true, partner: j.partner, test: !!j.test };
+                }
+                const error = j.error || "That code isn't recognised. Check it and try again.";
+                if ([400, 403, 409].includes(r.status)) {
+                    lsSet(PENDING_KEY, null);                                  // final: don't try again
+                    if (r.status === 409) refreshStatus();
+                    return { ok: false, error, typed: p.source === "typed" };
+                }
+                return { ok: false, error, retry: true };
+            } catch (_) { return { ok: false, error: "No connection. Please try again.", retry: true }; }
+            finally { setTimeout(() => { sending = null; }, 0); }
+        })();
+        return sending;
+    }
+
+    // Home after signing in or opening the app: send anything waiting. A code the tiler typed at
+    // signup that turns out to be wrong is worth telling them about; a link's is dropped quietly.
+    async function onHome() {
+        if (!pending() || !canSend()) return;
+        const r = await send();
+        if (r && !r.ok && !r.retry && r.typed) alert("Partner code not added: " + r.error + "\n\nYou can try again in Settings → Partner code.");
+    }
+
+    async function refreshStatus() {
+        if (!canSend() || navigator.onLine === false) return;
+        try {
+            const r = await fetch(TILEIQ_WORKER_URL + "/api/partner-code", { headers: { "Authorization": "Bearer " + portfolioToken() } });
+            if (!r.ok) return;
+            const j = await r.json();
+            if (typeof j.linked === "boolean") { lsSet(statusKey(), j); renderSettings(false); }
+        } catch (_) {}
+    }
+
+    // Settings → Partner code: who the account is linked to, or a box to add a code.
+    function renderSettings(refresh = true) {
+        const card = document.getElementById("set-partner-card");
+        if (!card) return;
+        card.style.display = canSend() ? "" : "none";
+        if (!canSend()) return;
+        const st = lsGet(statusKey());
+        const linked = document.getElementById("set-partner-linked"), form = document.getElementById("set-partner-form");
+        if (st?.linked) {
+            linked.innerHTML = `✅ Linked to <strong>${esc(st.partner)}</strong>${st.test ? " (test)" : ""}`;
+            linked.style.display = ""; form.style.display = "none";
+        } else {
+            linked.style.display = "none"; form.style.display = "";
+            const input = document.getElementById("set-partner-input");
+            if (input && !input.value && pending()) input.value = pending().code;
+        }
+        if (refresh) refreshStatus();
+    }
+    async function submitFromSettings() {
+        const input = document.getElementById("set-partner-input"), msg = document.getElementById("set-partner-msg");
+        const c = clean(input?.value);
+        const say = (t, ok) => { if (msg) { msg.textContent = t; msg.style.color = ok ? "#10b981" : "#ef4444"; } };
+        if (!c) return say("Please enter a code.");
+        if (!CODE_RE.test(c)) return say("That code isn't recognised. Check it and try again.");
+        remember(c, "typed");
+        say("Checking…", true); if (msg) msg.style.color = "var(--muted)";
+        const r = await send();
+        if (!r) return say("Please sign in first.");
+        if (r.ok) { if (input) input.value = ""; say(`✅ Linked to ${r.partner}.`, true); renderSettings(false); }
+        else { if (r.retry) lsSet(PENDING_KEY, null); say(r.error); }   // in Settings the tiler is right there: no silent retry
+    }
+
+    // Signup screen: the optional code box, filled in from a partner's link if there was one.
+    function prefillSignup() {
+        const el = document.getElementById("su-partner");
+        if (el && !el.value && pending()) el.value = pending().code;
+    }
+    function signupTyped(v) { remember(v, "typed"); }
+
+    // Web app opened from a partner's link on the website: /app/?partner=SFT (never in the demo).
+    function fromUrl() {
+        try {
+            if (typeof isWebDemo === "function" && isWebDemo()) return;
+            const c = new URLSearchParams(location.search).get("partner");
+            if (c) remember(c, "link");
+        } catch (_) {}
+    }
+
+    return { remember, pending, send, onHome, renderSettings, submitFromSettings, prefillSignup, signupTyped, fromUrl, refreshStatus };
+})();
+PartnerCode.fromUrl();   // straight away: a saved session can show Home (and send) before DOMContentLoaded
+document.addEventListener("DOMContentLoaded", () => PartnerCode.renderSettings(false));
 function uid()     { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
 // ── Demo account guard ────────────────────────────────────────
@@ -13042,6 +13207,7 @@ function openJobFromCal(jobId) {
 function goSettings() {
     settingsTab("profile"); // always open on profile tab
     try { TesterFeedback.renderSettings(); } catch (_) {}
+    try { PartnerCode.renderSettings(); } catch (_) {}
     const s = settings;
     updateGCalButton();
     document.getElementById("set-ai-receptionist").checked = s.aiReceptionistEnabled || false;
@@ -18767,6 +18933,7 @@ function showCreateAccountSheet(thenPaywall) {
             fetch(TILEIQ_WORKER_URL + "/api/welcome-email", { method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, name }) }).catch(() => {});
             TQA.track("sign_up", { method: "guest_upgrade" });
+            try { PartnerCode.onHome(); } catch (_) {}
             rememberRealAccount();
             sheet.remove();
             renderHomeScreen();
