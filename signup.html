@@ -27,7 +27,7 @@
 </head>
 <body>
   <h1 class="sr-only">Create your TileIQ account</h1>
-  <iframe id="tileiq-app" src="/app" title="Create your TileIQ account"></iframe>
+  <iframe id="tileiq-app" title="Create your TileIQ account"></iframe>
   <div class="download-panel" id="download-panel">
     <div class="download-card">
       <h2>Account created. <span>You're ready.</span></h2>
@@ -47,7 +47,14 @@
     // From a partner's link (tile-iq.com/go/<code>): the code goes into the app's signup form.
     const partner=(new URLSearchParams(location.search).get('partner')||'').trim().toUpperCase();
     const appUrl=/^[A-Z0-9][A-Z0-9-]{1,23}$/.test(partner)?'/app?partner='+encodeURIComponent(partner):'/app';
-    if(appUrl!=='/app') frame.src=appUrl;
+    // Anyone who tried the demo (tile-iq.com/app/demo) still has the demo account signed in in this
+    // browser, and the app would open that instead of signup. Same site, so drop it here first.
+    try{
+      const k='sb-lzwmqabxpxuuznhbpewm-auth-token';
+      const s=JSON.parse(localStorage.getItem(k)||'null');
+      if(s && s.user && s.user.email==='demo@tile-iq.com') localStorage.removeItem(k);
+    }catch(e){}
+    frame.src=appUrl;
 
     frame.addEventListener('load',()=>{
       try{
