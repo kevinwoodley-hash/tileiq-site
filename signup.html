@@ -31,7 +31,7 @@
   <div class="download-panel" id="download-panel">
     <div class="download-card">
       <h2>Account created. <span>You're ready.</span></h2>
-      <p>Download TileIQ Pro and sign in using the same email and password you just created.</p>
+      <p>Download TileIQ Pro and sign in using the same email and password you just created (or the same Apple or Google button).</p>
       <div class="price">Your promotional price: £9.99/month or £79.99/year</div>
       <div class="store-row">
         <a class="google-play" href="https://play.google.com/store/apps/details?id=com.tileiqpro.android" target="_blank" rel="noopener noreferrer" aria-label="Get TileIQ on Google Play"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play"></a>
@@ -44,6 +44,10 @@
     const frame=document.getElementById('tileiq-app');
     const panel=document.getElementById('download-panel');
     let signupWasSubmitted=false;
+    // From a partner's link (tile-iq.com/go/<code>): the code goes into the app's signup form.
+    const partner=(new URLSearchParams(location.search).get('partner')||'').trim().toUpperCase();
+    const appUrl=/^[A-Z0-9][A-Z0-9-]{1,23}$/.test(partner)?'/app?partner='+encodeURIComponent(partner):'/app';
+    if(appUrl!=='/app') frame.src=appUrl;
 
     frame.addEventListener('load',()=>{
       try{
@@ -80,7 +84,7 @@
           }catch(e){}
         },400);
       }catch(e){
-        window.location.href='/app';
+        window.location.href=appUrl;
       }
     });
   </script>
