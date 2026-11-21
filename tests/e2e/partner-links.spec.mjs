@@ -121,6 +121,8 @@ test.describe("Partner links", () => {
     await page.goto(LANDING);
     await expect(page.locator("#partner-note")).toContainText("Partner code SFT is added for you");
     await expect.poll(() => page.locator("#tileiq-app").getAttribute("src")).toBe("/app?partner=SFT");
+    // UK by default (the framed app can't start offline here, so the call is checked in the page)
+    expect(fs.readFileSync(new URL("../../signup.html", import.meta.url), "utf8")).toContain("w.setSignupRegion('uk')");
   });
 
   test("signup never opens the demo: a demo session left from tile-iq.com/app/demo is dropped first", async ({ page }) => {
