@@ -284,6 +284,28 @@
   }
   var source = visitSource();
 
+  // Partner links: tile-iq.com/go/<code> lands here with ?partner=<CODE> (functions/go). The code is
+  // used on this page only and never stored in the browser: it's added to the Google Play referrer
+  // and to links into the web app and signup, so the tiler's new account can be linked to the
+  // partner company that sent them. A short note shows the code, for typing in on an iPhone.
+  var partnerCode = (function () {
+    var c = String(new URLSearchParams(topWin.location.search).get('partner') || '').trim().toUpperCase();
+    return /^[A-Z0-9][A-Z0-9-]{1,23}$/.test(c) ? c : '';
+  })();
+  if (partnerCode && !framed && !inApp) {
+    var showPartnerNote = function () {
+      if (document.getElementById('partner-note')) return;
+      var n = document.createElement('div');
+      n.id = 'partner-note';
+      n.setAttribute('role', 'note');
+      n.style.cssText = 'background:#1B2A3C;color:#F7F4EF;font:500 14px/1.4 "DM Sans",system-ui,sans-serif;padding:10px 16px;text-align:center;';
+      n.innerHTML = 'Your partner code is <strong style="color:#E07A2F;letter-spacing:1px;">' + partnerCode + '</strong>. ' +
+        'Enter it when you create your TileIQ account (or later in Settings \u2192 Partner code) if it isn\u2019t filled in for you.';
+      document.body.insertBefore(n, document.body.firstChild);
+    };
+    if (document.body) showPartnerNote(); else document.addEventListener('DOMContentLoaded', showPartnerNote);
+  }
+
   // Links from this site into the app carry tq_src / tq_med (e.g. tq_src=guide-tile-adhesive-coverage)
   // instead of UTM tags, because a UTM on an internal link makes Google Analytics start a new session
   // and credit it to our own page, hiding the real source (Google, an ad, ChatGPT...). The tag is not a
@@ -323,6 +345,19 @@
     if (!a) return;
     var href = a.href || '';
     var store = /play\.google\.com\/store\/apps\/details/.test(href) ? 'google_play' : /apps\.apple\.com\//.test(href) ? 'app_store' : '';
+    // Partner code on to the web app and signup (not the demo: it's a shared account).
+    if (partnerCode && !store) {
+      try {
+        var u = new URL(href, location.href);
+        if (SITE_HOST.test(u.hostname) || u.origin === location.origin) {
+          if ((/^\/app(\/|$)/.test(u.pathname) && !/^\/app\/demo/.test(u.pathname) || /^\/signup(\.html|\/)?$/.test(u.pathname)) &&
+              !u.searchParams.get('partner')) {
+            u.searchParams.set('partner', partnerCode);
+            a.href = u.href;
+          }
+        }
+      } catch (err) {}
+    }
     if (!store) return;
     beacon({ k: 'store_click', st: store });
     if (!framed && window.posthog && window.posthog.__loaded) {
@@ -331,7 +366,8 @@
     if (store === 'google_play' && !/[?&]referrer=/.test(href)) {
       var src = source && source.s !== '(direct)' ? source : { s: 'tile-iq.com', m: 'website' };
       var ref = 'utm_source=' + encodeURIComponent(src.s) + '&utm_medium=' + encodeURIComponent(src.m) +
-        '&utm_campaign=' + encodeURIComponent(src.c || 'website') + '&utm_content=' + encodeURIComponent(landingPath);
+        '&utm_campaign=' + encodeURIComponent(src.c || 'website') + '&utm_content=' + encodeURIComponent(landingPath) +
+        (partnerCode ? '&partner=' + encodeURIComponent(partnerCode) : '');
       a.href = href + (href.indexOf('?') >= 0 ? '&' : '?') + 'referrer=' + encodeURIComponent(ref);
     }
     // App Store: the same source as a campaign token, e.g. ct=google_guides-tile-adhesive-coverage.

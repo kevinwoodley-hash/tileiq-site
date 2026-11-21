@@ -1,43 +1,106 @@
-// Partner links: tile-iq.com/go/<code> is what a partner puts on their own website. For now each one
-// is a _redirects rule to the home page tagged with the partner (the static test server doesn't run
-// _redirects, so the rules are checked as text), and the tagged landing must carry the partner on to
-// the store links like any other source. -test links are the partner's own test links.
+// Partner links: tile-iq.com/go/<code> is what a partner company puts on its own website.
+// functions/go/[[path]].js checks the code with the worker and sends the visitor to the home page
+// tagged with the partner plus partner=<CODE> (the static test server doesn't run Pages Functions,
+// so the function is called directly here with the worker faked). On the page, analytics.js carries
+// the code to Google Play, the web app and signup, never to the demo, and stores nothing.
 import fs from "node:fs";
 import { test, expect } from "./fixtures.mjs";
+import { onRequestGet } from "../../functions/go/[[path]].js";
 
-const rules = () => fs.readFileSync(new URL("../../_redirects", import.meta.url), "utf8");
-const SFT = "/?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft";
+const LANDING = "/?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft&partner=SFT";
+
+// Run the Pages Function for /go/<path>, with the worker answering `worker` (or failing).
+async function goLink(path, worker) {
+  const real = globalThis.fetch, seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    if (worker === "down") throw new Error("unreachable");
+    return new Response(JSON.stringify(worker), { status: 200 });
+  };
+  try {
+    const parts = path.split("/").filter(Boolean);
+    const res = await onRequestGet({ request: new Request("https://tile-iq.com/go/" + path), params: { path: parts } });
+    return { status: res.status, location: res.headers.get("Location"), seen };
+  } finally { globalThis.fetch = real; }
+}
+const SFT = { ok: true, name: "Software for Tradespeople", code: "SFT", test: false, utm_source: "software-for-tradespeople", utm_campaign: "partner-sft" };
 
 test.describe("Partner links", () => {
   test.skip(({ isMobile }) => isMobile, "desktop is enough for link checks");
 
-  test("/go/sft and its test link redirect to the home page tagged with the partner", () => {
-    const r = rules();
-    for (const from of ["/go/sft", "/go/SFT", "/go/sft/"]) {
-      expect(r).toContain(`${from} ${SFT} 302\n`);
-    }
-    for (const from of ["/go/sft-test", "/go/SFT-TEST", "/go/sft-test/"]) {
-      expect(r).toContain(`${from} ${SFT}-test 302\n`);
+  test("/go/sft (any case, with or without a slash) goes home tagged with the partner and its code", async () => {
+    for (const p of ["sft", "SFT", "sft/"]) {
+      const r = await goLink(p, SFT);
+      expect(r.status).toBe(302);
+      expect(r.location).toBe(LANDING);
+      expect(r.seen[0]).toContain("/api/partner-link?code=SFT");
     }
   });
 
-  test("partner links are temporary (302) so Phase 2 can take over the same addresses", () => {
-    const goLines = rules().split("\n").filter(l => l.startsWith("/go/"));
-    expect(goLines.length).toBeGreaterThan(0);
-    for (const l of goLines) expect(l.endsWith(" 302")).toBe(true);
+  test("the test link is tagged as the partner's test", async () => {
+    const r = await goLink("sft-test", { ...SFT, code: "SFT-TEST", test: true, utm_campaign: "partner-sft-test" });
+    expect(r.location).toBe("/?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft-test&partner=SFT-TEST");
   });
 
-  test("a visit from the partner link carries the partner to Google Play", async ({ page }) => {
-    await page.goto(SFT);
-    const href = await page.evaluate(() => {
-      const a = document.querySelector('a[href*="play.google.com"]');
-      a.addEventListener("click", e => e.preventDefault());
-      a.click();
-      return a.href;
-    });
-    const ref = new URL(href).searchParams.get("referrer");
-    expect(ref).toContain("utm_source=software-for-tradespeople");
-    expect(ref).toContain("utm_medium=referral");
-    expect(ref).toContain("utm_campaign=partner-sft");
+  test("unknown or paused codes, and nonsense, go to the plain home page", async () => {
+    expect((await goLink("nope", { ok: false })).location).toBe("/");
+    const bad = await goLink("<script>", SFT);
+    expect(bad.location).toBe("/");
+    expect(bad.seen.length).toBe(0);                                  // never even asked
+    expect((await goLink("", SFT)).location).toBe("/");
+  });
+
+  test("worker unreachable: the visitor still gets the code", async () => {
+    expect((await goLink("sft", "down")).location).toBe("/?partner=SFT");
+  });
+
+  test("the old temporary redirects are gone (they would override the function)", () => {
+    expect(fs.readFileSync(new URL("../../_redirects", import.meta.url), "utf8")).not.toMatch(/^\/go\//m);
+  });
+
+  // Tap a link without leaving the page; returns where it would go.
+  const tap = (page, sel) => page.evaluate(sel => {
+    const a = document.querySelector(sel);
+    a.addEventListener("click", e => e.preventDefault());
+    a.click();
+    return a.href;
+  }, sel);
+
+  test("on the landing page: a note with the code, and the code goes on to Google Play", async ({ page }) => {
+    await page.goto(LANDING);
+    await expect(page.locator("#partner-note")).toContainText("Your partner code is SFT");
+    const ref = new URL(await tap(page, 'a[href*="play.google.com"]')).searchParams.get("referrer");
+    const q = new URLSearchParams(ref);
+    expect([q.get("utm_source"), q.get("utm_medium"), q.get("utm_campaign"), q.get("partner")])
+      .toEqual(["software-for-tradespeople", "referral", "partner-sft", "SFT"]);
+    expect(await page.evaluate(() => JSON.stringify(localStorage) + document.cookie)).not.toContain("SFT");   // nothing stored
+  });
+
+  test("the code goes on to signup and the web app, but not the demo", async ({ page }) => {
+    await page.goto(LANDING);
+    await page.evaluate(() => document.body.insertAdjacentHTML("beforeend",
+      '<a id="t-signup" href="/signup.html">s</a><a id="t-app" href="https://tile-iq.com/app">a</a><a id="t-demo" href="https://tile-iq.com/app/demo">d</a><a id="t-out" href="https://example.com/app">o</a>'));
+    expect(new URL(await tap(page, "#t-signup")).searchParams.get("partner")).toBe("SFT");
+    expect(new URL(await tap(page, "#t-app")).searchParams.get("partner")).toBe("SFT");
+    expect(new URL(await tap(page, "#t-demo")).searchParams.get("partner")).toBeNull();
+    expect(new URL(await tap(page, "#t-out")).searchParams.get("partner")).toBeNull();
+  });
+
+  test("without a partner: no note and no partner on the Play link", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("#partner-note")).toHaveCount(0);
+    const ref = new URL(await tap(page, 'a[href*="play.google.com"]')).searchParams.get("referrer");
+    expect(ref).not.toContain("partner=");
+  });
+
+  test("the website signup form is filled in from the link", async ({ page }) => {
+    await page.route(/supabase/, r => r.fulfill({ status: 200, body: "" }));
+    await page.goto("/signup/?partner=SFT");
+    await expect(page.locator("#partner-code")).toHaveValue("SFT");
+  });
+
+  test("the privacy policy explains partner links", async ({ page }) => {
+    await page.goto("/privacy.html");
+    await expect(page.getByRole("heading", { name: "Partner Companies" })).toBeVisible();
   });
 });

@@ -44,6 +44,10 @@
     const frame=document.getElementById('tileiq-app');
     const panel=document.getElementById('download-panel');
     let signupWasSubmitted=false;
+    // From a partner's link (tile-iq.com/go/<code>): the code goes into the app's signup form.
+    const partner=(new URLSearchParams(location.search).get('partner')||'').trim().toUpperCase();
+    const appUrl=/^[A-Z0-9][A-Z0-9-]{1,23}$/.test(partner)?'/app?partner='+encodeURIComponent(partner):'/app';
+    if(appUrl!=='/app') frame.src=appUrl;
 
     frame.addEventListener('load',()=>{
       try{
@@ -80,7 +84,7 @@
           }catch(e){}
         },400);
       }catch(e){
-        window.location.href='/app';
+        window.location.href=appUrl;
       }
     });
   </script>

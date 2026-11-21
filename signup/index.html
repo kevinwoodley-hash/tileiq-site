@@ -135,6 +135,10 @@
         <input type="password" id="confirm-password" placeholder="Repeat password" autocomplete="new-password"/>
       </div>
       <div class="field">
+        <label>Partner code <span style="font-weight:400;opacity:.7;">(optional)</span></label>
+        <input type="text" id="partner-code" placeholder="From a partner company, e.g. SFT" autocomplete="off" maxlength="24" style="text-transform:uppercase;"/>
+      </div>
+      <div class="field">
         <label>Spam Check</label>
         <div class="spam-row">
           <input type="number" id="spam" placeholder="?" min="0" max="999"/>
@@ -156,6 +160,12 @@
   </div>
 </div>
 <script>
+  // From a partner's link (tile-iq.com/go/<code> → ?partner=CODE): filled in for them (first, so it works even if
+  // the Supabase script is slow or blocked).
+  const PARTNER_RE = /^[A-Z0-9][A-Z0-9-]{1,23}$/;
+  const fromLink = (new URLSearchParams(location.search).get('partner') || '').trim().toUpperCase();
+  if (PARTNER_RE.test(fromLink)) document.getElementById('partner-code').value = fromLink;
+
   const SB_URL = "https://lzwmqabxpxuuznhbpewm.supabase.co";
   const SB_KEY = "sb_publishable_bbLOe7wwtEWJhRxXZEKuuQ_QANTrsyr";
   const sb = supabase.createClient(SB_URL, SB_KEY);
@@ -168,6 +178,18 @@
     document.getElementById('spam-question').textContent = '= What is ' + a + ' \u00d7 ' + b + '?';
   }
   genSpamQuestion();
+
+  // Link the new account to the partner. Best effort: the account is made either way, and the
+  // tiler can add the code later in the app (Settings → Partner code).
+  async function linkPartner(session, code) {
+    if (!session || !code) return;
+    try {
+      await fetch('https://damp-bread-e0f9.kevin-woodley.workers.dev/api/partner-code', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ code, source: code === fromLink ? 'link' : 'typed', platform: 'web' })
+      });
+    } catch (e) {}
+  }
 
   async function doSignup() {
     const name     = document.getElementById('name').value.trim();
@@ -194,6 +216,8 @@
         options: { data: { full_name: name } }
       });
       if (error) return showError(error.message);
+      const partner = document.getElementById('partner-code').value.trim().toUpperCase().replace(/\s+/g, '');
+      if (partner && PARTNER_RE.test(partner)) await linkPartner(data && data.session, partner);
       if (typeof gtag !== 'undefined') gtag('event', 'sign_up', { method: 'website' });
       document.getElementById('signup-form').style.display = 'none';
       document.getElementById('success-msg').style.display = 'block';
