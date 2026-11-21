@@ -102,3 +102,37 @@ test("pausing asks first, then sends active: false", async ({ page }) => {
   await expect.poll(() => posts.length).toBe(1);
   expect(posts[0]).toEqual({ id: "p1", active: false });
 });
+
+// Read a CSV download from the Export button.
+async function exportCsv(page) {
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.locator("#pt-body button", { hasText: "Export signups" }).click()]);
+  const fs = await import("node:fs");
+  return { name: dl.suggestedFilename(), text: fs.readFileSync(await dl.path(), "utf8").replace(/^\ufeff/, "") };
+}
+
+test("exports a partner's signups with anonymous references, no emails by default", async ({ page }) => {
+  await openPartners(page);
+  const { name, text } = await exportCsv(page);
+  expect(name).toMatch(/^partner-sft-signups-\d{4}-\d{2}-\d{2}\.csv$/);
+  const lines = text.trim().split(/\r\n/);
+  expect(lines[0]).toBe("Reference,Signed up,Account created,Code,Type,How,Device");
+  expect(lines.length).toBe(3);
+  expect(lines[1]).toMatch(/^T-[0-9A-F]{6},2026-11-21,2026-11-21,SFT,Real,Google Play \(their link\),Android$/);
+  expect(lines[2]).toMatch(/^T-[0-9A-F]{6},2026-11-21,2026-11-21,SFT-TEST,Test,Their link,Web$/);
+  expect(text).not.toContain("dave@example.com");
+  // the same tiler always gets the same reference
+  const again = await exportCsv(page);
+  expect(again.text).toBe(text);
+});
+
+test("export leaves out tests when they're hidden, and adds emails only when ticked", async ({ page }) => {
+  await openPartners(page);
+  await page.locator("#pt-hide-tests").check();
+  await page.locator("#pt-export-emails").check();
+  const { name, text } = await exportCsv(page);
+  expect(name).toMatch(/-with-emails\.csv$/);
+  const lines = text.trim().split(/\r\n/);
+  expect(lines[0]).toBe("Reference,Signed up,Account created,Code,Type,How,Device,Email");
+  expect(lines.length).toBe(2);
+  expect(lines[1]).toMatch(/,Real,.*,dave@example\.com$/);
+});
