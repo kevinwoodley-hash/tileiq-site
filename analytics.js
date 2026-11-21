@@ -299,8 +299,21 @@
       n.id = 'partner-note';
       n.setAttribute('role', 'note');
       n.style.cssText = 'background:#1B2A3C;color:#F7F4EF;font:500 14px/1.4 "DM Sans",system-ui,sans-serif;padding:10px 16px;text-align:center;';
-      n.innerHTML = 'Your partner code is <strong style="color:#E07A2F;letter-spacing:1px;">' + partnerCode + '</strong>. ' +
-        'Enter it when you create your TileIQ account (or later in Settings \u2192 Partner code) if it isn\u2019t filled in for you.';
+      var codeHtml = '<strong style="color:#E07A2F;letter-spacing:1px;">' + partnerCode + '</strong>';
+      var onSignup = /^\/signup(\.html|\/)?$/.test(location.pathname);
+      var iPhone = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+      // iPhone: the App Store passes nothing on, so the account is made here first.
+      if (onSignup) {
+        n.innerHTML = 'Partner code ' + codeHtml + ' is added for you. Create your free account here first, ' +
+          'then download the app and sign in with the same email (or the same Apple or Google button).';
+      } else if (iPhone) {
+        n.innerHTML = 'Partner code ' + codeHtml + '. On iPhone, create your free account here first, then download the app and sign in. ' +
+          '<a id="partner-note-signup" href="/signup.html?partner=' + encodeURIComponent(partnerCode) + '" ' +
+          'style="display:inline-block;margin:6px 0 0 6px;background:#E07A2F;color:#1B2A3C;font-weight:700;border-radius:8px;padding:6px 12px;text-decoration:none;">Create your free account</a>';
+      } else {
+        n.innerHTML = 'Your partner code is ' + codeHtml + '. ' +
+          'Enter it when you create your TileIQ account (or later in Settings \u2192 Partner code) if it isn\u2019t filled in for you.';
+      }
       document.body.insertBefore(n, document.body.firstChild);
     };
     if (document.body) showPartnerNote(); else document.addEventListener('DOMContentLoaded', showPartnerNote);

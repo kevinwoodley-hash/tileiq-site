@@ -10,7 +10,7 @@ import { onRequestGet } from "../../functions/go/[[path]].js";
 const LANDING = "/?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft&partner=SFT";
 
 // Run the Pages Function for /go/<path>, with the worker answering `worker` (or failing).
-async function goLink(path, worker) {
+async function goLink(path, worker, ua = "Mozilla/5.0 (Linux; Android 14; Pixel 7)") {
   const real = globalThis.fetch, seen = [];
   globalThis.fetch = async (url) => {
     seen.push(String(url));
@@ -19,7 +19,7 @@ async function goLink(path, worker) {
   };
   try {
     const parts = path.split("/").filter(Boolean);
-    const res = await onRequestGet({ request: new Request("https://tile-iq.com/go/" + path), params: { path: parts } });
+    const res = await onRequestGet({ request: new Request("https://tile-iq.com/go/" + path, { headers: { "user-agent": ua } }), params: { path: parts } });
     return { status: res.status, location: res.headers.get("Location"), seen };
   } finally { globalThis.fetch = real; }
 }
@@ -48,6 +48,14 @@ test.describe("Partner links", () => {
     expect(bad.location).toBe("/");
     expect(bad.seen.length).toBe(0);                                  // never even asked
     expect((await goLink("", SFT)).location).toBe("/");
+  });
+
+  test("iPhone and iPad go to the website signup first, tagged the same", async () => {
+    const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
+    const IPAD = "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
+    for (const ua of [IPHONE, IPAD]) expect((await goLink("sft", SFT, ua)).location).toBe(LANDING.replace("/?", "/signup.html?"));
+    expect((await goLink("sft", "down", IPHONE)).location).toBe("/signup.html?partner=SFT");
+    expect((await goLink("nope", { ok: false }, IPHONE)).location).toBe("/");          // unknown code: just the home page
   });
 
   test("worker unreachable: the visitor still gets the code", async () => {
@@ -84,6 +92,26 @@ test.describe("Partner links", () => {
     expect(new URL(await tap(page, "#t-app")).searchParams.get("partner")).toBe("SFT");
     expect(new URL(await tap(page, "#t-demo")).searchParams.get("partner")).toBeNull();
     expect(new URL(await tap(page, "#t-out")).searchParams.get("partner")).toBeNull();
+  });
+
+  test("signup from a partner link on iPhone: told to make the account here first, and the app is opened with the code", async ({ browser }) => {
+    const ctx = await browser.newContext({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148" });
+    const page = await ctx.newPage();
+    await page.route(/supabase|jsdelivr|workers\.dev/, r => r.fulfill({ status: 200, body: "" }));
+    await page.goto(LANDING.replace("/?", "/signup.html?"));
+    await expect(page.locator("#partner-note")).toContainText("Create your free account here first");
+    await expect(page.locator("#partner-note")).toContainText("same email");
+    await expect.poll(() => page.locator("#tileiq-app").getAttribute("src")).toBe("/app?partner=SFT");
+    await ctx.close();
+  });
+
+  test("iPhone landing on the home page: the note's main button is website signup with the code", async ({ browser }) => {
+    const ctx = await browser.newContext({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148" });
+    const page = await ctx.newPage();
+    await page.goto("/?partner=SFT");
+    await expect(page.locator("#partner-note-signup")).toHaveAttribute("href", "/signup.html?partner=SFT");
+    await expect(page.locator("#partner-note")).toContainText("On iPhone, create your free account here first");
+    await ctx.close();
   });
 
   test("without a partner: no note and no partner on the Play link", async ({ page }) => {
