@@ -7,7 +7,7 @@ import fs from "node:fs";
 import { test, expect } from "./fixtures.mjs";
 import { onRequestGet } from "../../functions/go/[[path]].js";
 
-const LANDING = "/?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft&partner=SFT";
+const LANDING = "/signup.html?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft&partner=SFT";
 
 // Run the Pages Function for /go/<path>, with the worker answering `worker` (or failing).
 async function goLink(path, worker, ua = "Mozilla/5.0 (Linux; Android 14; Pixel 7)") {
@@ -28,7 +28,7 @@ const SFT = { ok: true, name: "Software for Tradespeople", code: "SFT", test: fa
 test.describe("Partner links", () => {
   test.skip(({ isMobile }) => isMobile, "desktop is enough for link checks");
 
-  test("/go/sft (any case, with or without a slash) goes home tagged with the partner and its code", async () => {
+  test("/go/sft (any case, with or without a slash) goes to signup tagged with the partner and its code", async () => {
     for (const p of ["sft", "SFT", "sft/"]) {
       const r = await goLink(p, SFT);
       expect(r.status).toBe(302);
@@ -39,29 +39,29 @@ test.describe("Partner links", () => {
 
   test("the test link is tagged as the partner's test", async () => {
     const r = await goLink("sft-test", { ...SFT, code: "SFT-TEST", test: true, utm_campaign: "partner-sft-test" });
-    expect(r.location).toBe("/?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft-test&partner=SFT-TEST");
+    expect(r.location).toBe("/signup.html?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft-test&partner=SFT-TEST");
   });
 
-  test("unknown or paused codes, and nonsense, go to the plain home page", async () => {
-    expect((await goLink("nope", { ok: false })).location).toBe("/");
+  test("unknown or paused codes, and nonsense, go to the plain signup page", async () => {
+    expect((await goLink("nope", { ok: false })).location).toBe("/signup.html");
     const bad = await goLink("<script>", SFT);
-    expect(bad.location).toBe("/");
+    expect(bad.location).toBe("/signup.html");
     expect(bad.seen.length).toBe(0);                                  // never even asked
-    expect((await goLink("", SFT)).location).toBe("/");
+    expect((await goLink("", SFT)).location).toBe("/signup.html");
   });
 
-  test("iPhone and iPad go to the website signup first, tagged the same", async () => {
+  test("iPhone and iPad go to the same signup page", async () => {
     const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
     const IPAD = "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
-    for (const ua of [IPHONE, IPAD]) expect((await goLink("sft", SFT, ua)).location).toBe(LANDING.replace("/?", "/signup.html?"));
+    for (const ua of [IPHONE, IPAD]) expect((await goLink("sft", SFT, ua)).location).toBe(LANDING);
     expect((await goLink("sft", "down", IPHONE)).location).toBe("/signup.html?partner=SFT");
-    expect((await goLink("nope", { ok: false }, IPHONE)).location).toBe("/");          // unknown code: just the home page
+    expect((await goLink("nope", { ok: false }, IPHONE)).location).toBe("/signup.html");          // unknown code: signup without a partner
   });
 
   test("worker unreachable: the visitor still gets the code", async () => {
-    expect((await goLink("sft", "down")).location).toBe("/?partner=SFT");
-    expect((await goLink("sft", { error: "Not found" })).location).toBe("/?partner=SFT");   // worker not updated yet
-    expect((await goLink("sft", { ok: true })).location).toBe("/?partner=SFT");            // half an answer
+    expect((await goLink("sft", "down")).location).toBe("/signup.html?partner=SFT");
+    expect((await goLink("sft", { error: "Not found" })).location).toBe("/signup.html?partner=SFT");   // worker not updated yet
+    expect((await goLink("sft", { ok: true })).location).toBe("/signup.html?partner=SFT");            // half an answer
   });
 
   test("the old temporary redirects are gone (they would override the function)", () => {
@@ -77,7 +77,7 @@ test.describe("Partner links", () => {
   }, sel);
 
   test("on the landing page: a note with the code, and the code goes on to Google Play", async ({ page }) => {
-    await page.goto(LANDING);
+    await page.goto(LANDING.replace("/signup.html?", "/?"));
     await expect(page.locator("#partner-note")).toContainText("Your partner code is SFT");
     const ref = new URL(await tap(page, 'a[href*="play.google.com"]')).searchParams.get("referrer");
     const q = new URLSearchParams(ref);
@@ -87,7 +87,7 @@ test.describe("Partner links", () => {
   });
 
   test("the code goes on to signup and the web app, but not the demo", async ({ page }) => {
-    await page.goto(LANDING);
+    await page.goto(LANDING.replace("/signup.html?", "/?"));
     await page.evaluate(() => document.body.insertAdjacentHTML("beforeend",
       '<a id="t-signup" href="/signup.html">s</a><a id="t-app" href="https://tile-iq.com/app">a</a><a id="t-demo" href="https://tile-iq.com/app/demo">d</a><a id="t-out" href="https://example.com/app">o</a>'));
     expect(new URL(await tap(page, "#t-signup")).searchParams.get("partner")).toBe("SFT");
@@ -100,7 +100,7 @@ test.describe("Partner links", () => {
     const ctx = await browser.newContext({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148" });
     const page = await ctx.newPage();
     await page.route(/supabase|jsdelivr|workers\.dev/, r => r.fulfill({ status: 200, body: "" }));
-    await page.goto(LANDING.replace("/?", "/signup.html?"));
+    await page.goto(LANDING);
     await expect(page.locator("#partner-note")).toContainText("Create your free account here first");
     await expect(page.locator("#partner-note")).toContainText("same email");
     await expect.poll(() => page.locator("#tileiq-app").getAttribute("src")).toBe("/app?partner=SFT");
@@ -114,6 +114,13 @@ test.describe("Partner links", () => {
     await expect(page.locator("#partner-note-signup")).toHaveAttribute("href", "/signup.html?partner=SFT");
     await expect(page.locator("#partner-note")).toContainText("On iPhone, create your free account here first");
     await ctx.close();
+  });
+
+  test("Android and computers: the signup page from the link shows the code is added", async ({ page }) => {
+    await page.route(/supabase|jsdelivr|workers\.dev/, r => r.fulfill({ status: 200, body: "" }));
+    await page.goto(LANDING);
+    await expect(page.locator("#partner-note")).toContainText("Partner code SFT is added for you");
+    await expect.poll(() => page.locator("#tileiq-app").getAttribute("src")).toBe("/app?partner=SFT");
   });
 
   test("without a partner: no note and no partner on the Play link", async ({ page }) => {
