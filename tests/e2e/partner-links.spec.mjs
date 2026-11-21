@@ -60,6 +60,8 @@ test.describe("Partner links", () => {
 
   test("worker unreachable: the visitor still gets the code", async () => {
     expect((await goLink("sft", "down")).location).toBe("/?partner=SFT");
+    expect((await goLink("sft", { error: "Not found" })).location).toBe("/?partner=SFT");   // worker not updated yet
+    expect((await goLink("sft", { ok: true })).location).toBe("/?partner=SFT");            // half an answer
   });
 
   test("the old temporary redirects are gone (they would override the function)", () => {

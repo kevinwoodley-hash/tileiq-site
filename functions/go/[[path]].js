@@ -27,6 +27,8 @@ export async function onRequestGet({ request, params }) {
     const r = await fetch(WORKER + "?code=" + encodeURIComponent(code), { signal: ctl.signal, cf: { cacheTtl: 300 } });
     clearTimeout(t);
     p = r.ok ? await r.json() : null;
+    // Only a clear yes or no counts; anything else (e.g. a worker without this endpoint yet) is "unknown".
+    if (!p || (p.ok !== true && p.ok !== false) || (p.ok === true && !(p.utm_source && p.utm_campaign && p.code))) p = null;
   } catch (e) { p = null; }
   if (p && p.ok === false) return go("/");
   const to = /iPhone|iPad|iPod/.test(request.headers.get("user-agent") || "") ? "/signup.html" : "/";
