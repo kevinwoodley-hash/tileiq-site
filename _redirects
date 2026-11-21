@@ -12,3 +12,14 @@
 /training/how-much-to-charge /guides/self-employed-tiler-day-rate/ 301
 /training/pricing-tiling-jobs.html /guides/how-to-quote-bathroom-tiling/ 301
 /training/pricing-tiling-jobs /guides/how-to-quote-bathroom-tiling/ 301
+# Partner links (Nov 2026). For now these only tag the visit as coming from the partner
+# (utm_*, picked up by analytics.js and passed on in the Google Play referrer). Phase 2 of the
+# partner scheme replaces these lines with a /go/[code] function that also records the code for
+# commission, keeping the same addresses. -test links are for the partner's own testing and are
+# never counted for commission.
+/go/sft /?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft 302
+/go/SFT /?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft 302
+/go/sft/ /?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft 302
+/go/sft-test /?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft-test 302
+/go/SFT-TEST /?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft-test 302
+/go/sft-test/ /?utm_source=software-for-tradespeople&utm_medium=referral&utm_campaign=partner-sft-test 302
